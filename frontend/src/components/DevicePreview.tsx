@@ -9,8 +9,8 @@ export function DevicePreview({ device }: { device: Device }) {
 
   if (device.kind === 'multizone') {
     return (
-      <span className="preview-zones" data-on={device.on ? 'true' : 'false'}>
-        {device.zones?.map((zone, index) => <i key={index} style={{ background: hsl(zone, 0.4 + device.brightness * 0.25) }} />)}
+      <span className="preview-zones" data-on={device.on ? 'true' : 'false'} style={{ opacity: device.on ? 0.35 + device.brightness * 0.65 : undefined }}>
+        {device.zones?.map((zone, index) => <i key={index} style={{ background: hsl(zone) }} />)}
       </span>
     );
   }
@@ -32,7 +32,11 @@ function MatrixPreview({ tiles, on, brightness }: { tiles: Tile[]; on: boolean; 
   const step = cell + gap;
 
   return (
-    <span className="preview-matrix" data-on={on ? 'true' : 'false'} style={{ width: width * step - gap, height: height * step - gap }}>
+    <span
+      className="preview-matrix"
+      data-on={on ? 'true' : 'false'}
+      style={{ width: width * step - gap, height: height * step - gap, opacity: on ? 0.35 + brightness * 0.65 : undefined }}
+    >
       {tiles.map((tile) =>
         tile.rows.flatMap((row, rowIndex) =>
           Array.from({ length: row.cols }, (_, columnIndex) => {
@@ -46,7 +50,7 @@ function MatrixPreview({ tiles, on, brightness }: { tiles: Tile[]; on: boolean; 
                   top: (tile.y - minY + rowIndex) * step,
                   width: cell,
                   height: cell,
-                  background: hsl(pixel, 0.4 + brightness * 0.25),
+                  background: hsl(pixel),
                 }}
               />
             );

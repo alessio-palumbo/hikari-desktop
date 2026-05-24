@@ -38,7 +38,7 @@ export function App() {
       setDraft(undefined);
       return;
     }
-    setDraft(createDraft(selectedDevice));
+    setDraft(selectedDevice.kind === 'single' ? undefined : createDraft(selectedDevice));
   }, [selectedDevice?.id]);
 
   const visibleDevices = useMemo(() => {
@@ -59,7 +59,12 @@ export function App() {
     setSnapshot((prev) => ({ ...prev, devices: prev.devices.map((device) => (device.id === next.id ? next : device)) }));
   };
 
-  const updateDevice = async (next: Device) => {
+  const updateListDevice = async (next: Device) => {
+    replaceDevice(next);
+    await applyDevice(next, true);
+  };
+
+  const updateInspectorDevice = async (next: Device) => {
     if (next.kind === 'single') {
       replaceDevice(next);
       await applyDevice(next, true);
@@ -103,7 +108,7 @@ export function App() {
         selectedId={selectedId}
         searching={query.trim().length > 0}
         onSelect={setSelectedId}
-        onDeviceChange={updateDevice}
+        onDeviceChange={updateListDevice}
         onMasterChange={(on, brightness) =>
           setSnapshot((prev) => ({
             ...prev,
@@ -119,7 +124,7 @@ export function App() {
         canUndo={(draft?.history.length ?? 0) > 0}
         saving={saving}
         onClose={() => setSelectedId(undefined)}
-        onChange={updateDevice}
+        onChange={updateInspectorDevice}
         onApply={applyDraft}
         onRevert={() => setDraft((prev) => (prev ? revertDraft(prev) : prev))}
         onUndo={() => setDraft((prev) => (prev ? undoDraft(prev) : prev))}

@@ -49,24 +49,6 @@
   font-size: 11px;
 }
 
-.large-preview {
-  display: grid;
-  min-height: 84px;
-  place-items: center;
-  border-radius: 8px;
-  background: oklch(0 0 0 / 0.18);
-}
-
-.large-preview .preview-zones {
-  width: 220px;
-  height: 34px;
-}
-
-.large-preview .preview-single {
-  width: 44px;
-  height: 44px;
-}
-
 .control-section {
   display: grid;
   gap: 12px;
@@ -79,14 +61,91 @@
   font-weight: 400;
 }
 
-.hue-slider {
-  width: 100%;
-  accent-color: var(--accent);
+.color-wheel-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 8px;
 }
 
-.color-readout {
-  height: 34px;
+.mode-toggle {
+  display: flex;
+  gap: 0;
+  padding: 2px;
+  border: 1px solid var(--line);
   border-radius: 8px;
+  background: oklch(1 0 0 / 0.03);
+}
+
+.mode-toggle button {
+  flex: 1;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 7px 10px;
+}
+
+.mode-toggle button[data-active="true"] {
+  background: oklch(1 0 0 / 0.05);
+  color: var(--fg-0);
+}
+
+.tool-toggle {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.tool-toggle button {
+  display: grid;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: oklch(1 0 0 / 0.025);
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+.tool-toggle button[data-active="true"] {
+  border-color: var(--line-strong);
+  background: oklch(1 0 0 / 0.07);
+  color: var(--fg-0);
+}
+
+.temperature-label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--fg-2);
+  font-size: 11px;
+}
+
+.temperature-scale {
+  width: 100%;
+  height: 64px;
+  margin: 0;
+  appearance: none;
+  border-radius: 10px;
+  background: linear-gradient(90deg, hsl(28 80% 70%), hsl(38 25% 92%), hsl(210 35% 92%));
+  cursor: pointer;
+}
+
+.temperature-scale::-webkit-slider-runnable-track {
+  height: 64px;
+  border-radius: 10px;
+}
+
+.temperature-scale::-webkit-slider-thumb {
+  appearance: none;
+  width: 6px;
+  height: 72px;
+  margin-top: -4px;
+  border: 0;
+  border-radius: 4px;
+  background: oklch(0.98 0 0);
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.4);
 }
 
 .zone-editor {
@@ -95,6 +154,8 @@
   height: 36px;
   border-radius: 4px;
   gap: 1px;
+  touch-action: none;
+  user-select: none;
 }
 
 .zone-editor button,
@@ -115,6 +176,8 @@
   padding: 14px;
   border-radius: 6px;
   background: oklch(0 0 0 / 0.25);
+  touch-action: none;
+  user-select: none;
 }
 
 .tile-editor {
