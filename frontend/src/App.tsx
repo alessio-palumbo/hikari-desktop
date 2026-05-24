@@ -110,6 +110,7 @@ export function App() {
 
       <DeviceList
         group={currentGroup}
+        groups={snapshot.groups}
         devices={visibleDevices}
         selectedId={selectedId}
         searching={query.trim().length > 0}

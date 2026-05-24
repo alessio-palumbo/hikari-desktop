@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { PowerDot } from './primitives';
 import './Sidebar.css';
@@ -26,10 +26,15 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <aside className="left-panel sidebar">
-      <label className="sidebar-search">
+      <div className="sidebar-search">
         <Search size={13} />
         <input value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} placeholder="Search..." />
-      </label>
+        {props.query ? (
+          <button type="button" aria-label="Clear search" onClick={() => props.onQueryChange('')}>
+            <X size={12} />
+          </button>
+        ) : null}
+      </div>
 
       <div className="location-control">
         <PowerDot on={locationOn} size={7} onChange={(next) => props.onLocationPower(props.selectedLocationId, next)} />

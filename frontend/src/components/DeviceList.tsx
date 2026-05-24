@@ -6,6 +6,7 @@ import './DeviceList.css';
 
 interface DeviceListProps {
   group?: Group;
+  groups: Group[];
   devices: Device[];
   selectedId?: string;
   searching: boolean;
@@ -14,33 +15,50 @@ interface DeviceListProps {
   onMasterChange: (on: boolean, brightness?: number) => void;
 }
 
-export function DeviceList({ group, devices, selectedId, searching, onSelect, onDeviceChange, onMasterChange }: DeviceListProps) {
+export function DeviceList({ group, groups, devices, selectedId, searching, onSelect, onDeviceChange, onMasterChange }: DeviceListProps) {
   const onCount = devices.filter((device) => device.on).length;
   const avgBrightness = devices.length ? devices.reduce((sum, device) => sum + device.brightness, 0) / devices.length : 0;
+  const searchSections = groups
+    .map((entry) => ({ group: entry, devices: devices.filter((device) => device.groupId === entry.id) }))
+    .filter((section) => section.devices.length > 0);
 
   return (
     <main className="center-panel">
       <div className="device-list-shell">
-        <header className="group-header">
-          <h1>{searching ? 'search results' : group?.name.toLowerCase() ?? 'no group'}</h1>
-          <div className="group-controls">
-            <PowerDot on={onCount > 0} onChange={(next) => onMasterChange(next)} />
-            <Slider value={avgBrightness} onChange={(value) => onMasterChange(value > 0, value)} />
-          </div>
-        </header>
+        {!searching ? (
+          <header className="group-header">
+            <h1>{group?.name.toLowerCase() ?? 'no group'}</h1>
+            <div className="group-controls">
+              <PowerDot on={onCount > 0} onChange={(next) => onMasterChange(next)} />
+              <Slider value={avgBrightness} onChange={(value) => onMasterChange(value > 0, value)} />
+            </div>
+          </header>
+        ) : null}
 
-        <section className="device-list">
-          {devices.map((device) => (
-            <DeviceRow
-              key={device.id}
-              device={device}
-              selected={device.id === selectedId}
-              onSelect={onSelect}
-              onChange={onDeviceChange}
-            />
-          ))}
-          {!devices.length ? <div className="empty-list">no lights matched</div> : null}
-        </section>
+        {searching ? (
+          <section className="search-sections">
+            {searchSections.map((section) => (
+              <div className="search-section" key={section.group.id}>
+                <div className="search-section-header">
+                  <span>{section.group.name.toLowerCase()}</span>
+                </div>
+                <div className="device-list">
+                  {section.devices.map((device) => (
+                    <DeviceRow key={device.id} device={device} selected={device.id === selectedId} onSelect={onSelect} onChange={onDeviceChange} />
+                  ))}
+                </div>
+              </div>
+            ))}
+            {!devices.length ? <div className="empty-list">no lights matched</div> : null}
+          </section>
+        ) : (
+          <section className="device-list">
+            {devices.map((device) => (
+              <DeviceRow key={device.id} device={device} selected={device.id === selectedId} onSelect={onSelect} onChange={onDeviceChange} />
+            ))}
+            {!devices.length ? <div className="empty-list">no lights in this group</div> : null}
+          </section>
+        )}
       </div>
     </main>
   );

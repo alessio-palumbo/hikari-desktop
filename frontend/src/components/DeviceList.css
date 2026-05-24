@@ -28,6 +28,34 @@
   gap: 2px;
 }
 
+.search-sections {
+  display: grid;
+  gap: 28px;
+}
+
+.search-section {
+  display: grid;
+  gap: 8px;
+}
+
+.search-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px;
+  color: var(--fg-1);
+  font-size: 13px;
+}
+
+.search-section-header::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--warm);
+  box-shadow: 0 0 8px var(--warm);
+}
+
 .device-row {
   display: grid;
   grid-template-columns: 28px minmax(150px, 1fr) 100px minmax(120px, 1fr) 56px 28px;

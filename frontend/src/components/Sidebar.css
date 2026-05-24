@@ -30,6 +30,24 @@
   font-size: 12px;
 }
 
+.sidebar-search button {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg-3);
+  cursor: pointer;
+  padding: 0;
+}
+
+.sidebar-search button:hover {
+  background: oklch(1 0 0 / 0.04);
+  color: var(--fg-1);
+}
+
 .location-control {
   display: flex;
   align-items: center;
