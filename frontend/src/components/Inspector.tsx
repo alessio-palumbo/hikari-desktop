@@ -47,7 +47,7 @@ export function Inspector(props: InspectorProps) {
 
   const setColor = (color: HslColor) => {
     setPaintColor(color);
-    if (device.kind === 'single') props.onChange({ ...device, color });
+    if (device.kind === 'single') props.onChange({ ...device, color, on: true });
   };
 
   const setKelvin = (value: number) => {
@@ -55,7 +55,7 @@ export function Inspector(props: InspectorProps) {
     const color = kelvinToHsl(nextKelvin);
     setWhiteKelvin(nextKelvin);
     setWhiteColor(color);
-    if (device.kind === 'single') props.onChange({ ...device, kelvin: nextKelvin, color });
+    if (device.kind === 'single') props.onChange({ ...device, kelvin: nextKelvin, color, on: true });
   };
 
   const pickColor = (color: HslColor) => {
@@ -289,7 +289,10 @@ function MatrixDraftEditor({
       return;
     }
     if (tool === 'fill') {
-      onChange({ ...device, tiles: tiles.map((tile) => ({ ...tile, pixels: tile.pixels.map(() => paintColor) })) });
+      onChange({
+        ...device,
+        tiles: tiles.map((tile, index) => (index === tileIndex ? { ...tile, pixels: tile.pixels.map(() => paintColor) } : tile)),
+      });
       return;
     }
     if (tool === 'gradient') {
