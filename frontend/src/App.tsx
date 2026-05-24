@@ -99,6 +99,12 @@ export function App() {
           setSelectedId(undefined);
           setQuery('');
         }}
+        onLocationPower={(id, on) =>
+          setSnapshot((prev) => {
+            const groupIds = new Set(prev.groups.filter((group) => group.locationId === id).map((group) => group.id));
+            return { ...prev, devices: prev.devices.map((device) => (groupIds.has(device.groupId) ? { ...device, on } : device)) };
+          })
+        }
         onGroupPower={(id, on) => setSnapshot((prev) => ({ ...prev, devices: prev.devices.map((device) => (device.groupId === id ? { ...device, on } : device)) }))}
       />
 
