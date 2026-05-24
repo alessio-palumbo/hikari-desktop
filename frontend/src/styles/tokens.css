@@ -1,0 +1,15 @@
+:root {
+  --bg: oklch(0.2 0.006 250);
+  --bg-elev: oklch(0.23 0.006 250);
+  --bg-sink: oklch(0.17 0.005 250);
+  --line: oklch(1 0 0 / 0.06);
+  --line-strong: oklch(1 0 0 / 0.12);
+  --fg-0: oklch(0.96 0.003 250);
+  --fg-1: oklch(0.74 0.005 250);
+  --fg-2: oklch(0.55 0.006 250);
+  --fg-3: oklch(0.4 0.007 250);
+  --fg-4: oklch(0.3 0.007 250);
+  --accent: oklch(0.78 0.13 230);
+  --ok: oklch(0.75 0.13 150);
+  --warm: oklch(0.86 0.14 90);
+}

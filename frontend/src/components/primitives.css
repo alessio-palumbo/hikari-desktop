@@ -1,0 +1,80 @@
+.slider {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--fg-2);
+  font-size: 11px;
+}
+
+.slider input {
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider input::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 2px;
+  background: oklch(1 0 0 / 0.09);
+}
+
+.slider input::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 999px;
+  background: oklch(0.72 0.012 250);
+  box-shadow: 0 0 10px oklch(0.72 0.012 250 / 0.5);
+}
+
+.power-dot-button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.power-dot,
+.status-dot {
+  display: inline-block;
+  border-radius: 999px;
+  transition: opacity 0.2s, background 0.2s, box-shadow 0.2s;
+}
+
+.power-dot {
+  background: transparent;
+  border: 1px solid oklch(1 0 0 / 0.18);
+}
+
+.power-dot[data-on="true"] {
+  background: var(--warm);
+  border: 0;
+  box-shadow: 0 0 10px var(--warm);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+  border: 1px solid oklch(1 0 0 / 0.15);
+}
+
+.status-dot[data-on="true"] {
+  border: 0;
+  box-shadow: 0 0 8px currentColor;
+}

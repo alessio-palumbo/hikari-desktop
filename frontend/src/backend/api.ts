@@ -1,0 +1,126 @@
+import type { Device, DeviceSnapshot, HslColor, Tile } from '../domain/lifx';
+
+interface WailsApp {
+  GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
+  ApplyDevice?: (request: { device: Device; preview: boolean }) => Promise<Device>;
+}
+
+declare global {
+  interface Window {
+    go?: {
+      main?: {
+        App?: WailsApp;
+      };
+    };
+  }
+}
+
+export async function getDeviceSnapshot(): Promise<DeviceSnapshot> {
+  const app = window.go?.main?.App;
+  if (app?.GetDeviceSnapshot) return app.GetDeviceSnapshot();
+  return mockSnapshot();
+}
+
+export async function applyDevice(device: Device, preview = false): Promise<Device> {
+  const app = window.go?.main?.App;
+  if (app?.ApplyDevice) return app.ApplyDevice({ device, preview });
+  await new Promise((resolve) => window.setTimeout(resolve, preview ? 60 : 180));
+  return device;
+}
+
+function mockSnapshot(): DeviceSnapshot {
+  return {
+    locations: [
+      { id: 'home', name: 'Home' },
+      { id: 'studio', name: 'Studio' },
+    ],
+    groups: [
+      { id: 'living', locationId: 'home', name: 'Living Room' },
+      { id: 'kitchen', locationId: 'home', name: 'Kitchen' },
+      { id: 'desk', locationId: 'studio', name: 'Desk' },
+    ],
+    devices: [
+      single('lr-ceiling', 'living', 'Ceiling', 'A19 color', 'd0:73:d5:01:a2:c3', 0.62, { h: 38, s: 0.35, l: 0.65 }, 3200),
+      single('lr-sofa', 'living', 'Sofa Lamp', 'BR30 color', 'd0:73:d5:01:a2:d8', 0.48, { h: 18, s: 0.85, l: 0.55 }, 2700),
+      {
+        id: 'lr-tv',
+        groupId: 'living',
+        serial: 'd0:73:d5:01:a2:e1',
+        name: 'TV Backlight',
+        model: 'Z 32',
+        kind: 'multizone',
+        online: true,
+        on: true,
+        brightness: 0.78,
+        zones: makeZones(32, 290, 70),
+      },
+      {
+        id: 'lr-tiles',
+        groupId: 'living',
+        serial: 'd0:73:d5:01:a2:e4',
+        name: 'Wall Tiles',
+        model: 'Tile 5',
+        kind: 'matrix',
+        online: true,
+        on: true,
+        brightness: 0.55,
+        tiles: makeTileChain(5, 170, 290),
+      },
+      single('kt-pendant', 'kitchen', 'Pendant', 'A19 color', 'd0:73:d5:02:b1:01', 0.9, { h: 38, s: 0.2, l: 0.85 }, 4500),
+      {
+        id: 'kt-under',
+        groupId: 'kitchen',
+        serial: 'd0:73:d5:02:b1:10',
+        name: 'Under-counter',
+        model: 'Z 24',
+        kind: 'multizone',
+        online: true,
+        on: false,
+        brightness: 0.55,
+        zones: makeZones(24, 30, 60),
+      },
+      {
+        id: 'of-desk',
+        groupId: 'desk',
+        serial: 'd0:73:d5:10:f5:01',
+        name: 'Desk Strip',
+        model: 'Z 32',
+        kind: 'multizone',
+        online: true,
+        on: true,
+        brightness: 0.85,
+        zones: makeZones(32, 200, 260),
+      },
+    ],
+  };
+}
+
+function single(id: string, groupId: string, name: string, model: string, serial: string, brightness: number, color: HslColor, kelvin: number): Device {
+  return { id, groupId, serial, name, model, kind: 'single', online: true, on: brightness > 0, brightness, color, kelvin };
+}
+
+function makeZones(count: number, start: number, end: number): HslColor[] {
+  return Array.from({ length: count }, (_, index) => {
+    const t = index / Math.max(1, count - 1);
+    return { h: start + (end - start) * t, s: 0.85, l: 0.55 };
+  });
+}
+
+function makeTileChain(count: number, start: number, end: number): Tile[] {
+  const positions = [
+    [0, 0],
+    [8, 0],
+    [16, 0],
+    [4, 8],
+    [12, 8],
+  ];
+  return Array.from({ length: count }, (_, tileIndex) => {
+    const [x, y] = positions[tileIndex] ?? [tileIndex * 8, 0];
+    const rows = Array.from({ length: 8 }, () => ({ cols: 8, offset: 0 }));
+    const pixels = Array.from({ length: 64 }, (_, pixelIndex) => {
+      const t = (tileIndex * 64 + pixelIndex) / Math.max(1, count * 64 - 1);
+      return { h: start + (end - start) * t, s: 0.75, l: 0.5 };
+    });
+    return { id: tileIndex, x, y, w: 8, h: 8, rows, pixels };
+  });
+}

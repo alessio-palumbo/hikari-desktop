@@ -1,0 +1,35 @@
+.preview-single {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.preview-zones {
+  display: flex;
+  width: 88px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.preview-zones[data-on="false"],
+.preview-matrix[data-on="false"] {
+  opacity: 0.18;
+}
+
+.preview-zones i {
+  flex: 1;
+}
+
+.preview-matrix {
+  display: inline-block;
+  position: relative;
+  transition: opacity 0.2s;
+}
+
+.preview-matrix i {
+  position: absolute;
+  border-radius: 1px;
+}
