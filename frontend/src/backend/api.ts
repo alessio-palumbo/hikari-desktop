@@ -45,10 +45,9 @@ function mockSnapshot(): DeviceSnapshot {
       { id: 'desk', locationId: 'studio', name: 'Desk' },
     ],
     devices: [
-      single('lr-ceiling', 'living', 'Ceiling', 'A19 color', 'd0:73:d5:01:a2:c3', 0.62, { h: 38, s: 0.35, l: 0.65 }, 3200),
-      single('lr-sofa', 'living', 'Sofa Lamp', 'BR30 color', 'd0:73:d5:01:a2:d8', 0.48, { h: 18, s: 0.85, l: 0.55 }, 2700),
+      single('living', 'Ceiling', 'A19 color', 'd0:73:d5:01:a2:c3', 0.62, { h: 38, s: 0.35, l: 0.65 }, 3200),
+      single('living', 'Sofa Lamp', 'BR30 color', 'd0:73:d5:01:a2:d8', 0.48, { h: 18, s: 0.85, l: 0.55 }, 2700),
       {
-        id: 'lr-tv',
         groupId: 'living',
         serial: 'd0:73:d5:01:a2:e1',
         name: 'TV Backlight',
@@ -60,7 +59,6 @@ function mockSnapshot(): DeviceSnapshot {
         zones: makeZones(32, 290, 70),
       },
       {
-        id: 'lr-tiles',
         groupId: 'living',
         serial: 'd0:73:d5:01:a2:e4',
         name: 'Wall Tiles',
@@ -71,9 +69,8 @@ function mockSnapshot(): DeviceSnapshot {
         brightness: 0.55,
         chain: makeMatrixChain(5, 170, 290),
       },
-      single('kt-pendant', 'kitchen', 'Pendant', 'A19 color', 'd0:73:d5:02:b1:01', 0.9, { h: 38, s: 0.2, l: 0.85 }, 4500),
+      single('kitchen', 'Pendant', 'A19 color', 'd0:73:d5:02:b1:01', 0.9, { h: 38, s: 0.2, l: 0.85 }, 4500),
       {
-        id: 'kt-under',
         groupId: 'kitchen',
         serial: 'd0:73:d5:02:b1:10',
         name: 'Under-counter',
@@ -85,7 +82,6 @@ function mockSnapshot(): DeviceSnapshot {
         zones: makeZones(24, 30, 60),
       },
       {
-        id: 'of-desk',
         groupId: 'desk',
         serial: 'd0:73:d5:10:f5:01',
         name: 'Desk Strip',
@@ -100,8 +96,8 @@ function mockSnapshot(): DeviceSnapshot {
   };
 }
 
-function single(id: string, groupId: string, name: string, model: string, serial: string, brightness: number, color: HslColor, kelvin: number): Device {
-  return { id, groupId, serial, name, model, kind: 'single', online: true, on: brightness > 0, brightness, color, kelvin };
+function single(groupId: string, name: string, model: string, serial: string, brightness: number, color: HslColor, kelvin: number): Device {
+  return { groupId, serial, name, model, kind: 'single', online: true, on: brightness > 0, brightness, color, kelvin };
 }
 
 function makeZones(count: number, start: number, end: number): HslColor[] {

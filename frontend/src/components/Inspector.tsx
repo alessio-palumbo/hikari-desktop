@@ -40,7 +40,7 @@ export function Inspector(props: InspectorProps) {
     setPaintColor(initialPaintColor(device));
     setWhiteKelvin(device.kelvin ?? 3500);
     setWhiteColor(kelvinToHsl(device.kelvin ?? 3500));
-  }, [device.id]);
+  }, [device.serial]);
 
   const whiteValue = Math.max(0, Math.min(1, (whiteKelvin - 2500) / 4000));
   const activePaintColor = mode === 'white' ? whiteColor : paintColor;

@@ -33,7 +33,6 @@ type Matrix struct {
 }
 
 type Device struct {
-	ID         string     `json:"id"`
 	GroupID    string     `json:"groupId"`
 	Serial     string     `json:"serial"`
 	Name       string     `json:"name"`

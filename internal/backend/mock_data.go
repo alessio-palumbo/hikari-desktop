@@ -15,22 +15,22 @@ func MockDeviceSnapshot() DeviceSnapshot {
 		},
 		Devices: []Device{
 			{
-				ID: "lr-ceiling", GroupID: "living", Serial: serial(0x01a2c3), Name: "Ceiling",
+				GroupID: "living", Serial: serial(0x01a2c3), Name: "Ceiling",
 				Model: "A19 color", Kind: "single", Online: true, On: true, Brightness: 0.62,
 				Color: &HSLColor{H: 38, S: 0.35, L: 0.65}, Kelvin: 3200,
 			},
 			{
-				ID: "lr-sofa", GroupID: "living", Serial: serial(0x01a2d8), Name: "Sofa Lamp",
+				GroupID: "living", Serial: serial(0x01a2d8), Name: "Sofa Lamp",
 				Model: "BR30 color", Kind: "single", Online: true, On: true, Brightness: 0.48,
 				Color: &HSLColor{H: 18, S: 0.85, L: 0.55}, Kelvin: 2700,
 			},
 			{
-				ID: "lr-tv", GroupID: "living", Serial: serial(0x01a2e1), Name: "TV Backlight",
+				GroupID: "living", Serial: serial(0x01a2e1), Name: "TV Backlight",
 				Model: "Z 32", Kind: "multizone", Online: true, On: true, Brightness: 0.78,
 				Zones: makeZones(32, 290, 70),
 			},
 			{
-				ID: "lr-tiles", GroupID: "living", Serial: serial(0x01a2e4), Name: "Wall Tiles",
+				GroupID: "living", Serial: serial(0x01a2e4), Name: "Wall Tiles",
 				Model: "Tile 5", Kind: "matrix", Online: true, On: true, Brightness: 0.55,
 				Chain: makeMatrixChain([]matrixSpec{
 					{x: 0, y: 0, w: 8, h: 8},
@@ -41,17 +41,17 @@ func MockDeviceSnapshot() DeviceSnapshot {
 				}, 170, 290),
 			},
 			{
-				ID: "kt-pendant", GroupID: "kitchen", Serial: serial(0x02b101), Name: "Pendant",
+				GroupID: "kitchen", Serial: serial(0x02b101), Name: "Pendant",
 				Model: "A19 color", Kind: "single", Online: true, On: true, Brightness: 0.9,
 				Color: &HSLColor{H: 38, S: 0.2, L: 0.85}, Kelvin: 4500,
 			},
 			{
-				ID: "kt-under", GroupID: "kitchen", Serial: serial(0x02b110), Name: "Under-counter",
+				GroupID: "kitchen", Serial: serial(0x02b110), Name: "Under-counter",
 				Model: "Z 24", Kind: "multizone", Online: true, On: false, Brightness: 0.55,
 				Zones: makeZones(24, 30, 60),
 			},
 			{
-				ID: "of-desk", GroupID: "desk", Serial: serial(0x10f501), Name: "Desk Strip",
+				GroupID: "desk", Serial: serial(0x10f501), Name: "Desk Strip",
 				Model: "Z 32", Kind: "multizone", Online: true, On: true, Brightness: 0.85,
 				Zones: makeZones(32, 200, 260),
 			},

@@ -124,7 +124,6 @@ func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {
 func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 	color := mapLifxColor(d.Color)
 	device := Device{
-		ID:         d.Serial.String(),
 		GroupID:    groupID,
 		Serial:     d.Serial.String(),
 		Name:       nameOrUnknown(d.Label, d.Serial.String()),
@@ -195,9 +194,6 @@ func mapLifxHSBK(color packets.LightHsbk) HSLColor {
 
 func parseDeviceSerial(device Device) (lifxdevice.Serial, error) {
 	serial := device.Serial
-	if serial == "" {
-		serial = device.ID
-	}
 	serial = strings.ReplaceAll(serial, ":", "")
 	return lifxdevice.SerialFromHex(serial)
 }

@@ -9,7 +9,7 @@ import (
 )
 
 func TestAppUsesTransport(t *testing.T) {
-	device := backend.Device{ID: "test", Name: "Test", Kind: "single"}
+	device := backend.Device{Serial: "d073d501a2c3", Name: "Test", Kind: "single"}
 	transport := &recordingTransport{
 		snapshot: backend.DeviceSnapshot{Devices: []backend.Device{device}},
 		device:   device,
@@ -21,7 +21,7 @@ func TestAppUsesTransport(t *testing.T) {
 	if !transport.snapshotCalled {
 		t.Fatal("expected Snapshot to be called")
 	}
-	if len(snapshot.Devices) != 1 || snapshot.Devices[0].ID != device.ID {
+	if len(snapshot.Devices) != 1 || snapshot.Devices[0].Serial != device.Serial {
 		t.Fatalf("GetDeviceSnapshot returned %#v", snapshot)
 	}
 
@@ -32,20 +32,20 @@ func TestAppUsesTransport(t *testing.T) {
 	if !transport.lastReq.Preview {
 		t.Fatal("expected preview flag to be forwarded")
 	}
-	if got.ID != device.ID {
+	if got.Serial != device.Serial {
 		t.Fatalf("SetDeviceState returned %#v", got)
 	}
 }
 
 func TestAppFallbacksOnTransportError(t *testing.T) {
-	device := backend.Device{ID: "test", Name: "Test", Kind: "single"}
+	device := backend.Device{Serial: "d073d501a2c3", Name: "Test", Kind: "single"}
 	app := NewAppWithTransport(&recordingTransport{err: errors.New("boom")})
 	app.startup(context.Background())
 
 	if got := app.GetDeviceSnapshot(); len(got.Devices) != 0 {
 		t.Fatalf("GetDeviceSnapshot returned %#v, want empty snapshot", got)
 	}
-	if got := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device}); got.ID != device.ID {
+	if got := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device}); got.Serial != device.Serial {
 		t.Fatalf("SetDeviceState returned %#v, want request device", got)
 	}
 }

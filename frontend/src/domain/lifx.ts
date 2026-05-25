@@ -33,7 +33,6 @@ export interface Matrix {
 }
 
 export interface Device {
-  id: string;
   groupId: string;
   serial: string;
   name: string;

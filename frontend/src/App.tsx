@@ -10,7 +10,7 @@ export function App() {
   const [snapshot, setSnapshot] = useState<DeviceSnapshot>({ locations: [], groups: [], devices: [] });
   const [locationId, setLocationId] = useState('');
   const [groupId, setGroupId] = useState('');
-  const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [selectedSerial, setSelectedSerial] = useState<string | undefined>();
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<DeviceDraft | undefined>();
   const [saving, setSaving] = useState(false);
@@ -27,11 +27,11 @@ export function App() {
     const groups = snapshot.groups.filter((group) => group.locationId === locationId);
     if (groups.length && !groups.some((group) => group.id === groupId)) {
       setGroupId(groups[0].id);
-      setSelectedId(undefined);
+      setSelectedSerial(undefined);
     }
   }, [groupId, locationId, snapshot.groups]);
 
-  const selectedDevice = snapshot.devices.find((device) => device.id === selectedId);
+  const selectedDevice = snapshot.devices.find((device) => device.serial === selectedSerial);
 
   useEffect(() => {
     if (!selectedDevice) {
@@ -39,7 +39,7 @@ export function App() {
       return;
     }
     setDraft(selectedDevice.kind === 'single' ? undefined : createDraft(selectedDevice));
-  }, [selectedDevice?.id]);
+  }, [selectedDevice?.serial]);
 
   const visibleDevices = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -56,7 +56,7 @@ export function App() {
   const inspectorDevice = draft?.draft ?? selectedDevice;
 
   const replaceDevice = (next: Device) => {
-    setSnapshot((prev) => ({ ...prev, devices: prev.devices.map((device) => (device.id === next.id ? next : device)) }));
+    setSnapshot((prev) => ({ ...prev, devices: prev.devices.map((device) => (device.serial === next.serial ? next : device)) }));
   };
 
   const updateListDevice = async (next: Device) => {
@@ -96,7 +96,7 @@ export function App() {
         onLocationChange={setLocationId}
         onGroupChange={(id) => {
           setGroupId(id);
-          setSelectedId(undefined);
+          setSelectedSerial(undefined);
           setQuery('');
         }}
         onLocationPower={(id, on) =>
@@ -112,9 +112,9 @@ export function App() {
         group={currentGroup}
         groups={snapshot.groups}
         devices={visibleDevices}
-        selectedId={selectedId}
+        selectedSerial={selectedSerial}
         searching={query.trim().length > 0}
-        onSelect={setSelectedId}
+        onSelect={setSelectedSerial}
         onDeviceChange={updateListDevice}
         onMasterChange={(on, brightness) =>
           setSnapshot((prev) => ({
@@ -130,7 +130,7 @@ export function App() {
         livePreview={draft?.livePreview ?? false}
         canUndo={(draft?.history.length ?? 0) > 0}
         saving={saving}
-        onClose={() => setSelectedId(undefined)}
+        onClose={() => setSelectedSerial(undefined)}
         onChange={updateInspectorDevice}
         onApply={applyDraft}
         onRevert={() => setDraft((prev) => (prev ? revertDraft(prev) : prev))}

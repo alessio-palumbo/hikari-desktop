@@ -8,14 +8,14 @@ interface DeviceListProps {
   group?: Group;
   groups: Group[];
   devices: Device[];
-  selectedId?: string;
+  selectedSerial?: string;
   searching: boolean;
-  onSelect: (id: string) => void;
+  onSelect: (serial: string) => void;
   onDeviceChange: (device: Device) => void;
   onMasterChange: (on: boolean, brightness?: number) => void;
 }
 
-export function DeviceList({ group, groups, devices, selectedId, searching, onSelect, onDeviceChange, onMasterChange }: DeviceListProps) {
+export function DeviceList({ group, groups, devices, selectedSerial, searching, onSelect, onDeviceChange, onMasterChange }: DeviceListProps) {
   const onCount = devices.filter((device) => device.on).length;
   const avgBrightness = devices.length ? devices.reduce((sum, device) => sum + device.brightness, 0) / devices.length : 0;
   const searchSections = groups
@@ -44,7 +44,7 @@ export function DeviceList({ group, groups, devices, selectedId, searching, onSe
                 </div>
                 <div className="device-list">
                   {section.devices.map((device) => (
-                    <DeviceRow key={device.id} device={device} selected={device.id === selectedId} onSelect={onSelect} onChange={onDeviceChange} />
+                    <DeviceRow key={device.serial} device={device} selected={device.serial === selectedSerial} onSelect={onSelect} onChange={onDeviceChange} />
                   ))}
                 </div>
               </div>
@@ -54,7 +54,7 @@ export function DeviceList({ group, groups, devices, selectedId, searching, onSe
         ) : (
           <section className="device-list">
             {devices.map((device) => (
-              <DeviceRow key={device.id} device={device} selected={device.id === selectedId} onSelect={onSelect} onChange={onDeviceChange} />
+              <DeviceRow key={device.serial} device={device} selected={device.serial === selectedSerial} onSelect={onSelect} onChange={onDeviceChange} />
             ))}
             {!devices.length ? <div className="empty-list">no lights in this group</div> : null}
           </section>
@@ -64,9 +64,9 @@ export function DeviceList({ group, groups, devices, selectedId, searching, onSe
   );
 }
 
-function DeviceRow({ device, selected, onSelect, onChange }: { device: Device; selected: boolean; onSelect: (id: string) => void; onChange: (device: Device) => void }) {
+function DeviceRow({ device, selected, onSelect, onChange }: { device: Device; selected: boolean; onSelect: (serial: string) => void; onChange: (device: Device) => void }) {
   return (
-    <div className="device-row" data-selected={selected} onClick={() => onSelect(device.id)}>
+    <div className="device-row" data-selected={selected} onClick={() => onSelect(device.serial)}>
       <PowerDot on={device.on} onChange={(next) => onChange({ ...device, on: next })} />
       <div className="device-name">
         <strong>{device.name}</strong>

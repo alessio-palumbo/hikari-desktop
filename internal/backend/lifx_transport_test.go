@@ -69,7 +69,6 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 func TestLifxTransportSetDeviceStateSendsSingleZonePowerAndColor(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
-		ID:         "d073d501a2c3",
 		Serial:     "d073d501a2c3",
 		Name:       "Test",
 		Kind:       "single",
@@ -86,7 +85,7 @@ func TestLifxTransportSetDeviceStateSendsSingleZonePowerAndColor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetDeviceState returned error: %v", err)
 	}
-	if got.ID != device.ID {
+	if got.Serial != device.Serial {
 		t.Fatalf("SetDeviceState returned %#v, want %#v", got, device)
 	}
 	if len(controller.sends) != 2 {
@@ -119,7 +118,7 @@ func TestLifxTransportSetDeviceStateSendsSingleZonePowerAndColor(t *testing.T) {
 
 func TestLifxTransportSetDeviceStateSendsSingleZonePowerOffOnly(t *testing.T) {
 	controller := &fakeLifxController{}
-	device := Device{ID: "d073d501a2c3", Serial: "d073d501a2c3", Kind: "single", On: false}
+	device := Device{Serial: "d073d501a2c3", Kind: "single", On: false}
 	transport := NewLifxTransportWithFactory(func() (lifxController, error) {
 		return controller, nil
 	})
@@ -145,7 +144,7 @@ func TestLifxTransportSetDeviceStateKeepsMultizoneAndMatrixReadOnly(t *testing.T
 		return nil, nil
 	})
 
-	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: Device{ID: "strip", Kind: "multizone"}}); err != nil {
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: Device{Serial: "d073d501a2c3", Kind: "multizone"}}); err != nil {
 		t.Fatalf("SetDeviceState returned error: %v", err)
 	}
 }
