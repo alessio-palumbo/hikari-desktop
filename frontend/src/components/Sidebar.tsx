@@ -1,4 +1,4 @@
-import { Search, X } from 'lucide-react';
+import { ChevronDown, Search, X } from 'lucide-react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { PowerDot } from './primitives';
 import './Sidebar.css';
@@ -47,13 +47,16 @@ export function Sidebar(props: SidebarProps) {
 
       <div className="location-control">
         <PowerDot disabled={!props.selectedLocationId || !locationDevices.length} on={locationOn} size={7} onChange={(next) => props.onLocationPower(props.selectedLocationId, next)} />
-        <select className="location-select" value={props.selectedLocationId} onChange={(event) => props.onLocationChange(event.target.value)}>
-          {props.locations.map((location) => (
-            <option key={location.id} value={location.id}>
-              {location.name}
-            </option>
-          ))}
-        </select>
+        <div className="location-select-wrap">
+          <select className="location-select" value={props.selectedLocationId} onChange={(event) => props.onLocationChange(event.target.value)} aria-label="Location">
+            {props.locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={13} aria-hidden="true" />
+        </div>
       </div>
 
       <nav className="group-list" aria-label={`${selectedLocation?.name ?? 'Location'} groups`}>
