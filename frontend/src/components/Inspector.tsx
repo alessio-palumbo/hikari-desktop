@@ -279,11 +279,11 @@ function MatrixDraftEditor({
   onPickColor: (color: HslColor) => void;
   onChange: (device: Device) => void;
 }) {
-  const tiles = device.tiles ?? [];
+  const chain = device.chain ?? [];
   const dragPaintedRef = useRef<Set<string>>(new Set());
-  const applyTool = (tileIndex: number, pixelIndex: number) => {
-    const sourceTile = tiles[tileIndex];
-    const sourcePixel = sourceTile.pixels[pixelIndex];
+  const applyTool = (matrixIndex: number, pixelIndex: number) => {
+    const sourceMatrix = chain[matrixIndex];
+    const sourcePixel = sourceMatrix.pixels[pixelIndex];
     if (tool === 'picker') {
       onPickColor(sourcePixel);
       return;
@@ -291,57 +291,57 @@ function MatrixDraftEditor({
     if (tool === 'fill') {
       onChange({
         ...device,
-        tiles: tiles.map((tile, index) => (index === tileIndex ? { ...tile, pixels: tile.pixels.map(() => paintColor) } : tile)),
+        chain: chain.map((matrix, index) => (index === matrixIndex ? { ...matrix, pixels: matrix.pixels.map(() => paintColor) } : matrix)),
       });
       return;
     }
     if (tool === 'gradient') {
-      const allPixels = tiles.reduce((sum, tile) => sum + tile.pixels.length, 0);
+      const allPixels = chain.reduce((sum, matrix) => sum + matrix.pixels.length, 0);
       let cursor = 0;
-      const targetOffset = tiles.slice(0, tileIndex).reduce((sum, tile) => sum + tile.pixels.length, 0) + pixelIndex;
+      const targetOffset = chain.slice(0, matrixIndex).reduce((sum, matrix) => sum + matrix.pixels.length, 0) + pixelIndex;
       onChange({
         ...device,
-        tiles: tiles.map((tile) => {
-          const pixels = tile.pixels.map((pixel) => {
+        chain: chain.map((matrix) => {
+          const pixels = matrix.pixels.map((pixel) => {
             const color = interpolateHsl(pixel, paintColor, 1 - Math.abs(cursor - targetOffset) / Math.max(1, allPixels - 1));
             cursor += 1;
             return color;
           });
-          return { ...tile, pixels };
+          return { ...matrix, pixels };
         }),
       });
       return;
     }
     onChange({
       ...device,
-      tiles: tiles.map((tile, index) => {
-        if (index !== tileIndex) return tile;
-        const pixels = [...tile.pixels];
+      chain: chain.map((matrix, index) => {
+        if (index !== matrixIndex) return matrix;
+        const pixels = [...matrix.pixels];
         pixels[pixelIndex] = paintColor;
-        return { ...tile, pixels };
+        return { ...matrix, pixels };
       }),
     });
   };
-  const applyBrush = (tileIndex: number, pixelIndex: number) => {
-    const key = `${tileIndex}:${pixelIndex}`;
+  const applyBrush = (matrixIndex: number, pixelIndex: number) => {
+    const key = `${matrixIndex}:${pixelIndex}`;
     if (dragPaintedRef.current.has(key)) return;
     dragPaintedRef.current.add(key);
     onChange({
       ...device,
-      tiles: tiles.map((tile, index) => {
-        if (index !== tileIndex) return tile;
-        const pixels = [...tile.pixels];
+      chain: chain.map((matrix, index) => {
+        if (index !== matrixIndex) return matrix;
+        const pixels = [...matrix.pixels];
         pixels[pixelIndex] = paintColor;
-        return { ...tile, pixels };
+        return { ...matrix, pixels };
       }),
     });
   };
   const pixelFromPointer = (event: React.PointerEvent<HTMLDivElement>) => {
     const target = document.elementFromPoint(event.clientX, event.clientY);
-    const button = target instanceof HTMLElement ? target.closest<HTMLButtonElement>('[data-tile-index][data-pixel-index]') : null;
+    const button = target instanceof HTMLElement ? target.closest<HTMLButtonElement>('[data-matrix-index][data-pixel-index]') : null;
     if (!button) return null;
     return {
-      tileIndex: Number(button.dataset.tileIndex),
+      matrixIndex: Number(button.dataset.matrixIndex),
       pixelIndex: Number(button.dataset.pixelIndex),
     };
   };
@@ -356,16 +356,16 @@ function MatrixDraftEditor({
           if (!hit) return;
           event.currentTarget.setPointerCapture(event.pointerId);
           if (tool !== 'brush') {
-            applyTool(hit.tileIndex, hit.pixelIndex);
+            applyTool(hit.matrixIndex, hit.pixelIndex);
             return;
           }
           dragPaintedRef.current = new Set();
-          applyBrush(hit.tileIndex, hit.pixelIndex);
+          applyBrush(hit.matrixIndex, hit.pixelIndex);
         }}
         onPointerMove={(event) => {
           if (tool !== 'brush' || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
           const hit = pixelFromPointer(event);
-          if (hit) applyBrush(hit.tileIndex, hit.pixelIndex);
+          if (hit) applyBrush(hit.matrixIndex, hit.pixelIndex);
         }}
         onPointerUp={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
@@ -376,14 +376,14 @@ function MatrixDraftEditor({
           dragPaintedRef.current = new Set();
         }}
       >
-        {tiles.map((tile, tileIndex) => (
-          <div className="tile-editor" key={tile.id}>
-            {tile.pixels.map((pixel, pixelIndex) => (
+        {chain.map((matrix, matrixIndex) => (
+          <div className="matrix-chain-entry" key={matrix.id}>
+            {matrix.pixels.map((pixel, pixelIndex) => (
               <button
                 key={pixelIndex}
-                data-tile-index={tileIndex}
+                data-matrix-index={matrixIndex}
                 data-pixel-index={pixelIndex}
-                aria-label={`Paint tile ${tileIndex + 1} pixel ${pixelIndex + 1}`}
+                aria-label={`Paint matrix ${matrixIndex + 1} pixel ${pixelIndex + 1}`}
                 style={{ background: hsl(pixel) }}
               />
             ))}
@@ -397,8 +397,8 @@ function MatrixDraftEditor({
 function initialPaintColor(device: Device): HslColor {
   if (device.kind === 'single' && device.color) return device.color;
   if (device.kind === 'multizone' && device.zones?.length) return device.zones[Math.floor(device.zones.length / 2)];
-  if (device.kind === 'matrix' && device.tiles?.[0]?.pixels.length) {
-    const pixels = device.tiles[0].pixels;
+  if (device.kind === 'matrix' && device.chain?.[0]?.pixels.length) {
+    const pixels = device.chain[0].pixels;
     return pixels[Math.floor(pixels.length / 2)];
   }
   return { h: 38, s: 0.5, l: 0.55 };

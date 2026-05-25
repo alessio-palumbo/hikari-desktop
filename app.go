@@ -31,19 +31,19 @@ type HSLColor struct {
 	L float64 `json:"l"`
 }
 
-type TileRow struct {
+type MatrixRow struct {
 	Cols   int     `json:"cols"`
 	Offset float64 `json:"offset"`
 }
 
-type Tile struct {
-	ID     int        `json:"id"`
-	X      float64    `json:"x"`
-	Y      float64    `json:"y"`
-	W      float64    `json:"w"`
-	H      float64    `json:"h"`
-	Rows   []TileRow  `json:"rows"`
-	Pixels []HSLColor `json:"pixels"`
+type Matrix struct {
+	ID     int         `json:"id"`
+	X      float64     `json:"x"`
+	Y      float64     `json:"y"`
+	W      float64     `json:"w"`
+	H      float64     `json:"h"`
+	Rows   []MatrixRow `json:"rows"`
+	Pixels []HSLColor  `json:"pixels"`
 }
 
 type Device struct {
@@ -59,7 +59,7 @@ type Device struct {
 	Color      *HSLColor  `json:"color,omitempty"`
 	Kelvin     int        `json:"kelvin,omitempty"`
 	Zones      []HSLColor `json:"zones,omitempty"`
-	Tiles      []Tile     `json:"tiles,omitempty"`
+	Chain      []Matrix   `json:"chain,omitempty"`
 }
 
 type DeviceSnapshot struct {

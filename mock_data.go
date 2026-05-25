@@ -32,7 +32,7 @@ func MockDeviceSnapshot() DeviceSnapshot {
 			{
 				ID: "lr-tiles", GroupID: "living", Serial: serial(0x01a2e4), Name: "Wall Tiles",
 				Model: "Tile 5", Kind: "matrix", Online: true, On: true, Brightness: 0.55,
-				Tiles: makeTileChain([]tileSpec{
+				Chain: makeMatrixChain([]matrixSpec{
 					{x: 0, y: 0, w: 8, h: 8},
 					{x: 8, y: 0, w: 8, h: 8},
 					{x: 16, y: 0, w: 8, h: 8},
@@ -72,20 +72,20 @@ func makeZones(n int, h1 float64, h2 float64) []HSLColor {
 	return zones
 }
 
-type tileSpec struct {
+type matrixSpec struct {
 	x, y float64
 	w, h int
-	rows []TileRow
+	rows []MatrixRow
 }
 
-func makeTileChain(layout []tileSpec, h1 float64, h2 float64) []Tile {
-	tiles := make([]Tile, 0, len(layout))
+func makeMatrixChain(layout []matrixSpec, h1 float64, h2 float64) []Matrix {
+	chain := make([]Matrix, 0, len(layout))
 	for i, spec := range layout {
 		rows := spec.rows
 		if rows == nil {
-			rows = make([]TileRow, spec.h)
+			rows = make([]MatrixRow, spec.h)
 			for r := range rows {
-				rows[r] = TileRow{Cols: spec.w}
+				rows[r] = MatrixRow{Cols: spec.w}
 			}
 		}
 
@@ -97,10 +97,10 @@ func makeTileChain(layout []tileSpec, h1 float64, h2 float64) []Tile {
 			}
 		}
 
-		tiles = append(tiles, Tile{
+		chain = append(chain, Matrix{
 			ID: i, X: spec.x, Y: spec.y, W: float64(spec.w), H: float64(len(rows)),
 			Rows: rows, Pixels: pixels,
 		})
 	}
-	return tiles
+	return chain
 }

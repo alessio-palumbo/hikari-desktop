@@ -1,4 +1,4 @@
-import type { Device, DeviceSnapshot, HslColor, Tile } from '../domain/lifx';
+import type { Device, DeviceSnapshot, HslColor, Matrix } from '../domain/lifx';
 
 interface WailsApp {
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
@@ -64,7 +64,7 @@ function mockSnapshot(): DeviceSnapshot {
         online: true,
         on: true,
         brightness: 0.55,
-        tiles: makeTileChain(5, 170, 290),
+        chain: makeMatrixChain(5, 170, 290),
       },
       single('kt-pendant', 'kitchen', 'Pendant', 'A19 color', 'd0:73:d5:02:b1:01', 0.9, { h: 38, s: 0.2, l: 0.85 }, 4500),
       {
@@ -106,7 +106,7 @@ function makeZones(count: number, start: number, end: number): HslColor[] {
   });
 }
 
-function makeTileChain(count: number, start: number, end: number): Tile[] {
+function makeMatrixChain(count: number, start: number, end: number): Matrix[] {
   const positions = [
     [0, 0],
     [8, 0],
@@ -114,13 +114,13 @@ function makeTileChain(count: number, start: number, end: number): Tile[] {
     [4, 8],
     [12, 8],
   ];
-  return Array.from({ length: count }, (_, tileIndex) => {
-    const [x, y] = positions[tileIndex] ?? [tileIndex * 8, 0];
+  return Array.from({ length: count }, (_, matrixIndex) => {
+    const [x, y] = positions[matrixIndex] ?? [matrixIndex * 8, 0];
     const rows = Array.from({ length: 8 }, () => ({ cols: 8, offset: 0 }));
     const pixels = Array.from({ length: 64 }, (_, pixelIndex) => {
-      const t = (tileIndex * 64 + pixelIndex) / Math.max(1, count * 64 - 1);
+      const t = (matrixIndex * 64 + pixelIndex) / Math.max(1, count * 64 - 1);
       return { h: start + (end - start) * t, s: 0.75, l: 0.5 };
     });
-    return { id: tileIndex, x, y, w: 8, h: 8, rows, pixels };
+    return { id: matrixIndex, x, y, w: 8, h: 8, rows, pixels };
   });
 }

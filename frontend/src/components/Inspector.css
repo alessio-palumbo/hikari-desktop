@@ -180,13 +180,13 @@
   user-select: none;
 }
 
-.tile-editor {
+.matrix-chain-entry {
   display: grid;
   grid-template-columns: repeat(8, 8px);
   gap: 1px;
 }
 
-.tile-editor button {
+.matrix-chain-entry button {
   width: 8px;
   height: 8px;
   border-radius: 1px;
