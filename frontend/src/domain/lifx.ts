@@ -41,10 +41,17 @@ export interface Device {
   online: boolean;
   on: boolean;
   brightness: number;
+  capability: DeviceCapability;
   color?: HslColor;
   kelvin?: number;
   zones?: HslColor[];
   chain?: Matrix[];
+}
+
+export interface DeviceCapability {
+  hasColor: boolean;
+  kelvinMin: number;
+  kelvinMax: number;
 }
 
 export interface DeviceSnapshot {

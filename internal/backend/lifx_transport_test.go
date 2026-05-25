@@ -60,6 +60,9 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 	if got.Brightness != 0.6 {
 		t.Fatalf("brightness = %v, want 0.6", got.Brightness)
 	}
+	if !got.Capability.HasColor || got.Capability.KelvinMin != 2500 || got.Capability.KelvinMax != 9000 {
+		t.Fatalf("capability = %#v, want color with 2500-9000K", got.Capability)
+	}
 	if len(got.Zones) != 1 || got.Zones[0].L != 0.5 {
 		t.Fatalf("zones = %#v", got.Zones)
 	}
@@ -98,6 +101,7 @@ func TestLifxTransportSetDeviceStateSendsSingleZonePowerAndColor(t *testing.T) {
 		Kind:       "single",
 		On:         true,
 		Brightness: 0.42,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
 		Color:      &HSLColor{H: 210, S: 0.75, L: 0.6},
 		Kelvin:     4000,
 	}
@@ -158,6 +162,34 @@ func TestLifxTransportSetDeviceStateSendsSingleZonePowerOffOnly(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSetDeviceStateClampsWhiteOnlyDevice(t *testing.T) {
+	controller := &fakeLifxController{}
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       "single",
+		On:         true,
+		Brightness: 0.5,
+		Capability: DeviceCapability{HasColor: false, KelvinMin: 2700, KelvinMax: 6500},
+		Color:      &HSLColor{H: 210, S: 0.75, L: 0.6},
+		Kelvin:     9000,
+	}
+	transport := NewLifxTransportWithController(controller)
+
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	payload, ok := controller.sends[1].msg.Payload.(*packets.LightSetWaveformOptional)
+	if !ok {
+		t.Fatalf("second payload = %T, want *packets.LightSetWaveformOptional", controller.sends[1].msg.Payload)
+	}
+	if payload.SetHue || payload.SetSaturation {
+		t.Fatalf("white-only payload set hue/saturation: hue=%v saturation=%v", payload.SetHue, payload.SetSaturation)
+	}
+	if !payload.SetKelvin || payload.Color.Kelvin != 6500 {
+		t.Fatalf("kelvin = %v/%v, want clamped 6500", payload.SetKelvin, payload.Color.Kelvin)
+	}
+}
+
 func TestLifxTransportSetDeviceStateSendsMultizonePowerAndColors(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
@@ -165,6 +197,7 @@ func TestLifxTransportSetDeviceStateSendsMultizonePowerAndColors(t *testing.T) {
 		Kind:       "multizone",
 		On:         true,
 		Brightness: 0.33,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
 		Kelvin:     5000,
 		Zones: []HSLColor{
 			{H: 10, S: 0.2, L: 0.4},
@@ -202,6 +235,7 @@ func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
 		Kind:       "matrix",
 		On:         true,
 		Brightness: 0.66,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
 		Kelvin:     2700,
 		Chain: []Matrix{
 			{

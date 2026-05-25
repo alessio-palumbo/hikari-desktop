@@ -33,18 +33,25 @@ type Matrix struct {
 }
 
 type Device struct {
-	GroupID    string     `json:"groupId"`
-	Serial     string     `json:"serial"`
-	Name       string     `json:"name"`
-	Model      string     `json:"model"`
-	Kind       string     `json:"kind"`
-	Online     bool       `json:"online"`
-	On         bool       `json:"on"`
-	Brightness float64    `json:"brightness"`
-	Color      *HSLColor  `json:"color,omitempty"`
-	Kelvin     int        `json:"kelvin,omitempty"`
-	Zones      []HSLColor `json:"zones,omitempty"`
-	Chain      []Matrix   `json:"chain,omitempty"`
+	GroupID    string           `json:"groupId"`
+	Serial     string           `json:"serial"`
+	Name       string           `json:"name"`
+	Model      string           `json:"model"`
+	Kind       string           `json:"kind"`
+	Online     bool             `json:"online"`
+	On         bool             `json:"on"`
+	Brightness float64          `json:"brightness"`
+	Capability DeviceCapability `json:"capability"`
+	Color      *HSLColor        `json:"color,omitempty"`
+	Kelvin     int              `json:"kelvin,omitempty"`
+	Zones      []HSLColor       `json:"zones,omitempty"`
+	Chain      []Matrix         `json:"chain,omitempty"`
+}
+
+type DeviceCapability struct {
+	HasColor  bool `json:"hasColor"`
+	KelvinMin int  `json:"kelvinMin"`
+	KelvinMax int  `json:"kelvinMax"`
 }
 
 type DeviceSnapshot struct {

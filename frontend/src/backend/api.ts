@@ -56,6 +56,7 @@ function mockSnapshot(): DeviceSnapshot {
         online: true,
         on: true,
         brightness: 0.78,
+        capability: colorCapability(),
         zones: makeZones(32, 290, 70),
       },
       {
@@ -67,6 +68,7 @@ function mockSnapshot(): DeviceSnapshot {
         online: true,
         on: true,
         brightness: 0.55,
+        capability: colorCapability(),
         chain: makeMatrixChain(5, 170, 290),
       },
       single('kitchen', 'Pendant', 'A19 color', 'd0:73:d5:02:b1:01', 0.9, { h: 38, s: 0.2, l: 0.85 }, 4500),
@@ -79,6 +81,7 @@ function mockSnapshot(): DeviceSnapshot {
         online: true,
         on: false,
         brightness: 0.55,
+        capability: colorCapability(),
         zones: makeZones(24, 30, 60),
       },
       {
@@ -90,6 +93,7 @@ function mockSnapshot(): DeviceSnapshot {
         online: true,
         on: true,
         brightness: 0.85,
+        capability: colorCapability(),
         zones: makeZones(32, 200, 260),
       },
     ],
@@ -97,7 +101,11 @@ function mockSnapshot(): DeviceSnapshot {
 }
 
 function single(groupId: string, name: string, model: string, serial: string, brightness: number, color: HslColor, kelvin: number): Device {
-  return { groupId, serial, name, model, kind: 'single', online: true, on: brightness > 0, brightness, color, kelvin };
+  return { groupId, serial, name, model, kind: 'single', online: true, on: brightness > 0, brightness, capability: colorCapability(), color, kelvin };
+}
+
+function colorCapability() {
+  return { hasColor: true, kelvinMin: 1500, kelvinMax: 9000 };
 }
 
 function makeZones(count: number, start: number, end: number): HslColor[] {

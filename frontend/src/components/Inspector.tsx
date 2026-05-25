@@ -32,27 +32,31 @@ export function Inspector(props: InspectorProps) {
   const [mode, setMode] = useState<PaintMode>('color');
   const [tool, setTool] = useState<PaintTool>('brush');
   const [paintColor, setPaintColor] = useState(() => initialPaintColor(device));
-  const [whiteKelvin, setWhiteKelvin] = useState(() => device.kelvin ?? 3500);
-  const [whiteColor, setWhiteColor] = useState(() => kelvinToHsl(device.kelvin ?? 3500));
+  const [whiteKelvin, setWhiteKelvin] = useState(() => clampKelvin(device.kelvin ?? 3500, device));
+  const [whiteColor, setWhiteColor] = useState(() => kelvinToHsl(clampKelvin(device.kelvin ?? 3500, device)));
+  const hasColor = device.capability?.hasColor ?? true;
 
   useEffect(() => {
-    setMode('color');
+    setMode((device.capability?.hasColor ?? true) ? 'color' : 'white');
     setTool('brush');
     setPaintColor(initialPaintColor(device));
-    setWhiteKelvin(device.kelvin ?? 3500);
-    setWhiteColor(kelvinToHsl(device.kelvin ?? 3500));
+    const kelvin = clampKelvin(device.kelvin ?? 3500, device);
+    setWhiteKelvin(kelvin);
+    setWhiteColor(kelvinToHsl(kelvin));
   }, [device.serial]);
 
-  const whiteValue = Math.max(0, Math.min(1, (whiteKelvin - 2500) / 4000));
+  const kelvinMin = device.capability?.kelvinMin ?? 2500;
+  const kelvinMax = device.capability?.kelvinMax ?? 6500;
+  const whiteValue = Math.max(0, Math.min(1, (whiteKelvin - kelvinMin) / Math.max(1, kelvinMax - kelvinMin)));
   const activePaintColor = mode === 'white' ? whiteColor : paintColor;
 
   const setColor = (color: HslColor) => {
     setPaintColor(color);
-    if (device.kind === 'single') props.onChange({ ...device, color, on: true });
+    if (device.kind === 'single' && hasColor) props.onChange({ ...device, color, on: true });
   };
 
   const setKelvin = (value: number) => {
-    const nextKelvin = Math.round(2500 + value * 4000);
+    const nextKelvin = Math.round(kelvinMin + value * (kelvinMax - kelvinMin));
     const color = kelvinToHsl(nextKelvin);
     setWhiteKelvin(nextKelvin);
     setWhiteColor(color);
@@ -81,7 +85,7 @@ export function Inspector(props: InspectorProps) {
         <span>{device.kind}</span>
       </div>
 
-      <ModeToggle value={mode} onChange={setMode} />
+      <ModeToggle value={mode} hasColor={hasColor} onChange={setMode} />
 
       {mode === 'color' ? (
         <section className="control-section">
@@ -90,7 +94,7 @@ export function Inspector(props: InspectorProps) {
           </div>
         </section>
       ) : (
-        <WhiteScale value={whiteValue} onChange={setKelvin} />
+        <WhiteScale value={whiteValue} kelvinMin={kelvinMin} kelvinMax={kelvinMax} onChange={setKelvin} />
       )}
 
       <Slider label="brightness" value={device.brightness} onChange={(value) => props.onChange({ ...device, brightness: value, on: value > 0 })} />
@@ -127,10 +131,11 @@ export function Inspector(props: InspectorProps) {
   );
 }
 
-function ModeToggle({ value, onChange }: { value: PaintMode; onChange: (value: PaintMode) => void }) {
+function ModeToggle({ value, hasColor, onChange }: { value: PaintMode; hasColor: boolean; onChange: (value: PaintMode) => void }) {
+  const options: PaintMode[] = hasColor ? ['color', 'white'] : ['white'];
   return (
     <div className="mode-toggle" role="tablist" aria-label="Color mode">
-      {(['color', 'white'] as const).map((option) => (
+      {options.map((option) => (
         <button key={option} role="tab" aria-selected={value === option} data-active={value === option} onClick={() => onChange(option)}>
           {option}
         </button>
@@ -160,12 +165,12 @@ function ToolToggle({ value, onChange }: { value: PaintTool; onChange: (value: P
   );
 }
 
-function WhiteScale({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+function WhiteScale({ value, kelvinMin, kelvinMax, onChange }: { value: number; kelvinMin: number; kelvinMax: number; onChange: (value: number) => void }) {
   return (
     <section className="control-section">
       <div className="temperature-label">
         <span>temperature</span>
-        <span className="mono">{Math.round(2500 + value * 4000)}K</span>
+        <span className="mono">{Math.round(kelvinMin + value * (kelvinMax - kelvinMin))}K</span>
       </div>
       <input
         className="temperature-scale"
@@ -414,6 +419,12 @@ function kelvinToHsl(kelvin: number): HslColor {
   }
   const cool = (t - 0.5) * 2;
   return { h: 38 + (210 - 38) * cool, s: 0.25 + (0.35 - 0.25) * cool, l: 0.92 };
+}
+
+function clampKelvin(kelvin: number, device: Device): number {
+  const min = device.capability?.kelvinMin ?? 2500;
+  const max = device.capability?.kelvinMax ?? 6500;
+  return Math.max(min, Math.min(max, kelvin));
 }
 
 function applyLinearGradient(colors: HslColor[], anchorIndex: number, paintColor: HslColor): HslColor[] {
