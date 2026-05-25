@@ -101,6 +101,10 @@ func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {
 	groupIDs := make(map[string]bool)
 
 	for _, d := range devices {
+		if !isSupportedLightDevice(d) {
+			log.Printf("hikari: skipping unsupported lifx device %s type %q", d.Serial.String(), d.Type.String())
+			continue
+		}
 		locationID := idOrUnknown(d.Location, "unknown-location")
 		groupID := idOrUnknown(d.Group, "unknown-group")
 		if !locationIDs[locationID] {
@@ -115,6 +119,15 @@ func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {
 	}
 
 	return snapshot
+}
+
+func isSupportedLightDevice(d lifxdevice.Device) bool {
+	switch d.Type.String() {
+	case "", "light", "hybrid":
+		return true
+	default:
+		return false
+	}
 }
 
 func mapLifxDevice(d lifxdevice.Device, groupID string) Device {

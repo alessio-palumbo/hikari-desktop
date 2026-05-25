@@ -68,6 +68,45 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSnapshotFiltersSwitchDevices(t *testing.T) {
+	switchSerial, err := lifxdevice.SerialFromHex("d073d501a2c4")
+	if err != nil {
+		t.Fatalf("SerialFromHex returned error: %v", err)
+	}
+	switchDevice := lifxdevice.Device{
+		Serial:   switchSerial,
+		Label:    "Wall Switch",
+		Location: "Studio",
+		Group:    "Desk",
+	}
+	switchDevice.SetProductInfo(70)
+
+	hybridSerial, err := lifxdevice.SerialFromHex("d073d501a2c5")
+	if err != nil {
+		t.Fatalf("SerialFromHex returned error: %v", err)
+	}
+	hybridDevice := lifxdevice.Device{
+		Serial:    hybridSerial,
+		Label:     "Everyday Strip",
+		Location:  "Studio",
+		Group:     "Desk",
+		PoweredOn: true,
+		Color:     lifxdevice.Color{Brightness: 50, Kelvin: 3500},
+	}
+	hybridDevice.SetProductInfo(207)
+
+	snapshot := mapLifxDevices([]lifxdevice.Device{switchDevice, hybridDevice})
+	if len(snapshot.Devices) != 1 {
+		t.Fatalf("devices = %#v, want only hybrid light", snapshot.Devices)
+	}
+	if snapshot.Devices[0].Serial != "d073d501a2c5" {
+		t.Fatalf("device serial = %s, want hybrid serial", snapshot.Devices[0].Serial)
+	}
+	if snapshot.Devices[0].Kind != "multizone" {
+		t.Fatalf("device kind = %s, want multizone", snapshot.Devices[0].Kind)
+	}
+}
+
 func TestLifxTransportStartKeepsInjectedController(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
