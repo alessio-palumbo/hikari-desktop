@@ -5,13 +5,14 @@ import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
 import { commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { Device, DeviceSnapshot } from './domain/lifx';
-import { reconcileSnapshot } from './domain/reconcile';
+import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
 const REFRESH_INTERVAL_MS = 5000;
 const LOCATION_KEY = 'hikari:selectedLocation';
 const GROUP_KEY = 'hikari:selectedGroup';
 
 type DeviceStatus = Record<string, { loading?: boolean; error?: string }>;
+type PendingDeviceStates = Record<string, PendingDeviceState>;
 
 export function App() {
   const [snapshot, setSnapshot] = useState<DeviceSnapshot>({ locations: [], groups: [], devices: [] });
@@ -24,11 +25,17 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | undefined>();
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
+  const [pendingState, setPendingState] = useState<PendingDeviceStates>({});
   const draftRef = useRef<DeviceDraft | undefined>(undefined);
+  const pendingStateRef = useRef<PendingDeviceStates>({});
 
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  useEffect(() => {
+    pendingStateRef.current = pendingState;
+  }, [pendingState]);
 
   const refreshSnapshot = useCallback(async () => {
     setRefreshing(true);
@@ -36,7 +43,9 @@ export function App() {
       const next = await getDeviceSnapshot();
       const currentDraft = draftRef.current;
       const draftSerials = currentDraft?.dirty ? new Set([currentDraft.draft.serial]) : undefined;
-      setSnapshot((prev) => reconcileSnapshot(prev, next, { draftSerials }));
+      const pending = pendingStateRef.current;
+      setSnapshot((prev) => reconcileSnapshot(prev, next, { draftSerials, pending }));
+      clearSettledPending(next, pending);
       setRefreshError(undefined);
     } catch (error) {
       setRefreshError(errorMessage(error));
@@ -102,6 +111,38 @@ export function App() {
     setSnapshot((prev) => ({ ...prev, devices: prev.devices.map((device) => (device.serial === next.serial ? next : device)) }));
   };
 
+  const recordPendingState = (next: Device, previous?: Device) => {
+    const pending = createPendingState(next, previous);
+    if (!pending) return;
+    setPendingState((prev) => ({ ...prev, [next.serial]: pending }));
+  };
+
+  const clearPendingState = (serial: string) => {
+    setPendingState((prev) => {
+      if (!prev[serial]) return prev;
+      const next = { ...prev };
+      delete next[serial];
+      return next;
+    });
+  };
+
+  const clearSettledPending = (next: DeviceSnapshot, pending: PendingDeviceStates) => {
+    const now = Date.now();
+    const bySerial = new Map(next.devices.map((device) => [device.serial, device]));
+    setPendingState((prev) => {
+      let changed = false;
+      const updated = { ...prev };
+      for (const item of Object.values(pending)) {
+        const device = bySerial.get(item.serial);
+        if ((device && isPendingConfirmed(device, item)) || isPendingExpired(item, now)) {
+          delete updated[item.serial];
+          changed = true;
+        }
+      }
+      return changed ? updated : prev;
+    });
+  };
+
   const setDeviceLoading = (serial: string, loading: boolean, error?: string) => {
     setDeviceStatus((prev) => ({ ...prev, [serial]: { loading, error } }));
   };
@@ -109,12 +150,14 @@ export function App() {
   const updateListDevice = async (next: Device) => {
     const previous = snapshot.devices.find((device) => device.serial === next.serial);
     replaceDevice(next);
+    recordPendingState(next, previous);
     setDeviceLoading(next.serial, true);
     try {
       const committed = await setDeviceState(next, true);
       replaceDevice(committed);
       setDeviceLoading(next.serial, false);
     } catch (error) {
+      clearPendingState(next.serial);
       if (previous) replaceDevice(previous);
       setDeviceLoading(next.serial, false, errorMessage(error));
     }
@@ -127,11 +170,14 @@ export function App() {
     }
     setDraft((prev) => (prev ? updateDraft(prev, next) : createDraft(next)));
     if (draft?.livePreview) {
+      const previous = snapshot.devices.find((device) => device.serial === next.serial);
+      recordPendingState(next, previous);
       setDeviceLoading(next.serial, true);
       try {
         await setDeviceState(next, true);
         setDeviceLoading(next.serial, false);
       } catch (error) {
+        clearPendingState(next.serial);
         setDeviceLoading(next.serial, false, errorMessage(error));
       }
     }
@@ -143,10 +189,12 @@ export function App() {
     setDeviceLoading(draft.draft.serial, true);
     try {
       const committed = await setDeviceState(draft.draft, false);
+      recordPendingState(committed, draft.base);
       replaceDevice(committed);
       setDraft(commitDraft(draft, committed));
       setDeviceLoading(draft.draft.serial, false);
     } catch (error) {
+      clearPendingState(draft.draft.serial);
       setDeviceLoading(draft.draft.serial, false, errorMessage(error));
     } finally {
       setSaving(false);
