@@ -14,6 +14,7 @@ interface InspectorProps {
   livePreview: boolean;
   canUndo: boolean;
   saving: boolean;
+  error?: string;
   onClose: () => void;
   onChange: (device: Device) => void;
   onApply: () => void;
@@ -93,6 +94,7 @@ export function Inspector(props: InspectorProps) {
       )}
 
       <Slider label="brightness" value={device.brightness} onChange={(value) => props.onChange({ ...device, brightness: value, on: value > 0 })} />
+      {props.error ? <div className="inspector-error">{props.error}</div> : null}
 
       {device.kind !== 'single' ? <ToolToggle value={tool} onChange={setTool} /> : null}
       {device.kind === 'multizone' ? (

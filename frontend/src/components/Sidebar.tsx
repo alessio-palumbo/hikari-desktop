@@ -10,6 +10,8 @@ interface SidebarProps {
   selectedLocationId: string;
   selectedGroupId: string;
   query: string;
+  refreshing: boolean;
+  refreshError?: string;
   onQueryChange: (query: string) => void;
   onLocationChange: (id: string) => void;
   onGroupChange: (id: string) => void;
@@ -65,9 +67,9 @@ export function Sidebar(props: SidebarProps) {
         })}
       </nav>
 
-      <div className="lan-status">
+      <div className="lan-status" data-error={props.refreshError ? 'true' : 'false'}>
         <span />
-        <span>{props.devices.length} mock lights · fake LAN</span>
+        <span>{props.refreshError ? props.refreshError : `${props.devices.length} lights${props.refreshing ? ' · refreshing' : ''}`}</span>
       </div>
     </aside>
   );

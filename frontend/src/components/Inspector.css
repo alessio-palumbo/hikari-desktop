@@ -76,6 +76,12 @@
   background: oklch(1 0 0 / 0.03);
 }
 
+.inspector-error {
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .mode-toggle button {
   flex: 1;
   border: 0;

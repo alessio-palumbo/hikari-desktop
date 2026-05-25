@@ -17,7 +17,10 @@ func TestAppUsesTransport(t *testing.T) {
 	app := NewAppWithTransport(transport)
 	app.startup(context.Background())
 
-	snapshot := app.GetDeviceSnapshot()
+	snapshot, err := app.GetDeviceSnapshot()
+	if err != nil {
+		t.Fatalf("GetDeviceSnapshot returned error: %v", err)
+	}
 	if !transport.snapshotCalled {
 		t.Fatal("expected Snapshot to be called")
 	}
@@ -25,7 +28,10 @@ func TestAppUsesTransport(t *testing.T) {
 		t.Fatalf("GetDeviceSnapshot returned %#v", snapshot)
 	}
 
-	got := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device, Preview: true})
+	got, err := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device, Preview: true})
+	if err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
 	if !transport.setCalled {
 		t.Fatal("expected SetDeviceState to be called")
 	}
@@ -37,16 +43,16 @@ func TestAppUsesTransport(t *testing.T) {
 	}
 }
 
-func TestAppFallbacksOnTransportError(t *testing.T) {
+func TestAppReturnsTransportError(t *testing.T) {
 	device := backend.Device{Serial: "d073d501a2c3", Name: "Test", Kind: "single"}
 	app := NewAppWithTransport(&recordingTransport{err: errors.New("boom")})
 	app.startup(context.Background())
 
-	if got := app.GetDeviceSnapshot(); len(got.Devices) != 0 {
-		t.Fatalf("GetDeviceSnapshot returned %#v, want empty snapshot", got)
+	if _, err := app.GetDeviceSnapshot(); err == nil {
+		t.Fatal("GetDeviceSnapshot returned nil error, want transport error")
 	}
-	if got := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device}); got.Serial != device.Serial {
-		t.Fatalf("SetDeviceState returned %#v, want request device", got)
+	if _, err := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device}); err == nil {
+		t.Fatal("SetDeviceState returned nil error, want transport error")
 	}
 }
 

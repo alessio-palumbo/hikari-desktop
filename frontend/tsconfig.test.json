@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "isolatedModules": false,
+    "module": "ES2022",
+    "noEmit": false,
+    "outDir": "dist-test",
+    "rootDir": "src",
+    "types": []
+  },
+  "include": ["src/domain/**/*.ts"]
+}

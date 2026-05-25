@@ -12,4 +12,5 @@
   --accent: oklch(0.78 0.13 230);
   --ok: oklch(0.75 0.13 150);
   --warm: oklch(0.86 0.14 90);
+  --danger: oklch(0.72 0.16 28);
 }

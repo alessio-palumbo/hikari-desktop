@@ -118,3 +118,12 @@
   box-shadow: 0 0 6px var(--ok);
   animation: pulse-dot 3s ease-in-out infinite;
 }
+
+.lan-status[data-error="true"] {
+  color: var(--danger);
+}
+
+.lan-status[data-error="true"] span:first-child {
+  background: var(--danger);
+  box-shadow: 0 0 6px var(--danger);
+}

@@ -33,18 +33,10 @@ func (a *App) context() context.Context {
 	return a.ctx
 }
 
-func (a *App) GetDeviceSnapshot() backend.DeviceSnapshot {
-	snapshot, err := a.transport.Snapshot(a.context())
-	if err != nil {
-		return backend.DeviceSnapshot{}
-	}
-	return snapshot
+func (a *App) GetDeviceSnapshot() (backend.DeviceSnapshot, error) {
+	return a.transport.Snapshot(a.context())
 }
 
-func (a *App) SetDeviceState(req backend.SetDeviceStateRequest) backend.Device {
-	device, err := a.transport.SetDeviceState(a.context(), req)
-	if err != nil {
-		return req.Device
-	}
-	return device
+func (a *App) SetDeviceState(req backend.SetDeviceStateRequest) (backend.Device, error) {
+	return a.transport.SetDeviceState(a.context(), req)
 }

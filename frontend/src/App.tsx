@@ -1,35 +1,71 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getDeviceSnapshot, setDeviceState } from './backend/api';
 import { DeviceList } from './components/DeviceList';
 import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
 import { commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { Device, DeviceSnapshot } from './domain/lifx';
+import { reconcileSnapshot } from './domain/reconcile';
+
+const REFRESH_INTERVAL_MS = 5000;
+const LOCATION_KEY = 'hikari:selectedLocation';
+const GROUP_KEY = 'hikari:selectedGroup';
+
+type DeviceStatus = Record<string, { loading?: boolean; error?: string }>;
 
 export function App() {
   const [snapshot, setSnapshot] = useState<DeviceSnapshot>({ locations: [], groups: [], devices: [] });
-  const [locationId, setLocationId] = useState('');
-  const [groupId, setGroupId] = useState('');
+  const [locationId, setLocationId] = useState(() => loadPreference(LOCATION_KEY));
+  const [groupId, setGroupId] = useState(() => loadPreference(GROUP_KEY));
   const [selectedSerial, setSelectedSerial] = useState<string | undefined>();
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<DeviceDraft | undefined>();
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | undefined>();
+  const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
+  const draftRef = useRef<DeviceDraft | undefined>(undefined);
 
   useEffect(() => {
-    getDeviceSnapshot().then((next) => {
-      setSnapshot(next);
-      setLocationId(next.locations[0]?.id ?? '');
-      setGroupId(next.groups[0]?.id ?? '');
-    });
+    draftRef.current = draft;
+  }, [draft]);
+
+  const refreshSnapshot = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const next = await getDeviceSnapshot();
+      const currentDraft = draftRef.current;
+      const draftSerials = currentDraft?.dirty ? new Set([currentDraft.draft.serial]) : undefined;
+      setSnapshot((prev) => reconcileSnapshot(prev, next, { draftSerials }));
+      setRefreshError(undefined);
+    } catch (error) {
+      setRefreshError(errorMessage(error));
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
+  useEffect(() => void refreshSnapshot(), [refreshSnapshot]);
+
   useEffect(() => {
+    const timer = window.setInterval(() => void refreshSnapshot(), REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [refreshSnapshot]);
+
+  useEffect(() => {
+    if (snapshot.locations.length && !snapshot.locations.some((location) => location.id === locationId)) {
+      setLocationId(snapshot.locations[0].id);
+      return;
+    }
     const groups = snapshot.groups.filter((group) => group.locationId === locationId);
     if (groups.length && !groups.some((group) => group.id === groupId)) {
       setGroupId(groups[0].id);
       setSelectedSerial(undefined);
     }
-  }, [groupId, locationId, snapshot.groups]);
+  }, [groupId, locationId, snapshot.groups, snapshot.locations]);
+
+  useEffect(() => savePreference(LOCATION_KEY, locationId), [locationId]);
+  useEffect(() => savePreference(GROUP_KEY, groupId), [groupId]);
 
   const selectedDevice = snapshot.devices.find((device) => device.serial === selectedSerial);
 
@@ -38,8 +74,15 @@ export function App() {
       setDraft(undefined);
       return;
     }
-    setDraft(selectedDevice.kind === 'single' ? undefined : createDraft(selectedDevice));
-  }, [selectedDevice?.serial]);
+    if (selectedDevice.kind === 'single') {
+      setDraft(undefined);
+      return;
+    }
+    setDraft((prev) => {
+      if (prev?.draft.serial === selectedDevice.serial && prev.dirty) return prev;
+      return createDraft(selectedDevice);
+    });
+  }, [selectedDevice]);
 
   const visibleDevices = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -59,28 +102,55 @@ export function App() {
     setSnapshot((prev) => ({ ...prev, devices: prev.devices.map((device) => (device.serial === next.serial ? next : device)) }));
   };
 
+  const setDeviceLoading = (serial: string, loading: boolean, error?: string) => {
+    setDeviceStatus((prev) => ({ ...prev, [serial]: { loading, error } }));
+  };
+
   const updateListDevice = async (next: Device) => {
+    const previous = snapshot.devices.find((device) => device.serial === next.serial);
     replaceDevice(next);
-    await setDeviceState(next, true);
+    setDeviceLoading(next.serial, true);
+    try {
+      const committed = await setDeviceState(next, true);
+      replaceDevice(committed);
+      setDeviceLoading(next.serial, false);
+    } catch (error) {
+      if (previous) replaceDevice(previous);
+      setDeviceLoading(next.serial, false, errorMessage(error));
+    }
   };
 
   const updateInspectorDevice = async (next: Device) => {
     if (next.kind === 'single') {
-      replaceDevice(next);
-      await setDeviceState(next, true);
+      await updateListDevice(next);
       return;
     }
     setDraft((prev) => (prev ? updateDraft(prev, next) : createDraft(next)));
-    if (draft?.livePreview) await setDeviceState(next, true);
+    if (draft?.livePreview) {
+      setDeviceLoading(next.serial, true);
+      try {
+        await setDeviceState(next, true);
+        setDeviceLoading(next.serial, false);
+      } catch (error) {
+        setDeviceLoading(next.serial, false, errorMessage(error));
+      }
+    }
   };
 
   const applyDraft = async () => {
     if (!draft) return;
     setSaving(true);
-    const committed = await setDeviceState(draft.draft, false);
-    replaceDevice(committed);
-    setDraft(commitDraft(draft, committed));
-    setSaving(false);
+    setDeviceLoading(draft.draft.serial, true);
+    try {
+      const committed = await setDeviceState(draft.draft, false);
+      replaceDevice(committed);
+      setDraft(commitDraft(draft, committed));
+      setDeviceLoading(draft.draft.serial, false);
+    } catch (error) {
+      setDeviceLoading(draft.draft.serial, false, errorMessage(error));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -92,6 +162,8 @@ export function App() {
         selectedLocationId={locationId}
         selectedGroupId={groupId}
         query={query}
+        refreshing={refreshing}
+        refreshError={refreshError}
         onQueryChange={setQuery}
         onLocationChange={setLocationId}
         onGroupChange={(id) => {
@@ -100,12 +172,18 @@ export function App() {
           setQuery('');
         }}
         onLocationPower={(id, on) =>
-          setSnapshot((prev) => {
-            const groupIds = new Set(prev.groups.filter((group) => group.locationId === id).map((group) => group.id));
-            return { ...prev, devices: prev.devices.map((device) => (groupIds.has(device.groupId) ? { ...device, on } : device)) };
-          })
+          void Promise.all(
+            snapshot.devices
+              .filter((device) => {
+                const group = snapshot.groups.find((entry) => entry.id === device.groupId);
+                return group?.locationId === id;
+              })
+              .map((device) => updateListDevice({ ...device, on })),
+          )
         }
-        onGroupPower={(id, on) => setSnapshot((prev) => ({ ...prev, devices: prev.devices.map((device) => (device.groupId === id ? { ...device, on } : device)) }))}
+        onGroupPower={(id, on) =>
+          void Promise.all(snapshot.devices.filter((device) => device.groupId === id).map((device) => updateListDevice({ ...device, on })))
+        }
       />
 
       <DeviceList
@@ -114,13 +192,17 @@ export function App() {
         devices={visibleDevices}
         selectedSerial={selectedSerial}
         searching={query.trim().length > 0}
+        refreshing={refreshing}
+        deviceStatus={deviceStatus}
+        onRefresh={refreshSnapshot}
         onSelect={setSelectedSerial}
         onDeviceChange={updateListDevice}
         onMasterChange={(on, brightness) =>
-          setSnapshot((prev) => ({
-            ...prev,
-            devices: prev.devices.map((device) => (device.groupId === groupId ? { ...device, on, brightness: brightness ?? device.brightness } : device)),
-          }))
+          void Promise.all(
+            snapshot.devices
+              .filter((device) => device.groupId === groupId)
+              .map((device) => updateListDevice({ ...device, on, brightness: brightness ?? device.brightness })),
+          )
         }
       />
 
@@ -130,6 +212,7 @@ export function App() {
         livePreview={draft?.livePreview ?? false}
         canUndo={(draft?.history.length ?? 0) > 0}
         saving={saving}
+        error={inspectorDevice ? deviceStatus[inspectorDevice.serial]?.error : undefined}
         onClose={() => setSelectedSerial(undefined)}
         onChange={updateInspectorDevice}
         onApply={applyDraft}
@@ -139,4 +222,18 @@ export function App() {
       />
     </div>
   );
+}
+
+function loadPreference(key: string): string {
+  return window.localStorage.getItem(key) ?? '';
+}
+
+function savePreference(key: string, value: string) {
+  if (value) window.localStorage.setItem(key, value);
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'device command failed';
 }

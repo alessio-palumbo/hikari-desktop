@@ -8,9 +8,10 @@ interface SliderProps {
   value: number;
   onChange: (value: number) => void;
   label?: string;
+  disabled?: boolean;
 }
 
-export function Slider({ value, onChange, label }: SliderProps) {
+export function Slider({ value, onChange, label, disabled = false }: SliderProps) {
   const percent = Math.round(value * 100);
   return (
     <label className="slider">
@@ -26,6 +27,7 @@ export function Slider({ value, onChange, label }: SliderProps) {
         min={0}
         max={100}
         value={percent}
+        disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value) / 100)}
       />
     </label>
@@ -36,11 +38,12 @@ interface PowerDotProps {
   on: boolean;
   onChange: (on: boolean) => void;
   size?: number;
+  disabled?: boolean;
 }
 
-export function PowerDot({ on, onChange, size = 9 }: PowerDotProps) {
+export function PowerDot({ on, onChange, size = 9, disabled = false }: PowerDotProps) {
   return (
-    <button className="power-dot-button" aria-label={on ? 'Turn off' : 'Turn on'} onClick={() => onChange(!on)}>
+    <button className="power-dot-button" aria-label={on ? 'Turn off' : 'Turn on'} disabled={disabled} onClick={() => onChange(!on)}>
       <span className="power-dot" data-on={on ? 'true' : 'false'} style={{ width: size, height: size }} />
     </button>
   );

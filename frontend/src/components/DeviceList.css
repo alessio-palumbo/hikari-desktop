@@ -7,12 +7,35 @@
   margin-bottom: 24px;
 }
 
+.group-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .group-header h1 {
   margin: 0;
   color: var(--fg-0);
   font-size: 30px;
   font-weight: 400;
   line-height: 1.1;
+}
+
+.refresh-button {
+  height: 28px;
+  border: 1px solid oklch(1 0 0 / 0.08);
+  border-radius: 7px;
+  background: oklch(1 0 0 / 0.025);
+  color: var(--fg-2);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 10px;
+}
+
+.refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .group-controls {
@@ -72,6 +95,10 @@
 .device-row[data-selected="true"] {
   border-color: oklch(1 0 0 / 0.08);
   background: oklch(1 0 0 / 0.035);
+}
+
+.device-row[data-offline="true"] {
+  opacity: 0.58;
 }
 
 .device-name {
