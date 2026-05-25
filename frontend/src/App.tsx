@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { applyDevice, getDeviceSnapshot } from './backend/api';
+import { getDeviceSnapshot, setDeviceState } from './backend/api';
 import { DeviceList } from './components/DeviceList';
 import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
@@ -61,23 +61,23 @@ export function App() {
 
   const updateListDevice = async (next: Device) => {
     replaceDevice(next);
-    await applyDevice(next, true);
+    await setDeviceState(next, true);
   };
 
   const updateInspectorDevice = async (next: Device) => {
     if (next.kind === 'single') {
       replaceDevice(next);
-      await applyDevice(next, true);
+      await setDeviceState(next, true);
       return;
     }
     setDraft((prev) => (prev ? updateDraft(prev, next) : createDraft(next)));
-    if (draft?.livePreview) await applyDevice(next, true);
+    if (draft?.livePreview) await setDeviceState(next, true);
   };
 
   const applyDraft = async () => {
     if (!draft) return;
     setSaving(true);
-    const committed = await applyDevice(draft.draft, false);
+    const committed = await setDeviceState(draft.draft, false);
     replaceDevice(committed);
     setDraft(commitDraft(draft, committed));
     setSaving(false);

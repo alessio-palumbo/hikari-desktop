@@ -68,7 +68,7 @@ type DeviceSnapshot struct {
 	Devices   []Device   `json:"devices"`
 }
 
-type ApplyDeviceRequest struct {
+type SetDeviceStateRequest struct {
 	Device  Device `json:"device"`
 	Preview bool   `json:"preview"`
 }
@@ -77,9 +77,9 @@ func (a *App) GetDeviceSnapshot() DeviceSnapshot {
 	return MockDeviceSnapshot()
 }
 
-func (a *App) ApplyDevice(req ApplyDeviceRequest) Device {
-	// Transport is intentionally fake for now. The frontend updates its local
-	// snapshot with the returned device, and this method marks where lifxlan-go
-	// command dispatch will later live.
+func (a *App) SetDeviceState(req SetDeviceStateRequest) Device {
+	// State synchronization is intentionally fake for now. The frontend updates
+	// its local snapshot with the returned device, and this method marks where
+	// lifxlan-go command dispatch will later live.
 	return req.Device
 }

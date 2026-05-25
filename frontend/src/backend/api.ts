@@ -2,7 +2,12 @@ import type { Device, DeviceSnapshot, HslColor, Matrix } from '../domain/lifx';
 
 interface WailsApp {
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
-  ApplyDevice?: (request: { device: Device; preview: boolean }) => Promise<Device>;
+  SetDeviceState?: (request: SetDeviceStateRequest) => Promise<Device>;
+}
+
+interface SetDeviceStateRequest {
+  device: Device;
+  preview: boolean;
 }
 
 declare global {
@@ -21,9 +26,9 @@ export async function getDeviceSnapshot(): Promise<DeviceSnapshot> {
   return mockSnapshot();
 }
 
-export async function applyDevice(device: Device, preview = false): Promise<Device> {
+export async function setDeviceState(device: Device, preview = false): Promise<Device> {
   const app = window.go?.main?.App;
-  if (app?.ApplyDevice) return app.ApplyDevice({ device, preview });
+  if (app?.SetDeviceState) return app.SetDeviceState({ device, preview });
   await new Promise((resolve) => window.setTimeout(resolve, preview ? 60 : 180));
   return device;
 }
