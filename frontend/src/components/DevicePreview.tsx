@@ -1,16 +1,17 @@
 import type { Device, Matrix } from '../domain/lifx';
-import { deviceColor, hsl } from '../domain/lifx';
+import { deviceColor, hsl, previewLightness, previewOpacity } from '../domain/lifx';
 import './DevicePreview.css';
 
 export function DevicePreview({ device }: { device: Device }) {
   if (device.kind === 'single') {
-    return <span className="preview-single" style={{ background: hsl(deviceColor(device)), opacity: device.on ? 0.45 + device.brightness * 0.55 : 0.15 }} />;
+    const color = deviceColor(device);
+    return <span className="preview-single" style={{ background: hsl(color, previewLightness(color, device.brightness, device.on)), opacity: previewOpacity(device.on) }} />;
   }
 
   if (device.kind === 'multizone') {
     return (
-      <span className="preview-zones" data-on={device.on ? 'true' : 'false'} style={{ opacity: device.on ? 0.35 + device.brightness * 0.65 : undefined }}>
-        {device.zones?.map((zone, index) => <i key={index} style={{ background: hsl(zone) }} />)}
+      <span className="preview-zones" data-on={device.on ? 'true' : 'false'} style={{ opacity: previewOpacity(device.on) }}>
+        {device.zones?.map((zone, index) => <i key={index} style={{ background: hsl(zone, previewLightness(zone, device.brightness, device.on)) }} />)}
       </span>
     );
   }
@@ -35,7 +36,7 @@ function MatrixPreview({ chain, on, brightness }: { chain: Matrix[]; on: boolean
     <span
       className="preview-matrix"
       data-on={on ? 'true' : 'false'}
-      style={{ width: width * step - gap, height: height * step - gap, opacity: on ? 0.35 + brightness * 0.65 : undefined }}
+      style={{ width: width * step - gap, height: height * step - gap, opacity: previewOpacity(on) }}
     >
       {chain.map((matrix) =>
         matrix.rows.flatMap((row, rowIndex) =>
@@ -50,7 +51,7 @@ function MatrixPreview({ chain, on, brightness }: { chain: Matrix[]; on: boolean
                   top: (matrix.y - minY + rowIndex) * step,
                   width: cell,
                   height: cell,
-                  background: hsl(pixel),
+                  background: hsl(pixel, previewLightness(pixel, brightness, on)),
                 }}
               />
             );

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
 import { createPendingState, isPendingConfirmed, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
 
 const base = {
@@ -89,4 +90,21 @@ test('lets expired pending state fall back to snapshot values', () => {
 
   assert.equal(got.devices[0].on, true);
   assert.equal(got.devices[0].brightness, 0.8);
+});
+
+test('preview lightness responds to brightness even when pixel lightness is zero', () => {
+  const color = { h: 210, s: 0.8, l: 0 };
+
+  assert.ok(previewLightness(color, 0.8, true) > previewLightness(color, 0.1, true));
+});
+
+test('preview lightness keeps maximum kelvin whites below washout range', () => {
+  const color = { h: 0, s: 0, l: 0, kelvin: 6500 };
+
+  assert.ok(previewLightness(color, 1, true) < 0.8);
+});
+
+test('preview opacity only dims off devices', () => {
+  assert.equal(previewOpacity(true), 1);
+  assert.equal(previewOpacity(false), 0.3);
 });

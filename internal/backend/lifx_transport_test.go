@@ -107,6 +107,42 @@ func TestLifxTransportSnapshotFiltersSwitchDevices(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSnapshotMapsFixedKelvinAsWhite(t *testing.T) {
+	serial, err := lifxdevice.SerialFromHex("d073d501a2c6")
+	if err != nil {
+		t.Fatalf("SerialFromHex returned error: %v", err)
+	}
+	dev := lifxdevice.Device{
+		Serial:    serial,
+		Label:     "Warm White",
+		Location:  "Studio",
+		Group:     "Desk",
+		PoweredOn: true,
+		Color: lifxdevice.Color{
+			Hue:        240,
+			Saturation: 100,
+			Brightness: 60,
+			Kelvin:     2000,
+		},
+		ColorProperties: lifxdevice.ColorProperties{
+			HasColor:         false,
+			TemperatureRange: lifxdevice.TemperatureRange{Min: 2000, Max: 2000},
+		},
+	}
+
+	snapshot := mapLifxDevices([]lifxdevice.Device{dev})
+	if len(snapshot.Devices) != 1 {
+		t.Fatalf("devices = %#v", snapshot.Devices)
+	}
+	got := snapshot.Devices[0]
+	if got.Kelvin != 2000 {
+		t.Fatalf("kelvin = %d, want 2000", got.Kelvin)
+	}
+	if got.Color == nil || got.Color.S != 0 || got.Color.Kelvin != 2000 {
+		t.Fatalf("color = %#v, want saturation-zero 2000K white", got.Color)
+	}
+}
+
 func TestLifxTransportStartKeepsInjectedController(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
@@ -226,6 +262,34 @@ func TestLifxTransportSetDeviceStateClampsWhiteOnlyDevice(t *testing.T) {
 	}
 	if !payload.SetKelvin || payload.Color.Kelvin != 6500 {
 		t.Fatalf("kelvin = %v/%v, want clamped 6500", payload.SetKelvin, payload.Color.Kelvin)
+	}
+}
+
+func TestLifxTransportSetDeviceStateSendsKelvinColorAsWhite(t *testing.T) {
+	controller := &fakeLifxController{}
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       "single",
+		On:         true,
+		Brightness: 0.5,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 2000, KelvinMax: 9000},
+		Color:      &HSLColor{H: 210, S: 0, L: 0.72, Kelvin: 2000},
+		Kelvin:     2000,
+	}
+	transport := NewLifxTransportWithController(controller)
+
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	payload := controller.sends[1].msg.Payload.(*packets.LightSetWaveformOptional)
+	if payload.SetHue {
+		t.Fatal("kelvin white command should not set hue")
+	}
+	if !payload.SetSaturation || payload.Color.Saturation != 0 {
+		t.Fatalf("saturation = %v/%v, want set 0", payload.SetSaturation, payload.Color.Saturation)
+	}
+	if !payload.SetKelvin || payload.Color.Kelvin != 2000 {
+		t.Fatalf("kelvin = %v/%v, want set 2000", payload.SetKelvin, payload.Color.Kelvin)
 	}
 }
 

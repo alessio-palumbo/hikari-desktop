@@ -14,11 +14,6 @@
   border-radius: 2px;
 }
 
-.preview-zones[data-on="false"],
-.preview-matrix[data-on="false"] {
-  opacity: 0.18;
-}
-
 .preview-zones i {
   flex: 1;
 }

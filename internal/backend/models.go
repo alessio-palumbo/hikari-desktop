@@ -12,9 +12,10 @@ type Group struct {
 }
 
 type HSLColor struct {
-	H float64 `json:"h"`
-	S float64 `json:"s"`
-	L float64 `json:"l"`
+	H      float64 `json:"h"`
+	S      float64 `json:"s"`
+	L      float64 `json:"l"`
+	Kelvin int     `json:"kelvin,omitempty"`
 }
 
 type MatrixRow struct {

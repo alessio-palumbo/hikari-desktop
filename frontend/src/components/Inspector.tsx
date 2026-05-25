@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Brush, Droplet, Pipette, RotateCcw, Undo2, Wand2, X } from 'lucide-react';
 import type { Device, HslColor } from '../domain/lifx';
-import { hsl } from '../domain/lifx';
+import { hsl, previewLightness, previewOpacity } from '../domain/lifx';
 import { ColorWheel, Slider } from './primitives';
 import './Inspector.css';
 
@@ -265,7 +265,7 @@ function MultizoneDraftEditor({
             key={index}
             data-zone-index={index}
             aria-label={`Paint zone ${index + 1}`}
-            style={{ background: hsl(zone) }}
+            style={{ background: hsl(zone, previewLightness(zone, device.brightness, device.on)), opacity: previewOpacity(device.on) }}
           />
         ))}
       </div>
@@ -391,7 +391,7 @@ function MatrixDraftEditor({
                 data-matrix-index={matrixIndex}
                 data-pixel-index={pixelIndex}
                 aria-label={`Paint matrix ${matrixIndex + 1} pixel ${pixelIndex + 1}`}
-                style={{ background: hsl(pixel) }}
+                style={{ background: hsl(pixel, previewLightness(pixel, device.brightness, device.on)), opacity: previewOpacity(device.on) }}
               />
             ))}
           </div>
@@ -412,13 +412,7 @@ function initialPaintColor(device: Device): HslColor {
 }
 
 function kelvinToHsl(kelvin: number): HslColor {
-  const t = Math.max(0, Math.min(1, (kelvin - 2500) / 4000));
-  if (t < 0.5) {
-    const warm = t * 2;
-    return { h: 28 + (38 - 28) * warm, s: 0.8 - (0.8 - 0.25) * warm, l: 0.7 + (0.92 - 0.7) * warm };
-  }
-  const cool = (t - 0.5) * 2;
-  return { h: 38 + (210 - 38) * cool, s: 0.25 + (0.35 - 0.25) * cool, l: 0.92 };
+  return { h: 0, s: 0, l: 0.72, kelvin };
 }
 
 function clampKelvin(kelvin: number, device: Device): number {

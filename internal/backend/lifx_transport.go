@@ -131,7 +131,12 @@ func isSupportedLightDevice(d lifxdevice.Device) bool {
 }
 
 func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
-	color := mapLifxColor(d.Color)
+	capability := mapLifxCapability(d.ColorProperties)
+	color := mapLifxColor(d.Color, capability)
+	kelvin := int(d.Color.Kelvin)
+	if kelvin <= 0 && isFixedKelvin(capability) {
+		kelvin = capability.KelvinMin
+	}
 	device := Device{
 		GroupID:    groupID,
 		Serial:     d.Serial.String(),
@@ -141,22 +146,22 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 		Online:     true,
 		On:         d.PoweredOn,
 		Brightness: color.L,
-		Capability: mapLifxCapability(d.ColorProperties),
+		Capability: capability,
 		Color:      &color,
-		Kelvin:     int(d.Color.Kelvin),
+		Kelvin:     kelvin,
 	}
 
 	switch device.Kind {
 	case "multizone":
-		device.Zones = mapLifxColors(d.MultizoneProperties.Zones)
+		device.Zones = mapLifxColors(d.MultizoneProperties.Zones, capability)
 	case "matrix":
-		device.Chain = mapLifxMatrixChain(d)
+		device.Chain = mapLifxMatrixChain(d, capability)
 	}
 
 	return device
 }
 
-func mapLifxMatrixChain(d lifxdevice.Device) []Matrix {
+func mapLifxMatrixChain(d lifxdevice.Device, capability DeviceCapability) []Matrix {
 	props := d.MatrixProperties
 	chain := make([]Matrix, 0, len(props.ChainZones))
 	for i, zones := range props.ChainZones {
@@ -167,7 +172,7 @@ func mapLifxMatrixChain(d lifxdevice.Device) []Matrix {
 			W:      float64(props.Width),
 			H:      float64(props.Height),
 			Rows:   makeMatrixRows(props.Width, props.Height),
-			Pixels: mapLifxColors(zones),
+			Pixels: mapLifxColors(zones, capability),
 		})
 	}
 	return chain
@@ -181,25 +186,35 @@ func makeMatrixRows(width, height int) []MatrixRow {
 	return rows
 }
 
-func mapLifxColors(colors []packets.LightHsbk) []HSLColor {
+func mapLifxColors(colors []packets.LightHsbk, capability DeviceCapability) []HSLColor {
 	mapped := make([]HSLColor, len(colors))
 	for i, color := range colors {
-		mapped[i] = mapLifxHSBK(color)
+		mapped[i] = mapLifxHSBK(color, capability)
 	}
 	return mapped
 }
 
-func mapLifxColor(color lifxdevice.Color) HSLColor {
-	return HSLColor{
+func mapLifxColor(color lifxdevice.Color, capability DeviceCapability) HSLColor {
+	mapped := HSLColor{
 		H: color.Hue,
 		S: color.Saturation / 100,
 		L: color.Brightness / 100,
 	}
+	kelvin := int(color.Kelvin)
+	if kelvin <= 0 && isFixedKelvin(capability) {
+		kelvin = capability.KelvinMin
+	}
+	if kelvin > 0 && (!deviceHasColor(capability) || isFixedKelvin(capability) || color.Saturation <= 0.5) {
+		mapped.H = 0
+		mapped.S = 0
+		mapped.Kelvin = kelvin
+	}
+	return mapped
 }
 
-func mapLifxHSBK(color packets.LightHsbk) HSLColor {
+func mapLifxHSBK(color packets.LightHsbk, capability DeviceCapability) HSLColor {
 	c := lifxdevice.NewColor(color)
-	return mapLifxColor(c)
+	return mapLifxColor(c, capability)
 }
 
 func mapLifxCapability(props lifxdevice.ColorProperties) DeviceCapability {
@@ -306,7 +321,10 @@ func hslColorToHSBK(color HSLColor, brightness float64, kelvin int, capability D
 	if kelvin <= 0 {
 		kelvin = 3500
 	}
-	if !deviceHasColor(capability) {
+	if color.Kelvin > 0 {
+		kelvin = color.Kelvin
+		color.S = 0
+	} else if !deviceHasColor(capability) {
 		color.H = 0
 		color.S = 0
 	}
@@ -323,14 +341,20 @@ func singleZoneColorMessage(device Device) *protocol.Message {
 	brightness := clamp(device.Brightness, 0, 1) * 100
 	var hue, saturation *float64
 	if device.Color != nil && deviceHasColor(device.Capability) {
-		h := clamp(device.Color.H, 0, 360)
 		s := clamp(device.Color.S, 0, 1) * 100
-		hue = &h
 		saturation = &s
+		if device.Color.Kelvin == 0 && device.Color.S > 0 {
+			h := clamp(device.Color.H, 0, 360)
+			hue = &h
+		}
 	}
 	var kelvin *uint16
-	if device.Kelvin > 0 {
-		k := uint16(clampKelvin(device.Kelvin, deviceKelvinMin(device.Capability), deviceKelvinMax(device.Capability)))
+	if device.Kelvin > 0 || device.Color != nil && device.Color.Kelvin > 0 {
+		value := device.Kelvin
+		if device.Color != nil && device.Color.Kelvin > 0 {
+			value = device.Color.Kelvin
+		}
+		k := uint16(clampKelvin(value, deviceKelvinMin(device.Capability), deviceKelvinMax(device.Capability)))
 		kelvin = &k
 	}
 	return messages.SetColor(hue, saturation, &brightness, kelvin, time.Millisecond, 0)
@@ -348,6 +372,10 @@ func deviceHasColor(capability DeviceCapability) bool {
 		return true
 	}
 	return capability.KelvinMin == 0 && capability.KelvinMax == 0
+}
+
+func isFixedKelvin(capability DeviceCapability) bool {
+	return capability.KelvinMin > 0 && capability.KelvinMin == capability.KelvinMax
 }
 
 func deviceKelvinMax(capability DeviceCapability) int {

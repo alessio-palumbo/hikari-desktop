@@ -15,6 +15,7 @@ export interface HslColor {
   h: number;
   s: number;
   l: number;
+  kelvin?: number;
 }
 
 export interface MatrixRow {
@@ -61,7 +62,33 @@ export interface DeviceSnapshot {
 }
 
 export function hsl(color: HslColor, lightness?: number): string {
+  if (color.kelvin && color.s === 0) return kelvinCss(color.kelvin, lightness ?? color.l);
   return `hsl(${color.h} ${Math.round(color.s * 100)}% ${Math.round((lightness ?? color.l) * 100)}%)`;
+}
+
+export function kelvinCss(kelvin: number, lightness = 0.72): string {
+  const t = Math.max(0, Math.min(1, (kelvin - 1500) / 7500));
+  const hue = 28 + (210 - 28) * t;
+  const saturation = 0.72 - 0.38 * t;
+  return `hsl(${hue} ${Math.round(saturation * 100)}% ${Math.round(lightness * 100)}%)`;
+}
+
+export function previewLightness(color: HslColor, brightness: number, on = true): number {
+  const baseLightness = previewBaseLightness(color);
+  if (!on) return Math.max(0.2, baseLightness * 0.45);
+  const scaled = 0.32 + Math.sqrt(Math.max(0, Math.min(1, brightness))) * 0.74;
+  return Math.max(0.28, Math.min(0.84, baseLightness * scaled));
+}
+
+export function previewOpacity(on = true): number {
+  if (!on) return 0.3;
+  return 1;
+}
+
+function previewBaseLightness(color: HslColor): number {
+  if (color.kelvin && color.s === 0) return 0.72;
+  if (color.s < 0.05) return 0.68;
+  return 0.58;
 }
 
 export function deviceColor(device: Device): HslColor {
