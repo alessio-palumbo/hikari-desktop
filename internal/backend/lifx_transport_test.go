@@ -138,14 +138,105 @@ func TestLifxTransportSetDeviceStateSendsSingleZonePowerOffOnly(t *testing.T) {
 	}
 }
 
-func TestLifxTransportSetDeviceStateKeepsMultizoneAndMatrixReadOnly(t *testing.T) {
+func TestLifxTransportSetDeviceStateSendsMultizonePowerAndColors(t *testing.T) {
+	controller := &fakeLifxController{}
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       "multizone",
+		On:         true,
+		Brightness: 0.33,
+		Kelvin:     5000,
+		Zones: []HSLColor{
+			{H: 10, S: 0.2, L: 0.4},
+			{H: 120, S: 0.8, L: 0.7},
+		},
+	}
 	transport := NewLifxTransportWithFactory(func() (lifxController, error) {
-		t.Fatal("non-single SetDeviceState should not create a controller")
-		return nil, nil
+		return controller, nil
 	})
 
-	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: Device{Serial: "d073d501a2c3", Kind: "multizone"}}); err != nil {
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device}); err != nil {
 		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	if len(controller.sends) != 2 {
+		t.Fatalf("sent %d messages, want 2", len(controller.sends))
+	}
+	if _, ok := controller.sends[0].msg.Payload.(*packets.DeviceSetPower); !ok {
+		t.Fatalf("first payload = %T, want *packets.DeviceSetPower", controller.sends[0].msg.Payload)
+	}
+	payload, ok := controller.sends[1].msg.Payload.(*packets.MultiZoneExtendedSetColorZones)
+	if !ok {
+		t.Fatalf("second payload = %T, want *packets.MultiZoneExtendedSetColorZones", controller.sends[1].msg.Payload)
+	}
+	if payload.Index != 0 || payload.ColorsCount != 2 {
+		t.Fatalf("multizone index/count = %d/%d, want 0/2", payload.Index, payload.ColorsCount)
+	}
+	first := lifxdevice.NewColor(payload.Colors[0])
+	if first.Hue != 10 || first.Saturation != 20 || first.Brightness != 33 || first.Kelvin != 5000 {
+		t.Fatalf("first zone color = %#v, want h=10 s=20 b=33 k=5000", first)
+	}
+}
+
+func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
+	controller := &fakeLifxController{}
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       "matrix",
+		On:         true,
+		Brightness: 0.66,
+		Kelvin:     2700,
+		Chain: []Matrix{
+			{
+				ID:   0,
+				W:    2,
+				Rows: []MatrixRow{{Cols: 2}, {Cols: 2}},
+				Pixels: []HSLColor{
+					{H: 200, S: 0.5, L: 0.2},
+					{H: 210, S: 0.5, L: 0.2},
+					{H: 220, S: 0.5, L: 0.2},
+					{H: 230, S: 0.5, L: 0.2},
+				},
+			},
+			{
+				ID:   1,
+				W:    2,
+				Rows: []MatrixRow{{Cols: 2}, {Cols: 2}},
+				Pixels: []HSLColor{
+					{H: 20, S: 0.7, L: 0.3},
+					{H: 30, S: 0.7, L: 0.3},
+					{H: 40, S: 0.7, L: 0.3},
+					{H: 50, S: 0.7, L: 0.3},
+				},
+			},
+		},
+	}
+	transport := NewLifxTransportWithFactory(func() (lifxController, error) {
+		return controller, nil
+	})
+
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	if len(controller.sends) != 3 {
+		t.Fatalf("sent %d messages, want 3", len(controller.sends))
+	}
+	firstTile, ok := controller.sends[1].msg.Payload.(*packets.TileSet64)
+	if !ok {
+		t.Fatalf("second payload = %T, want *packets.TileSet64", controller.sends[1].msg.Payload)
+	}
+	if firstTile.TileIndex != 0 || firstTile.Length != 2 || firstTile.Rect.Width != 2 {
+		t.Fatalf("first tile metadata = index %d length %d width %d, want 0/2/2", firstTile.TileIndex, firstTile.Length, firstTile.Rect.Width)
+	}
+	firstColor := lifxdevice.NewColor(firstTile.Colors[0])
+	if firstColor.Hue != 200 || firstColor.Saturation != 50 || firstColor.Brightness != 66 || firstColor.Kelvin != 2700 {
+		t.Fatalf("first matrix color = %#v, want h=200 s=50 b=66 k=2700", firstColor)
+	}
+	secondTile, ok := controller.sends[2].msg.Payload.(*packets.TileSet64)
+	if !ok {
+		t.Fatalf("third payload = %T, want *packets.TileSet64", controller.sends[2].msg.Payload)
+	}
+	if secondTile.TileIndex != 1 {
+		t.Fatalf("second tile index = %d, want 1", secondTile.TileIndex)
 	}
 }
 

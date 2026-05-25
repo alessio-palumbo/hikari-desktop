@@ -27,11 +27,10 @@ type lifxControllerFactory func() (lifxController, error)
 // LifxTransport adapts lifxlan-go behind DeviceTransport.
 //
 // Snapshot maps controller.GetDevices() into the frontend DTO. SetDeviceState
-// currently sends only single-zone power and color state. Later, multizone and
-// matrix updates should use:
-//   - multizone: messages.SetMultizoneExtendedColors
-//   - matrix: messages.SetMatrixColorsFromSlice, using MatrixProperties
-//     ChainZones and ChainOrientations to map UI chain state to device order.
+// sends power and color state for single-zone, multizone, and matrix devices.
+// Matrix orientation handling is still intentionally minimal: the UI draft chain
+// is sent in its current order, and MatrixProperties.ChainOrientations can be
+// folded in later if the editor starts storing orientation-aware coordinates.
 //
 // The controller is created lazily on first Snapshot so construction stays cheap
 // and tests can inject a fake controller factory.
@@ -60,12 +59,6 @@ func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 }
 
 func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error) {
-	if req.Device.Kind != "single" {
-		// Multizone and matrix editing remains frontend-only until their draft
-		// apply path is mapped to lifxlan-go.
-		return req.Device, nil
-	}
-
 	ctrl, err := t.getController()
 	if err != nil {
 		return req.Device, err
@@ -75,7 +68,7 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 		return req.Device, err
 	}
 
-	if err := sendSingleZoneState(ctx, ctrl, serial, req.Device); err != nil {
+	if err := sendDeviceState(ctx, ctrl, serial, req.Device); err != nil {
 		return req.Device, err
 	}
 	return req.Device, nil
@@ -198,29 +191,94 @@ func parseDeviceSerial(device Device) (lifxdevice.Serial, error) {
 	return lifxdevice.SerialFromHex(serial)
 }
 
-func sendSingleZoneState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device) error {
+func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if device.On {
-		if err := ctrl.Send(serial, messages.SetPowerOn()); err != nil {
-			return fmt.Errorf("set power on: %w", err)
-		}
-		if msg := singleZoneColorMessage(device); msg != nil {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if err := ctrl.Send(serial, msg); err != nil {
-				return fmt.Errorf("set color: %w", err)
-			}
+
+	if !device.On {
+		if err := ctrl.Send(serial, messages.SetPowerOff()); err != nil {
+			return fmt.Errorf("set power off: %w", err)
 		}
 		return nil
 	}
 
-	if err := ctrl.Send(serial, messages.SetPowerOff()); err != nil {
-		return fmt.Errorf("set power off: %w", err)
+	if err := ctrl.Send(serial, messages.SetPowerOn()); err != nil {
+		return fmt.Errorf("set power on: %w", err)
 	}
+
+	for _, msg := range deviceStateMessages(device) {
+		if msg == nil {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := ctrl.Send(serial, msg); err != nil {
+			return fmt.Errorf("set %s state: %w", device.Kind, err)
+		}
+	}
+
 	return nil
+}
+
+func deviceStateMessages(device Device) []*protocol.Message {
+	switch device.Kind {
+	case "single":
+		return []*protocol.Message{singleZoneColorMessage(device)}
+	case "multizone":
+		return messages.SetMultizoneExtendedColors(0, hslColorsToHSBK(device.Zones, device.Brightness, device.Kelvin), time.Millisecond)
+	case "matrix":
+		msgs := make([]*protocol.Message, 0)
+		for _, matrix := range device.Chain {
+			width := matrixWidth(matrix)
+			if width <= 0 {
+				continue
+			}
+			msgs = append(msgs, messages.SetMatrixColorsFromSlice(
+				matrix.ID,
+				len(device.Chain),
+				width,
+				hslColorsToHSBK(matrix.Pixels, device.Brightness, device.Kelvin),
+				time.Millisecond,
+			)...)
+		}
+		return msgs
+	default:
+		return nil
+	}
+}
+
+func matrixWidth(matrix Matrix) int {
+	for _, row := range matrix.Rows {
+		if row.Cols > 0 {
+			return row.Cols
+		}
+	}
+	return int(matrix.W)
+}
+
+func hslColorsToHSBK(colors []HSLColor, brightness float64, kelvin int) []packets.LightHsbk {
+	mapped := make([]packets.LightHsbk, len(colors))
+	for i, color := range colors {
+		mapped[i] = hslColorToHSBK(color, brightness, kelvin)
+	}
+	return mapped
+}
+
+func hslColorToHSBK(color HSLColor, brightness float64, kelvin int) packets.LightHsbk {
+	if brightness <= 0 {
+		brightness = color.L
+	}
+	if kelvin <= 0 {
+		kelvin = 3500
+	}
+	return lifxdevice.Color{
+		Hue:        clamp(color.H, 0, 360),
+		Saturation: clamp(color.S, 0, 1) * 100,
+		Brightness: clamp(brightness, 0, 1) * 100,
+		Kelvin:     uint16(clamp(float64(kelvin), 1500, 9000)),
+	}.ToDeviceColor()
 }
 
 func singleZoneColorMessage(device Device) *protocol.Message {
