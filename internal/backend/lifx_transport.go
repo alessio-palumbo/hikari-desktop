@@ -3,29 +3,32 @@ package backend
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
+	"time"
 
 	lifxcontroller "github.com/alessio-palumbo/lifxlan-go/pkg/controller"
 	lifxdevice "github.com/alessio-palumbo/lifxlan-go/pkg/device"
+	"github.com/alessio-palumbo/lifxlan-go/pkg/messages"
+	"github.com/alessio-palumbo/lifxlan-go/pkg/protocol"
 	"github.com/alessio-palumbo/lifxprotocol-go/gen/protocol/packets"
 )
 
-// lifxController is the read-only subset of lifxlan-go's controller.Controller
-// used by this milestone. Keeping this tiny interface makes Snapshot mapping
-// testable without starting network discovery in unit tests.
+// lifxController is the subset of lifxlan-go's controller.Controller used by
+// the transport. Keeping this tiny interface makes mapping and sends testable
+// without starting network discovery in unit tests.
 type lifxController interface {
 	GetDevices() []lifxdevice.Device
+	Send(lifxdevice.Serial, *protocol.Message) error
 }
 
 type lifxControllerFactory func() (lifxController, error)
 
 // LifxTransport adapts lifxlan-go behind DeviceTransport.
 //
-// Snapshot is read-only and maps controller.GetDevices() into the frontend DTO.
-// SetDeviceState intentionally does not send packets yet. Later, state updates
-// should use:
-//   - power: messages.SetPowerOn / messages.SetPowerOff
-//   - brightness/color/kelvin: messages.SetColor
+// Snapshot maps controller.GetDevices() into the frontend DTO. SetDeviceState
+// currently sends only single-zone power and color state. Later, multizone and
+// matrix updates should use:
 //   - multizone: messages.SetMultizoneExtendedColors
 //   - matrix: messages.SetMatrixColorsFromSlice, using MatrixProperties
 //     ChainZones and ChainOrientations to map UI chain state to device order.
@@ -57,8 +60,24 @@ func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 }
 
 func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error) {
-	// Read-only milestone: keep frontend optimistic behavior, but do not send
-	// packets to real devices until state synchronization is implemented.
+	if req.Device.Kind != "single" {
+		// Multizone and matrix editing remains frontend-only until their draft
+		// apply path is mapped to lifxlan-go.
+		return req.Device, nil
+	}
+
+	ctrl, err := t.getController()
+	if err != nil {
+		return req.Device, err
+	}
+	serial, err := parseDeviceSerial(req.Device)
+	if err != nil {
+		return req.Device, err
+	}
+
+	if err := sendSingleZoneState(ctx, ctrl, serial, req.Device); err != nil {
+		return req.Device, err
+	}
 	return req.Device, nil
 }
 
@@ -172,6 +191,67 @@ func mapLifxColor(color lifxdevice.Color) HSLColor {
 func mapLifxHSBK(color packets.LightHsbk) HSLColor {
 	c := lifxdevice.NewColor(color)
 	return mapLifxColor(c)
+}
+
+func parseDeviceSerial(device Device) (lifxdevice.Serial, error) {
+	serial := device.Serial
+	if serial == "" {
+		serial = device.ID
+	}
+	serial = strings.ReplaceAll(serial, ":", "")
+	return lifxdevice.SerialFromHex(serial)
+}
+
+func sendSingleZoneState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if device.On {
+		if err := ctrl.Send(serial, messages.SetPowerOn()); err != nil {
+			return fmt.Errorf("set power on: %w", err)
+		}
+		if msg := singleZoneColorMessage(device); msg != nil {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := ctrl.Send(serial, msg); err != nil {
+				return fmt.Errorf("set color: %w", err)
+			}
+		}
+		return nil
+	}
+
+	if err := ctrl.Send(serial, messages.SetPowerOff()); err != nil {
+		return fmt.Errorf("set power off: %w", err)
+	}
+	return nil
+}
+
+func singleZoneColorMessage(device Device) *protocol.Message {
+	brightness := clamp(device.Brightness, 0, 1) * 100
+	var hue, saturation *float64
+	if device.Color != nil {
+		h := clamp(device.Color.H, 0, 360)
+		s := clamp(device.Color.S, 0, 1) * 100
+		hue = &h
+		saturation = &s
+	}
+	var kelvin *uint16
+	if device.Kelvin > 0 {
+		k := uint16(clamp(float64(device.Kelvin), 1500, 9000))
+		kelvin = &k
+	}
+	return messages.SetColor(hue, saturation, &brightness, kelvin, time.Millisecond, 0)
+}
+
+func clamp(value, minValue, maxValue float64) float64 {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
 }
 
 func mapLightKind(lightType string) string {
