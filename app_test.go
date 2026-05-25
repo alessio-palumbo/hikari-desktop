@@ -17,6 +17,10 @@ func TestAppUsesTransport(t *testing.T) {
 	app := NewAppWithTransport(transport)
 	app.startup(context.Background())
 
+	if !transport.startCalled {
+		t.Fatal("expected Start to be called")
+	}
+
 	snapshot, err := app.GetDeviceSnapshot()
 	if err != nil {
 		t.Fatalf("GetDeviceSnapshot returned error: %v", err)
@@ -60,9 +64,15 @@ type recordingTransport struct {
 	snapshot       backend.DeviceSnapshot
 	device         backend.Device
 	err            error
+	startCalled    bool
 	snapshotCalled bool
 	setCalled      bool
 	lastReq        backend.SetDeviceStateRequest
+}
+
+func (t *recordingTransport) Start(ctx context.Context) error {
+	t.startCalled = true
+	return t.err
 }
 
 func (t *recordingTransport) Snapshot(ctx context.Context) (backend.DeviceSnapshot, error) {

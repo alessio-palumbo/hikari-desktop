@@ -25,6 +25,13 @@ export function Sidebar(props: SidebarProps) {
   const selectedLocationGroupIds = new Set(groupsInLocation.map((group) => group.id));
   const locationDevices = props.devices.filter((device) => selectedLocationGroupIds.has(device.groupId));
   const locationOn = locationDevices.some((device) => device.on);
+  const statusText = props.refreshError
+    ? props.refreshError
+    : props.devices.length
+      ? `${props.devices.length} LAN lights${props.refreshing ? ' · refreshing' : ''}`
+      : props.refreshing
+        ? 'discovering LAN devices'
+        : 'no LAN devices found';
 
   return (
     <aside className="left-panel sidebar">
@@ -39,7 +46,7 @@ export function Sidebar(props: SidebarProps) {
       </div>
 
       <div className="location-control">
-        <PowerDot on={locationOn} size={7} onChange={(next) => props.onLocationPower(props.selectedLocationId, next)} />
+        <PowerDot disabled={!props.selectedLocationId || !locationDevices.length} on={locationOn} size={7} onChange={(next) => props.onLocationPower(props.selectedLocationId, next)} />
         <select className="location-select" value={props.selectedLocationId} onChange={(event) => props.onLocationChange(event.target.value)}>
           {props.locations.map((location) => (
             <option key={location.id} value={location.id}>
@@ -69,7 +76,7 @@ export function Sidebar(props: SidebarProps) {
 
       <div className="lan-status" data-error={props.refreshError ? 'true' : 'false'}>
         <span />
-        <span>{props.refreshError ? props.refreshError : `${props.devices.length} lights${props.refreshing ? ' · refreshing' : ''}`}</span>
+        <span>{statusText}</span>
       </div>
     </aside>
   );

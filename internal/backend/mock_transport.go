@@ -10,6 +10,10 @@ func NewMockTransport() *MockTransport {
 	return &MockTransport{snapshot: MockDeviceSnapshot()}
 }
 
+func (t *MockTransport) Start(ctx context.Context) error {
+	return nil
+}
+
 func (t *MockTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	return t.snapshot, nil
 }

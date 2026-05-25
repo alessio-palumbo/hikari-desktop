@@ -78,7 +78,7 @@ export function DeviceList({ group, groups, devices, selectedSerial, searching, 
                 onChange={onDeviceChange}
               />
             ))}
-            {!devices.length ? <div className="empty-list">no lights in this group</div> : null}
+            {!devices.length ? <div className="empty-list">{refreshing ? 'discovering LAN devices' : group ? 'no LAN lights in this group' : 'no LAN devices found'}</div> : null}
           </section>
         )}
       </div>

@@ -3,8 +3,8 @@ package backend
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
-	"sync"
 	"time"
 
 	lifxcontroller "github.com/alessio-palumbo/lifxlan-go/pkg/controller"
@@ -22,8 +22,6 @@ type lifxController interface {
 	Send(lifxdevice.Serial, *protocol.Message) error
 }
 
-type lifxControllerFactory func() (lifxController, error)
-
 // LifxTransport adapts lifxlan-go behind DeviceTransport.
 //
 // Snapshot maps controller.GetDevices() into the frontend DTO. SetDeviceState
@@ -32,34 +30,49 @@ type lifxControllerFactory func() (lifxController, error)
 // is sent in its current order, and MatrixProperties.ChainOrientations can be
 // folded in later if the editor starts storing orientation-aware coordinates.
 //
-// The controller is created lazily on first Snapshot so construction stays cheap
-// and tests can inject a fake controller factory.
+// Start creates the controller and begins lifxlan-go discovery. Tests can inject
+// a fake controller directly with NewLifxTransportWithController.
 type LifxTransport struct {
-	mu         sync.Mutex
 	controller lifxController
-	factory    lifxControllerFactory
 }
 
 func NewLifxTransport() *LifxTransport {
-	return NewLifxTransportWithFactory(func() (lifxController, error) {
-		return lifxcontroller.New()
-	})
+	return &LifxTransport{}
 }
 
-func NewLifxTransportWithFactory(factory lifxControllerFactory) *LifxTransport {
-	return &LifxTransport{factory: factory}
+func NewLifxTransportWithController(controller lifxController) *LifxTransport {
+	return &LifxTransport{controller: controller}
+}
+
+func (t *LifxTransport) Start(ctx context.Context) error {
+	if t.controller != nil {
+		return nil
+	}
+	ctrl, err := lifxcontroller.New(
+		lifxcontroller.WithHFStateRefreshPeriod(2*time.Second),
+		lifxcontroller.WithLFStateRefreshPeriod(time.Minute),
+		lifxcontroller.WithPreflightHandshakeTimeout(10*time.Second),
+	)
+	if err != nil {
+		return fmt.Errorf("create lifx controller: %w", err)
+	}
+	log.Print("hikari: lifx controller created")
+	t.controller = ctrl
+	return nil
 }
 
 func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
-	ctrl, err := t.getController()
+	ctrl, err := t.requireController()
 	if err != nil {
 		return DeviceSnapshot{}, err
 	}
-	return mapLifxDevices(ctrl.GetDevices()), nil
+	devices := ctrl.GetDevices()
+	log.Printf("hikari: lifx snapshot read %d devices", len(devices))
+	return mapLifxDevices(devices), nil
 }
 
 func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error) {
-	ctrl, err := t.getController()
+	ctrl, err := t.requireController()
 	if err != nil {
 		return req.Device, err
 	}
@@ -69,27 +82,17 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 	}
 
 	if err := sendDeviceState(ctx, ctrl, serial, req.Device); err != nil {
+		log.Printf("hikari: set device state failed for %s: %v", req.Device.Serial, err)
 		return req.Device, err
 	}
 	return req.Device, nil
 }
 
-func (t *LifxTransport) getController() (lifxController, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
+func (t *LifxTransport) requireController() (lifxController, error) {
 	if t.controller != nil {
 		return t.controller, nil
 	}
-	if t.factory == nil {
-		return nil, fmt.Errorf("lifx controller factory is nil")
-	}
-	ctrl, err := t.factory()
-	if err != nil {
-		return nil, fmt.Errorf("create lifx controller: %w", err)
-	}
-	t.controller = ctrl
-	return ctrl, nil
+	return nil, fmt.Errorf("lifx transport has not been started")
 }
 
 func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {

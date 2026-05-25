@@ -37,9 +37,8 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 	}
 	dev.SetProductInfo(31)
 
-	transport := NewLifxTransportWithFactory(func() (lifxController, error) {
-		return &fakeLifxController{devices: []lifxdevice.Device{dev}}, nil
-	})
+	controller := &fakeLifxController{devices: []lifxdevice.Device{dev}}
+	transport := NewLifxTransportWithController(controller)
 
 	snapshot, err := transport.Snapshot(context.Background())
 	if err != nil {
@@ -66,6 +65,31 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 	}
 }
 
+func TestLifxTransportStartKeepsInjectedController(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+
+	if err := transport.Start(context.Background()); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	if err := transport.Start(context.Background()); err != nil {
+		t.Fatalf("second Start returned error: %v", err)
+	}
+	if transport.controller != controller {
+		t.Fatal("Start replaced injected controller")
+	}
+}
+
+func TestLifxTransportRequiresStart(t *testing.T) {
+	transport := NewLifxTransport()
+	if _, err := transport.Snapshot(context.Background()); err == nil {
+		t.Fatal("Snapshot returned nil error, want not started error")
+	}
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: Device{Serial: "d073d501a2c3", Kind: "single"}}); err == nil {
+		t.Fatal("SetDeviceState returned nil error, want not started error")
+	}
+}
+
 func TestLifxTransportSetDeviceStateSendsSingleZonePowerAndColor(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
@@ -77,9 +101,7 @@ func TestLifxTransportSetDeviceStateSendsSingleZonePowerAndColor(t *testing.T) {
 		Color:      &HSLColor{H: 210, S: 0.75, L: 0.6},
 		Kelvin:     4000,
 	}
-	transport := NewLifxTransportWithFactory(func() (lifxController, error) {
-		return controller, nil
-	})
+	transport := NewLifxTransportWithController(controller)
 
 	got, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device})
 	if err != nil {
@@ -119,9 +141,7 @@ func TestLifxTransportSetDeviceStateSendsSingleZonePowerAndColor(t *testing.T) {
 func TestLifxTransportSetDeviceStateSendsSingleZonePowerOffOnly(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{Serial: "d073d501a2c3", Kind: "single", On: false}
-	transport := NewLifxTransportWithFactory(func() (lifxController, error) {
-		return controller, nil
-	})
+	transport := NewLifxTransportWithController(controller)
 
 	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device}); err != nil {
 		t.Fatalf("SetDeviceState returned error: %v", err)
@@ -151,9 +171,7 @@ func TestLifxTransportSetDeviceStateSendsMultizonePowerAndColors(t *testing.T) {
 			{H: 120, S: 0.8, L: 0.7},
 		},
 	}
-	transport := NewLifxTransportWithFactory(func() (lifxController, error) {
-		return controller, nil
-	})
+	transport := NewLifxTransportWithController(controller)
 
 	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device}); err != nil {
 		t.Fatalf("SetDeviceState returned error: %v", err)
@@ -210,9 +228,7 @@ func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
 			},
 		},
 	}
-	transport := NewLifxTransportWithFactory(func() (lifxController, error) {
-		return controller, nil
-	})
+	transport := NewLifxTransportWithController(controller)
 
 	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device}); err != nil {
 		t.Fatalf("SetDeviceState returned error: %v", err)
