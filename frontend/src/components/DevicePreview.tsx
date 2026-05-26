@@ -11,7 +11,7 @@ export function DevicePreview({ device }: { device: Device }) {
   if (device.kind === 'multizone') {
     return (
       <span className="preview-zones" data-on={device.on ? 'true' : 'false'} style={{ opacity: previewOpacity(device.on) }}>
-        {device.zones?.map((zone, index) => <i key={index} style={{ background: hsl(zone, previewLightness(zone, device.brightness, device.on)) }} />)}
+        {device.zones?.map((zone, index) => <i key={index} style={{ background: hsl(zone, previewLightness(zone, zone.l || device.brightness, device.on)) }} />)}
       </span>
     );
   }
@@ -42,6 +42,7 @@ function MatrixPreview({ chain, on, brightness }: { chain: Matrix[]; on: boolean
         matrix.rows.flatMap((row, rowIndex) =>
           Array.from({ length: row.cols }, (_, columnIndex) => {
             const pixelIndex = matrix.rows.slice(0, rowIndex).reduce((sum, r) => sum + r.cols, 0) + columnIndex;
+            if (row.hiddenCols?.includes(columnIndex)) return null;
             const pixel = matrix.pixels[pixelIndex];
             return (
               <i
@@ -51,7 +52,7 @@ function MatrixPreview({ chain, on, brightness }: { chain: Matrix[]; on: boolean
                   top: (matrix.y - minY + rowIndex) * step,
                   width: cell,
                   height: cell,
-                  background: hsl(pixel, previewLightness(pixel, brightness, on)),
+                  background: hsl(pixel, previewLightness(pixel, pixel.l || brightness, on)),
                 }}
               />
             );

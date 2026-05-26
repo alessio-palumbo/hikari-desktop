@@ -83,13 +83,9 @@ export function App() {
       setDraft(undefined);
       return;
     }
-    if (selectedDevice.kind === 'single') {
-      setDraft(undefined);
-      return;
-    }
     setDraft((prev) => {
-      if (prev?.draft.serial === selectedDevice.serial && prev.dirty) return prev;
-      return createDraft(selectedDevice);
+      if (prev?.draft.serial === selectedDevice.serial) return prev.dirty ? prev : createDraft(selectedDevice);
+      return undefined;
     });
   }, [selectedDevice]);
 
@@ -164,23 +160,16 @@ export function App() {
   };
 
   const updateInspectorDevice = async (next: Device) => {
-    if (next.kind === 'single') {
+    if (next.kind === 'single' || !draft) {
       await updateListDevice(next);
       return;
     }
     setDraft((prev) => (prev ? updateDraft(prev, next) : createDraft(next)));
-    if (draft?.livePreview) {
-      const previous = snapshot.devices.find((device) => device.serial === next.serial);
-      recordPendingState(next, previous);
-      setDeviceLoading(next.serial, true);
-      try {
-        await setDeviceState(next, true);
-        setDeviceLoading(next.serial, false);
-      } catch (error) {
-        clearPendingState(next.serial);
-        setDeviceLoading(next.serial, false, errorMessage(error));
-      }
-    }
+  };
+
+  const enterEditMode = () => {
+    if (!selectedDevice || selectedDevice.kind === 'single') return;
+    setDraft((prev) => (prev?.draft.serial === selectedDevice.serial ? prev : createDraft(selectedDevice)));
   };
 
   const applyDraft = async () => {
@@ -256,17 +245,18 @@ export function App() {
 
       <Inspector
         device={inspectorDevice}
+        editing={!!draft}
         dirty={draft?.dirty ?? false}
-        livePreview={draft?.livePreview ?? false}
         canUndo={(draft?.history.length ?? 0) > 0}
         saving={saving}
         error={inspectorDevice ? deviceStatus[inspectorDevice.serial]?.error : undefined}
         onClose={() => setSelectedSerial(undefined)}
         onChange={updateInspectorDevice}
+        onEnterEditMode={enterEditMode}
+        onExitEditMode={() => setDraft(undefined)}
         onApply={applyDraft}
         onRevert={() => setDraft((prev) => (prev ? revertDraft(prev) : prev))}
         onUndo={() => setDraft((prev) => (prev ? undoDraft(prev) : prev))}
-        onLivePreviewChange={(enabled) => setDraft((prev) => (prev ? { ...prev, livePreview: enabled } : prev))}
       />
     </div>
   );

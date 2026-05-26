@@ -171,7 +171,7 @@ func mapLifxMatrixChain(d lifxdevice.Device, capability DeviceCapability) []Matr
 			Y:      0,
 			W:      float64(props.Width),
 			H:      float64(props.Height),
-			Rows:   makeMatrixRows(props.Width, props.Height),
+			Rows:   makeMatrixRowsForDevice(d),
 			Pixels: mapLifxColors(zones, capability),
 		})
 	}
@@ -184,6 +184,67 @@ func makeMatrixRows(width, height int) []MatrixRow {
 		rows[i] = MatrixRow{Cols: width}
 	}
 	return rows
+}
+
+func makeMatrixRowsForDevice(d lifxdevice.Device) []MatrixRow {
+	rows := makeMatrixRows(d.MatrixProperties.Width, d.MatrixProperties.Height)
+	if len(rows) == 0 {
+		return rows
+	}
+	hiddenCols := hiddenMatrixColsByRow(d.ProductID, d.MatrixProperties.Width)
+	for rowIndex, cols := range hiddenCols {
+		if rowIndex >= len(rows) {
+			continue
+		}
+		rows[rowIndex].HiddenCols = cols
+	}
+	if candleProducts[d.ProductID] && len(rows) > 0 {
+		rows[0].Offset = 1
+	}
+	return rows
+}
+
+func hiddenMatrixColsByRow(productID uint32, width int) map[int][]int {
+	hidden := hiddenMatrixIndexes(productID)
+	if len(hidden) == 0 || width <= 0 {
+		return nil
+	}
+	byRow := make(map[int][]int)
+	for _, index := range hidden {
+		byRow[index/width] = append(byRow[index/width], index%width)
+	}
+	return byRow
+}
+
+func hiddenMatrixIndexes(productID uint32) []int {
+	switch {
+	case candleProducts[productID]:
+		return []int{2, 3, 4}
+	case ceilingProducts[productID]:
+		return []int{0, 1, 6, 7, 56, 57, 62, 63}
+	case ceiling13Products[productID]:
+		return []int{0, 1, 14, 15, 112, 113, 126, 127}
+	case lunaProducts[productID]:
+		return []int{0, 6, 28, 34}
+	default:
+		return nil
+	}
+}
+
+var candleProducts = map[uint32]bool{
+	57: true, 68: true, 137: true, 138: true, 185: true, 186: true, 215: true, 216: true, 217: true, 218: true,
+}
+
+var ceilingProducts = map[uint32]bool{
+	176: true, 177: true, 197: true, 198: true, 199: true, 200: true,
+}
+
+var ceiling13Products = map[uint32]bool{
+	201: true, 202: true,
+}
+
+var lunaProducts = map[uint32]bool{
+	219: true, 220: true,
 }
 
 func mapLifxColors(colors []packets.LightHsbk, capability DeviceCapability) []HSLColor {
@@ -315,9 +376,7 @@ func hslColorsToHSBK(colors []HSLColor, brightness float64, kelvin int, capabili
 }
 
 func hslColorToHSBK(color HSLColor, brightness float64, kelvin int, capability DeviceCapability) packets.LightHsbk {
-	if brightness <= 0 {
-		brightness = color.L
-	}
+	brightness = color.L
 	if kelvin <= 0 {
 		kelvin = 3500
 	}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Brush, Droplet, Pipette, RotateCcw, Undo2, Wand2, X } from 'lucide-react';
+import { Brush, Droplet, LogOut, Pipette, RotateCcw, Undo2, Wand2, X } from 'lucide-react';
 import type { Device, HslColor } from '../domain/lifx';
 import { hsl, previewLightness, previewOpacity } from '../domain/lifx';
 import { ColorWheel, Slider } from './primitives';
@@ -10,17 +10,18 @@ type PaintTool = 'brush' | 'fill' | 'gradient' | 'picker';
 
 interface InspectorProps {
   device?: Device;
+  editing: boolean;
   dirty: boolean;
-  livePreview: boolean;
   canUndo: boolean;
   saving: boolean;
   error?: string;
   onClose: () => void;
   onChange: (device: Device) => void;
+  onEnterEditMode: () => void;
+  onExitEditMode: () => void;
   onApply: () => void;
   onRevert: () => void;
   onUndo: () => void;
-  onLivePreviewChange: (enabled: boolean) => void;
 }
 
 export function Inspector(props: InspectorProps) {
@@ -30,7 +31,7 @@ export function Inspector(props: InspectorProps) {
 
   const device = props.device;
   const [mode, setMode] = useState<PaintMode>('color');
-  const [tool, setTool] = useState<PaintTool>('brush');
+  const [tool, setTool] = useState<PaintTool | null>(null);
   const [paintColor, setPaintColor] = useState(() => initialPaintColor(device));
   const [whiteKelvin, setWhiteKelvin] = useState(() => clampKelvin(device.kelvin ?? 3500, device));
   const [whiteColor, setWhiteColor] = useState(() => kelvinToHsl(clampKelvin(device.kelvin ?? 3500, device)));
@@ -38,34 +39,65 @@ export function Inspector(props: InspectorProps) {
 
   useEffect(() => {
     setMode((device.capability?.hasColor ?? true) ? 'color' : 'white');
-    setTool('brush');
+    setTool(null);
     setPaintColor(initialPaintColor(device));
     const kelvin = clampKelvin(device.kelvin ?? 3500, device);
     setWhiteKelvin(kelvin);
     setWhiteColor(kelvinToHsl(kelvin));
   }, [device.serial]);
 
+  useEffect(() => {
+    if (!props.editing) {
+      setTool(null);
+      return;
+    }
+    setPaintColor((current) => ({ ...current, l: device.brightness }));
+    setWhiteColor((current) => ({ ...current, l: device.brightness }));
+  }, [device.brightness, props.editing]);
+
   const kelvinMin = device.capability?.kelvinMin ?? 2500;
   const kelvinMax = device.capability?.kelvinMax ?? 6500;
   const whiteValue = Math.max(0, Math.min(1, (whiteKelvin - kelvinMin) / Math.max(1, kelvinMax - kelvinMin)));
   const activePaintColor = mode === 'white' ? whiteColor : paintColor;
+  const brightnessValue = props.editing ? activePaintColor.l : device.brightness;
 
   const setColor = (color: HslColor) => {
-    setPaintColor(color);
-    if (device.kind === 'single' && hasColor) props.onChange({ ...device, color, on: true });
+    const next = { ...color, l: brightnessValue };
+    setPaintColor(next);
+    if (!props.editing && hasColor) props.onChange(applyDeviceColor(device, next));
   };
 
   const setKelvin = (value: number) => {
     const nextKelvin = Math.round(kelvinMin + value * (kelvinMax - kelvinMin));
-    const color = kelvinToHsl(nextKelvin);
+    const color = { ...kelvinToHsl(nextKelvin), l: brightnessValue };
     setWhiteKelvin(nextKelvin);
     setWhiteColor(color);
-    if (device.kind === 'single') props.onChange({ ...device, kelvin: nextKelvin, color, on: true });
+    if (!props.editing) props.onChange(applyDeviceColor(device, color));
+  };
+
+  const setBrightness = (value: number) => {
+    if (!props.editing) {
+      props.onChange(applyDeviceBrightness(device, value));
+      return;
+    }
+    if (mode === 'white') setWhiteColor((current) => ({ ...current, l: value }));
+    else setPaintColor((current) => ({ ...current, l: value }));
   };
 
   const pickColor = (color: HslColor) => {
-    if (mode === 'white') setWhiteColor(color);
-    else setPaintColor(color);
+    if (color.kelvin && color.s === 0) {
+      setMode('white');
+      setWhiteKelvin(clampKelvin(color.kelvin, device));
+      setWhiteColor(color);
+      return;
+    }
+    setMode('color');
+    setPaintColor(color);
+  };
+
+  const chooseTool = (next: PaintTool) => {
+    if (!props.editing) props.onEnterEditMode();
+    setTool(next);
   };
 
   return (
@@ -97,35 +129,41 @@ export function Inspector(props: InspectorProps) {
         <WhiteScale value={whiteValue} kelvinMin={kelvinMin} kelvinMax={kelvinMax} onChange={setKelvin} />
       )}
 
-      <Slider label="brightness" value={device.brightness} onChange={(value) => props.onChange({ ...device, brightness: value, on: value > 0 })} />
+      <Slider label={props.editing ? 'paint brightness' : 'brightness'} value={brightnessValue} onChange={setBrightness} />
       {props.error ? <div className="inspector-error">{props.error}</div> : null}
 
-      {device.kind !== 'single' ? <ToolToggle value={tool} onChange={setTool} /> : null}
-      {device.kind === 'multizone' ? (
-        <MultizoneDraftEditor device={device} paintColor={activePaintColor} tool={tool} onPickColor={pickColor} onChange={props.onChange} />
-      ) : null}
-      {device.kind === 'matrix' ? (
-        <MatrixDraftEditor device={device} paintColor={activePaintColor} tool={tool} onPickColor={pickColor} onChange={props.onChange} />
-      ) : null}
-
       {device.kind !== 'single' ? (
-        <footer className="draft-bar">
-          <label>
-            <input type="checkbox" checked={props.livePreview} onChange={(event) => props.onLivePreviewChange(event.target.checked)} />
-            live preview
-          </label>
-          <div className="draft-actions">
-            <button className="icon-button" aria-label="Undo" disabled={!props.canUndo} onClick={props.onUndo}>
-              <Undo2 size={15} />
-            </button>
-            <button className="icon-button" aria-label="Revert" disabled={!props.dirty} onClick={props.onRevert}>
-              <RotateCcw size={15} />
-            </button>
-            <button className="apply-button" disabled={!props.dirty || props.saving} onClick={props.onApply}>
-              {props.saving ? 'applying' : 'apply'}
+        <section className="edit-tools-section" data-editing={props.editing ? 'true' : 'false'}>
+          <div className="edit-tools-header">
+            <span>{props.editing ? 'editing layout' : 'layout tools'}</span>
+            <button type="button" className="exit-edit-button" disabled={!props.editing} aria-hidden={!props.editing} tabIndex={props.editing ? 0 : -1} onClick={props.onExitEditMode}>
+              <LogOut size={13} />
+              <span>exit</span>
             </button>
           </div>
-        </footer>
+          <ToolToggle value={tool} onChange={chooseTool} />
+          {props.editing && device.kind === 'multizone' ? (
+            <MultizoneDraftEditor device={device} paintColor={activePaintColor} tool={tool} onPickColor={pickColor} onChange={props.onChange} />
+          ) : null}
+          {props.editing && device.kind === 'matrix' ? (
+            <MatrixDraftEditor device={device} paintColor={activePaintColor} tool={tool} onPickColor={pickColor} onChange={props.onChange} />
+          ) : null}
+          {props.editing ? (
+            <footer className="draft-bar">
+              <div className="draft-actions">
+                <button className="icon-button" aria-label="Undo" disabled={!props.canUndo} onClick={props.onUndo}>
+                  <Undo2 size={15} />
+                </button>
+                <button className="icon-button" aria-label="Revert" disabled={!props.dirty} onClick={props.onRevert}>
+                  <RotateCcw size={15} />
+                </button>
+                <button className="apply-button" disabled={!props.dirty || props.saving} onClick={props.onApply}>
+                  {props.saving ? 'applying' : 'apply'}
+                </button>
+              </div>
+            </footer>
+          ) : null}
+        </section>
       ) : null}
     </aside>
   );
@@ -144,7 +182,7 @@ function ModeToggle({ value, hasColor, onChange }: { value: PaintMode; hasColor:
   );
 }
 
-function ToolToggle({ value, onChange }: { value: PaintTool; onChange: (value: PaintTool) => void }) {
+function ToolToggle({ value, onChange }: { value: PaintTool | null; onChange: (value: PaintTool) => void }) {
   const tools: Array<{ id: PaintTool; label: string; icon: typeof Brush }> = [
     { id: 'brush', label: 'Brush', icon: Brush },
     { id: 'fill', label: 'Fill', icon: Droplet },
@@ -194,13 +232,14 @@ function MultizoneDraftEditor({
 }: {
   device: Device;
   paintColor: HslColor;
-  tool: PaintTool;
+  tool: PaintTool | null;
   onPickColor: (color: HslColor) => void;
   onChange: (device: Device) => void;
 }) {
   const zones = device.zones ?? [];
   const dragPaintedRef = useRef<Set<number>>(new Set());
   const applyTool = (index: number) => {
+    if (!tool) return;
     const next = [...zones];
     if (tool === 'picker') {
       onPickColor(zones[index]);
@@ -235,7 +274,9 @@ function MultizoneDraftEditor({
       <h3>zones</h3>
       <div
         className="zone-editor"
+        data-editing="true"
         onPointerDown={(event) => {
+          if (!tool) return;
           const index = zoneFromPointer(event);
           if (index == null) return;
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -265,7 +306,7 @@ function MultizoneDraftEditor({
             key={index}
             data-zone-index={index}
             aria-label={`Paint zone ${index + 1}`}
-            style={{ background: hsl(zone, previewLightness(zone, device.brightness, device.on)), opacity: previewOpacity(device.on) }}
+            style={{ background: hsl(zone, previewLightness(zone, zone.l || device.brightness, device.on)), opacity: previewOpacity(device.on) }}
           />
         ))}
       </div>
@@ -282,13 +323,14 @@ function MatrixDraftEditor({
 }: {
   device: Device;
   paintColor: HslColor;
-  tool: PaintTool;
+  tool: PaintTool | null;
   onPickColor: (color: HslColor) => void;
   onChange: (device: Device) => void;
 }) {
   const chain = device.chain ?? [];
   const dragPaintedRef = useRef<Set<string>>(new Set());
   const applyTool = (matrixIndex: number, pixelIndex: number) => {
+    if (!tool) return;
     const sourceMatrix = chain[matrixIndex];
     const sourcePixel = sourceMatrix.pixels[pixelIndex];
     if (tool === 'picker') {
@@ -358,7 +400,9 @@ function MatrixDraftEditor({
       <h3>matrix</h3>
       <div
         className="matrix-editor"
+        data-editing="true"
         onPointerDown={(event) => {
+          if (!tool) return;
           const hit = pixelFromPointer(event);
           if (!hit) return;
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -384,16 +428,32 @@ function MatrixDraftEditor({
         }}
       >
         {chain.map((matrix, matrixIndex) => (
-          <div className="matrix-chain-entry" key={matrix.id}>
-            {matrix.pixels.map((pixel, pixelIndex) => (
-              <button
-                key={pixelIndex}
-                data-matrix-index={matrixIndex}
-                data-pixel-index={pixelIndex}
-                aria-label={`Paint matrix ${matrixIndex + 1} pixel ${pixelIndex + 1}`}
-                style={{ background: hsl(pixel, previewLightness(pixel, device.brightness, device.on)), opacity: previewOpacity(device.on) }}
-              />
-            ))}
+          <div
+            className="matrix-chain-entry"
+            key={matrix.id}
+            style={{ gridTemplateColumns: `repeat(${matrixGridCols(matrix)}, 8px)`, gridTemplateRows: `repeat(${matrix.rows.length}, 8px)` }}
+          >
+            {matrix.rows.flatMap((row, rowIndex) =>
+              Array.from({ length: row.cols }, (_, columnIndex) => {
+                const pixelIndex = matrix.rows.slice(0, rowIndex).reduce((sum, entry) => sum + entry.cols, 0) + columnIndex;
+                if (row.hiddenCols?.includes(columnIndex)) return null;
+                const pixel = matrix.pixels[pixelIndex];
+                return (
+                  <button
+                    key={pixelIndex}
+                    data-matrix-index={matrixIndex}
+                    data-pixel-index={pixelIndex}
+                    aria-label={`Paint matrix ${matrixIndex + 1} pixel ${pixelIndex + 1}`}
+                    style={{
+                      gridColumn: Math.round(row.offset + columnIndex) + 1,
+                      gridRow: rowIndex + 1,
+                      background: hsl(pixel, previewLightness(pixel, pixel.l || device.brightness, device.on)),
+                      opacity: previewOpacity(device.on),
+                    }}
+                  />
+                );
+              }),
+            )}
           </div>
         ))}
       </div>
@@ -411,6 +471,10 @@ function initialPaintColor(device: Device): HslColor {
   return { h: 38, s: 0.5, l: 0.55 };
 }
 
+function matrixGridCols(matrix: NonNullable<Device['chain']>[number]): number {
+  return Math.max(1, ...matrix.rows.map((row) => Math.ceil(row.offset + row.cols)), Math.round(matrix.w));
+}
+
 function kelvinToHsl(kelvin: number): HslColor {
   return { h: 0, s: 0, l: 0.72, kelvin };
 }
@@ -419,6 +483,49 @@ function clampKelvin(kelvin: number, device: Device): number {
   const min = device.capability?.kelvinMin ?? 2500;
   const max = device.capability?.kelvinMax ?? 6500;
   return Math.max(min, Math.min(max, kelvin));
+}
+
+function applyDeviceColor(device: Device, color: HslColor): Device {
+  const brightness = device.brightness > 0 ? device.brightness : Math.max(color.l, 0.55);
+  const nextColor = { ...color, l: brightness };
+  if (device.kind === 'single') {
+    return { ...device, on: true, brightness, color: nextColor, kelvin: nextColor.kelvin ?? device.kelvin };
+  }
+  if (device.kind === 'multizone') {
+    return {
+      ...device,
+      on: true,
+      brightness,
+      color: nextColor,
+      kelvin: nextColor.kelvin ?? device.kelvin,
+      zones: device.zones?.map(() => nextColor) ?? [],
+    };
+  }
+  return {
+    ...device,
+    on: true,
+    brightness,
+    color: nextColor,
+    kelvin: nextColor.kelvin ?? device.kelvin,
+    chain: device.chain?.map((matrix) => ({ ...matrix, pixels: matrix.pixels.map(() => nextColor) })) ?? [],
+  };
+}
+
+function applyDeviceBrightness(device: Device, brightness: number): Device {
+  const on = brightness > 0;
+  const withBrightness = (color: HslColor): HslColor => ({ ...color, l: brightness });
+  if (device.kind === 'single') {
+    return { ...device, on, brightness, color: device.color ? withBrightness(device.color) : device.color };
+  }
+  if (device.kind === 'multizone') {
+    return { ...device, on, brightness, zones: device.zones?.map(withBrightness) ?? [] };
+  }
+  return {
+    ...device,
+    on,
+    brightness,
+    chain: device.chain?.map((matrix) => ({ ...matrix, pixels: matrix.pixels.map(withBrightness) })) ?? [],
+  };
 }
 
 function applyLinearGradient(colors: HslColor[], anchorIndex: number, paintColor: HslColor): HslColor[] {

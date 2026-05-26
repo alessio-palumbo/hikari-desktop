@@ -6,7 +6,6 @@ export interface DeviceDraft {
   history: Device[];
   future: Device[];
   dirty: boolean;
-  livePreview: boolean;
 }
 
 export function createDraft(device: Device): DeviceDraft {
@@ -16,7 +15,6 @@ export function createDraft(device: Device): DeviceDraft {
     history: [],
     future: [],
     dirty: false,
-    livePreview: false,
   };
 }
 

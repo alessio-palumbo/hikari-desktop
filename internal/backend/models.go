@@ -19,8 +19,9 @@ type HSLColor struct {
 }
 
 type MatrixRow struct {
-	Cols   int     `json:"cols"`
-	Offset float64 `json:"offset"`
+	Cols       int     `json:"cols"`
+	Offset     float64 `json:"offset"`
+	HiddenCols []int   `json:"hiddenCols,omitempty"`
 }
 
 type Matrix struct {

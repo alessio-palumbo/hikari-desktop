@@ -21,6 +21,7 @@ export interface HslColor {
 export interface MatrixRow {
   cols: number;
   offset: number;
+  hiddenCols?: number[];
 }
 
 export interface Matrix {

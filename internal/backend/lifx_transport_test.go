@@ -143,6 +143,55 @@ func TestLifxTransportSnapshotMapsFixedKelvinAsWhite(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSnapshotMapsCandleAsIrregularMatrix(t *testing.T) {
+	serial, err := lifxdevice.SerialFromHex("d073d501a2c7")
+	if err != nil {
+		t.Fatalf("SerialFromHex returned error: %v", err)
+	}
+	zones := make([]packets.LightHsbk, 55)
+	for i := range zones {
+		zones[i] = packets.LightHsbk{Brightness: lifxdevice.ConvertExternalToDeviceValue(50, 100), Kelvin: 3500}
+	}
+	dev := lifxdevice.Device{
+		Serial:    serial,
+		Label:     "Candle",
+		Location:  "Studio",
+		Group:     "Desk",
+		PoweredOn: true,
+		Color:     lifxdevice.Color{Brightness: 50, Kelvin: 3500},
+		MatrixProperties: lifxdevice.MatrixProperties{
+			Width:      5,
+			Height:     11,
+			NZones:     55,
+			ChainZones: [][]packets.LightHsbk{zones},
+		},
+	}
+	dev.SetProductInfo(57)
+
+	snapshot := mapLifxDevices([]lifxdevice.Device{dev})
+	if len(snapshot.Devices) != 1 {
+		t.Fatalf("devices = %#v", snapshot.Devices)
+	}
+	matrix := snapshot.Devices[0].Chain[0]
+	if len(matrix.Pixels) != 55 {
+		t.Fatalf("pixels = %d, want 55", len(matrix.Pixels))
+	}
+	if len(matrix.Rows) != 11 {
+		t.Fatalf("rows = %d, want 11", len(matrix.Rows))
+	}
+	if got := matrix.Rows[0].HiddenCols; len(got) != 3 || got[0] != 2 || got[1] != 3 || got[2] != 4 {
+		t.Fatalf("first row hidden columns = %#v, want [2 3 4]", got)
+	}
+	if matrix.Rows[0].Offset != 1 {
+		t.Fatalf("first row offset = %v, want 1", matrix.Rows[0].Offset)
+	}
+	for i, row := range matrix.Rows[1:] {
+		if len(row.HiddenCols) != 0 {
+			t.Fatalf("row %d hidden columns = %#v, want none", i+1, row.HiddenCols)
+		}
+	}
+}
+
 func TestLifxTransportStartKeepsInjectedController(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
@@ -326,8 +375,8 @@ func TestLifxTransportSetDeviceStateSendsMultizonePowerAndColors(t *testing.T) {
 		t.Fatalf("multizone index/count = %d/%d, want 0/2", payload.Index, payload.ColorsCount)
 	}
 	first := lifxdevice.NewColor(payload.Colors[0])
-	if first.Hue != 10 || first.Saturation != 20 || first.Brightness != 33 || first.Kelvin != 5000 {
-		t.Fatalf("first zone color = %#v, want h=10 s=20 b=33 k=5000", first)
+	if first.Hue != 10 || first.Saturation != 20 || first.Brightness != 40 || first.Kelvin != 5000 {
+		t.Fatalf("first zone color = %#v, want h=10 s=20 b=40 k=5000", first)
 	}
 }
 
@@ -381,8 +430,8 @@ func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
 		t.Fatalf("first tile metadata = index %d length %d width %d, want 0/2/2", firstTile.TileIndex, firstTile.Length, firstTile.Rect.Width)
 	}
 	firstColor := lifxdevice.NewColor(firstTile.Colors[0])
-	if firstColor.Hue != 200 || firstColor.Saturation != 50 || firstColor.Brightness != 66 || firstColor.Kelvin != 2700 {
-		t.Fatalf("first matrix color = %#v, want h=200 s=50 b=66 k=2700", firstColor)
+	if firstColor.Hue != 200 || firstColor.Saturation != 50 || firstColor.Brightness != 20 || firstColor.Kelvin != 2700 {
+		t.Fatalf("first matrix color = %#v, want h=200 s=50 b=20 k=2700", firstColor)
 	}
 	secondTile, ok := controller.sends[2].msg.Payload.(*packets.TileSet64)
 	if !ok {
