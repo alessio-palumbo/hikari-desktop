@@ -4,7 +4,7 @@ import { DeviceList } from './components/DeviceList';
 import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
 import { commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
-import type { Device, DeviceSnapshot } from './domain/lifx';
+import type { Device, DeviceSnapshot, HslColor } from './domain/lifx';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
 const REFRESH_INTERVAL_MS = 5000;
@@ -145,17 +145,18 @@ export function App() {
 
   const updateListDevice = async (next: Device) => {
     const previous = snapshot.devices.find((device) => device.serial === next.serial);
-    replaceDevice(next);
-    recordPendingState(next, previous);
-    setDeviceLoading(next.serial, true);
+    const command = prepareDeviceCommand(next, previous);
+    replaceDevice(command);
+    recordPendingState(command, previous);
+    setDeviceLoading(command.serial, true);
     try {
-      const committed = await setDeviceState(next, true);
+      const committed = await setDeviceState(command, true);
       replaceDevice(committed);
-      setDeviceLoading(next.serial, false);
+      setDeviceLoading(command.serial, false);
     } catch (error) {
-      clearPendingState(next.serial);
+      clearPendingState(command.serial);
       if (previous) replaceDevice(previous);
-      setDeviceLoading(next.serial, false, errorMessage(error));
+      setDeviceLoading(command.serial, false, errorMessage(error));
     }
   };
 
@@ -268,6 +269,26 @@ function loadPreference(key: string): string {
 
 function savePreference(key: string, value: string) {
   if (value) window.localStorage.setItem(key, value);
+}
+
+function prepareDeviceCommand(next: Device, previous?: Device): Device {
+  if (!previous || near(previous.brightness, next.brightness) || next.kind === 'single') return next;
+  return applyBrightnessToZones(next, next.brightness);
+}
+
+function applyBrightnessToZones(device: Device, brightness: number): Device {
+  const withBrightness = (color: HslColor): HslColor => ({ ...color, l: brightness });
+  if (device.kind === 'multizone') {
+    return { ...device, zones: device.zones?.map(withBrightness) ?? [] };
+  }
+  if (device.kind === 'matrix') {
+    return { ...device, chain: device.chain?.map((matrix) => ({ ...matrix, pixels: matrix.pixels.map(withBrightness) })) ?? [] };
+  }
+  return device;
+}
+
+function near(a: number, b: number) {
+  return Math.abs(a - b) < 0.01;
 }
 
 function errorMessage(error: unknown): string {

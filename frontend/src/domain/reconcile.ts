@@ -4,7 +4,7 @@ export const PENDING_STATE_TIMEOUT_MS = 4500;
 
 export interface PendingDeviceState {
   serial: string;
-  expected: Pick<Partial<Device>, 'on' | 'brightness'>;
+  expected: Pick<Partial<Device>, 'on' | 'brightness' | 'color' | 'kelvin' | 'zones' | 'chain'>;
   expiresAt: number;
 }
 
@@ -45,13 +45,21 @@ export function createPendingState(device: Device, previous?: Device, now = Date
   const expected: PendingDeviceState['expected'] = {};
   if (!previous || previous.on !== device.on) expected.on = device.on;
   if (!previous || !near(previous.brightness, device.brightness)) expected.brightness = device.brightness;
-  if (expected.on === undefined && expected.brightness === undefined) return undefined;
+  if (!previous || !sameValue(previous.color, device.color)) expected.color = clone(device.color);
+  if (!previous || previous.kelvin !== device.kelvin) expected.kelvin = device.kelvin;
+  if (device.kind === 'multizone' && (!previous || !sameValue(previous.zones, device.zones))) expected.zones = clone(device.zones);
+  if (device.kind === 'matrix' && (!previous || !sameValue(previous.chain, device.chain))) expected.chain = clone(device.chain);
+  if (!hasExpectedState(expected)) return undefined;
   return { serial: device.serial, expected, expiresAt: now + PENDING_STATE_TIMEOUT_MS };
 }
 
 export function isPendingConfirmed(device: Device, pending: PendingDeviceState): boolean {
   if (pending.expected.on !== undefined && device.on !== pending.expected.on) return false;
   if (pending.expected.brightness !== undefined && !near(device.brightness, pending.expected.brightness)) return false;
+  if (pending.expected.color !== undefined && !sameValue(device.color, pending.expected.color)) return false;
+  if (pending.expected.kelvin !== undefined && device.kelvin !== pending.expected.kelvin) return false;
+  if (pending.expected.zones !== undefined && !sameValue(device.zones, pending.expected.zones)) return false;
+  if (pending.expected.chain !== undefined && !sameValue(device.chain, pending.expected.chain)) return false;
   return true;
 }
 
@@ -66,4 +74,17 @@ function applyPendingState(device: Device, pending: PendingDeviceState | undefin
 
 function near(a: number, b: number) {
   return Math.abs(a - b) < 0.01;
+}
+
+function sameValue(a: unknown, b: unknown) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+function clone<T>(value: T): T {
+  if (value === undefined) return value;
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function hasExpectedState(expected: PendingDeviceState['expected']) {
+  return Object.values(expected).some((value) => value !== undefined);
 }

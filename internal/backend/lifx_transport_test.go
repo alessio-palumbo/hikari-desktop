@@ -192,6 +192,85 @@ func TestLifxTransportSnapshotMapsCandleAsIrregularMatrix(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSnapshotMapsCeilingCustomGridProduct(t *testing.T) {
+	serial, err := lifxdevice.SerialFromHex("d073d501a2c8")
+	if err != nil {
+		t.Fatalf("SerialFromHex returned error: %v", err)
+	}
+	zones := make([]packets.LightHsbk, 64)
+	for i := range zones {
+		zones[i] = packets.LightHsbk{Brightness: lifxdevice.ConvertExternalToDeviceValue(50, 100), Kelvin: 3500}
+	}
+	dev := lifxdevice.Device{
+		Serial:    serial,
+		Label:     "Ceiling",
+		Location:  "Studio",
+		Group:     "Desk",
+		PoweredOn: true,
+		Color:     lifxdevice.Color{Brightness: 50, Kelvin: 3500},
+		MatrixProperties: lifxdevice.MatrixProperties{
+			Width:      8,
+			Height:     8,
+			NZones:     64,
+			ChainZones: [][]packets.LightHsbk{zones},
+		},
+	}
+	dev.SetProductInfo(265)
+
+	snapshot := mapLifxDevices([]lifxdevice.Device{dev})
+	if len(snapshot.Devices) != 1 {
+		t.Fatalf("devices = %#v", snapshot.Devices)
+	}
+	rows := snapshot.Devices[0].Chain[0].Rows
+	if len(rows[0].HiddenCols) != 4 || rows[0].HiddenCols[0] != 0 || rows[0].HiddenCols[1] != 1 || rows[0].HiddenCols[2] != 6 || rows[0].HiddenCols[3] != 7 {
+		t.Fatalf("first row hidden columns = %#v, want [0 1 6 7]", rows[0].HiddenCols)
+	}
+	if len(rows[7].HiddenCols) != 4 || rows[7].HiddenCols[0] != 0 || rows[7].HiddenCols[1] != 1 || rows[7].HiddenCols[2] != 6 || rows[7].HiddenCols[3] != 7 {
+		t.Fatalf("last row hidden columns = %#v, want [0 1 6 7]", rows[7].HiddenCols)
+	}
+}
+
+func TestLifxTransportSnapshotRendersCeilingCapsuleAsWideGridWhenDeviceReportsTallGrid(t *testing.T) {
+	serial, err := lifxdevice.SerialFromHex("d073d501a2c9")
+	if err != nil {
+		t.Fatalf("SerialFromHex returned error: %v", err)
+	}
+	zones := make([]packets.LightHsbk, 128)
+	for i := range zones {
+		zones[i] = packets.LightHsbk{Brightness: lifxdevice.ConvertExternalToDeviceValue(50, 100), Kelvin: 3500}
+	}
+	dev := lifxdevice.Device{
+		Serial:    serial,
+		Label:     "Ceiling Capsule",
+		Location:  "Studio",
+		Group:     "Desk",
+		PoweredOn: true,
+		Color:     lifxdevice.Color{Brightness: 50, Kelvin: 3500},
+		MatrixProperties: lifxdevice.MatrixProperties{
+			Width:      8,
+			Height:     16,
+			NZones:     128,
+			ChainZones: [][]packets.LightHsbk{zones},
+		},
+	}
+	dev.SetProductInfo(201)
+
+	snapshot := mapLifxDevices([]lifxdevice.Device{dev})
+	matrix := snapshot.Devices[0].Chain[0]
+	if matrix.SendWidth != 8 {
+		t.Fatalf("send width = %d, want original device width 8", matrix.SendWidth)
+	}
+	if matrix.W != 16 || matrix.H != 8 {
+		t.Fatalf("display size = %vx%v, want 16x8", matrix.W, matrix.H)
+	}
+	if len(matrix.Rows) != 8 || matrix.Rows[0].Cols != 16 {
+		t.Fatalf("rows = %#v, want 8 rows of 16 columns", matrix.Rows)
+	}
+	if len(matrix.Rows[0].HiddenCols) != 4 || matrix.Rows[0].HiddenCols[2] != 14 || matrix.Rows[0].HiddenCols[3] != 15 {
+		t.Fatalf("first row hidden columns = %#v, want [0 1 14 15]", matrix.Rows[0].HiddenCols)
+	}
+}
+
 func TestLifxTransportStartKeepsInjectedController(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
@@ -380,6 +459,34 @@ func TestLifxTransportSetDeviceStateSendsMultizonePowerAndColors(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSetDeviceStateSendsDirectMultizoneAsSingleColor(t *testing.T) {
+	controller := &fakeLifxController{}
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       "multizone",
+		On:         true,
+		Brightness: 0.33,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Kelvin:     5000,
+		Color:      &HSLColor{H: 10, S: 0.2, L: 0.4},
+		Zones: []HSLColor{
+			{H: 10, S: 0.2, L: 0.4},
+			{H: 120, S: 0.8, L: 0.7},
+		},
+	}
+	transport := NewLifxTransportWithController(controller)
+
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device, Preview: true}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	if len(controller.sends) != 2 {
+		t.Fatalf("sent %d messages, want 2", len(controller.sends))
+	}
+	if _, ok := controller.sends[1].msg.Payload.(*packets.LightSetWaveformOptional); !ok {
+		t.Fatalf("second payload = %T, want *packets.LightSetWaveformOptional", controller.sends[1].msg.Payload)
+	}
+}
+
 func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
@@ -439,6 +546,39 @@ func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
 	}
 	if secondTile.TileIndex != 1 {
 		t.Fatalf("second tile index = %d, want 1", secondTile.TileIndex)
+	}
+}
+
+func TestLifxTransportSetDeviceStateSendsDirectMatrixAsSingleColor(t *testing.T) {
+	controller := &fakeLifxController{}
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       "matrix",
+		On:         true,
+		Brightness: 0.66,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Kelvin:     2700,
+		Color:      &HSLColor{H: 200, S: 0.5, L: 0.2},
+		Chain: []Matrix{{
+			ID:   0,
+			W:    2,
+			Rows: []MatrixRow{{Cols: 2}},
+			Pixels: []HSLColor{
+				{H: 200, S: 0.5, L: 0.2},
+				{H: 210, S: 0.5, L: 0.2},
+			},
+		}},
+	}
+	transport := NewLifxTransportWithController(controller)
+
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device, Preview: true}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	if len(controller.sends) != 2 {
+		t.Fatalf("sent %d messages, want 2", len(controller.sends))
+	}
+	if _, ok := controller.sends[1].msg.Payload.(*packets.LightSetWaveformOptional); !ok {
+		t.Fatalf("second payload = %T, want *packets.LightSetWaveformOptional", controller.sends[1].msg.Payload)
 	}
 }
 

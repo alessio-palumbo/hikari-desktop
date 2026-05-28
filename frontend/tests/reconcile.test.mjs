@@ -66,6 +66,38 @@ test('overlays pending power and brightness over stale snapshot values', () => {
   assert.equal(got.devices[0].brightness, 0.2);
 });
 
+test('overlays pending multizone zones over stale snapshot values', () => {
+  const previous = { ...base.devices[0], zones: [{ h: 10, s: 0.8, l: 0.5 }] };
+  const optimistic = { ...previous, zones: [{ h: 240, s: 0.9, l: 0.7 }] };
+  const pending = createPendingState(optimistic, previous, 1000);
+  const incoming = { ...base, devices: [{ ...previous }] };
+
+  const got = reconcileSnapshot({ ...base, devices: [optimistic] }, incoming, { pending: { [optimistic.serial]: pending }, now: 2000 });
+
+  assert.equal(got.devices[0].zones[0].h, 240);
+  assert.equal(got.devices[0].zones[0].l, 0.7);
+});
+
+test('overlays pending matrix pixels over stale snapshot values', () => {
+  const previous = {
+    ...base.devices[0],
+    kind: 'matrix',
+    zones: undefined,
+    chain: [{ id: 0, x: 0, y: 0, w: 2, h: 1, rows: [{ cols: 2, offset: 0 }], pixels: [{ h: 10, s: 0.8, l: 0.5 }, { h: 20, s: 0.8, l: 0.5 }] }],
+  };
+  const optimistic = {
+    ...previous,
+    chain: [{ ...previous.chain[0], pixels: [{ h: 120, s: 0.9, l: 0.6 }, { h: 20, s: 0.8, l: 0.5 }] }],
+  };
+  const pending = createPendingState(optimistic, previous, 1000);
+  const incoming = { ...base, devices: [{ ...previous }] };
+
+  const got = reconcileSnapshot({ ...base, devices: [optimistic] }, incoming, { pending: { [optimistic.serial]: pending }, now: 2000 });
+
+  assert.equal(got.devices[0].chain[0].pixels[0].h, 120);
+  assert.equal(got.devices[0].chain[0].pixels[1].h, 20);
+});
+
 test('stops overlaying pending state after snapshot confirms it', () => {
   const previous = { ...base.devices[0], on: true, brightness: 0.8 };
   const optimistic = { ...previous, on: false, brightness: 0.2 };
@@ -78,6 +110,19 @@ test('stops overlaying pending state after snapshot confirms it', () => {
 
   assert.equal(got.devices[0].on, false);
   assert.equal(got.devices[0].brightness, 0.2);
+});
+
+test('stops overlaying pending zones after snapshot confirms them', () => {
+  const previous = { ...base.devices[0], zones: [{ h: 10, s: 0.8, l: 0.5 }] };
+  const optimistic = { ...previous, zones: [{ h: 240, s: 0.9, l: 0.7 }] };
+  const pending = createPendingState(optimistic, previous, 1000);
+  const incoming = { ...base, devices: [{ ...optimistic }] };
+
+  assert.equal(isPendingConfirmed(incoming.devices[0], pending), true);
+
+  const got = reconcileSnapshot({ ...base, devices: [optimistic] }, incoming, { pending: { [optimistic.serial]: pending }, now: 2000 });
+
+  assert.equal(got.devices[0].zones[0].h, 240);
 });
 
 test('lets expired pending state fall back to snapshot values', () => {

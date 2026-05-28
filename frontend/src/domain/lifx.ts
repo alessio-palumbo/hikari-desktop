@@ -30,6 +30,7 @@ export interface Matrix {
   y: number;
   w: number;
   h: number;
+  sendWidth?: number;
   rows: MatrixRow[];
   pixels: HslColor[];
 }

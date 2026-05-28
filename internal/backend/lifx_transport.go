@@ -81,7 +81,7 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 		return req.Device, err
 	}
 
-	if err := sendDeviceState(ctx, ctrl, serial, req.Device); err != nil {
+	if err := sendDeviceState(ctx, ctrl, serial, req.Device, req.Preview); err != nil {
 		log.Printf("hikari: set device state failed for %s: %v", req.Device.Serial, err)
 		return req.Device, err
 	}
@@ -165,14 +165,17 @@ func mapLifxMatrixChain(d lifxdevice.Device, capability DeviceCapability) []Matr
 	props := d.MatrixProperties
 	chain := make([]Matrix, 0, len(props.ChainZones))
 	for i, zones := range props.ChainZones {
+		rows := makeMatrixRowsForDevice(d, len(zones))
+		displayWidth := matrixRowsWidth(rows, props.Width)
 		chain = append(chain, Matrix{
-			ID:     i,
-			X:      float64(i * props.Width),
-			Y:      0,
-			W:      float64(props.Width),
-			H:      float64(props.Height),
-			Rows:   makeMatrixRowsForDevice(d),
-			Pixels: mapLifxColors(zones, capability),
+			ID:        i,
+			X:         float64(i) * displayWidth,
+			Y:         0,
+			W:         displayWidth,
+			H:         float64(len(rows)),
+			SendWidth: props.Width,
+			Rows:      rows,
+			Pixels:    mapLifxColors(zones, capability),
 		})
 	}
 	return chain
@@ -186,12 +189,13 @@ func makeMatrixRows(width, height int) []MatrixRow {
 	return rows
 }
 
-func makeMatrixRowsForDevice(d lifxdevice.Device) []MatrixRow {
-	rows := makeMatrixRows(d.MatrixProperties.Width, d.MatrixProperties.Height)
+func makeMatrixRowsForDevice(d lifxdevice.Device, pixels int) []MatrixRow {
+	width, height := displayMatrixDimensions(d, pixels)
+	rows := makeMatrixRows(width, height)
 	if len(rows) == 0 {
 		return rows
 	}
-	hiddenCols := hiddenMatrixColsByRow(d.ProductID, d.MatrixProperties.Width)
+	hiddenCols := hiddenMatrixColsByRow(d.ProductID, width)
 	for rowIndex, cols := range hiddenCols {
 		if rowIndex >= len(rows) {
 			continue
@@ -202,6 +206,24 @@ func makeMatrixRowsForDevice(d lifxdevice.Device) []MatrixRow {
 		rows[0].Offset = 1
 	}
 	return rows
+}
+
+func displayMatrixDimensions(d lifxdevice.Device, pixels int) (width, height int) {
+	width = d.MatrixProperties.Width
+	height = d.MatrixProperties.Height
+	if ceilingCapsuleProducts[d.ProductID] && pixels%16 == 0 {
+		width = 16
+		height = pixels / width
+	}
+	return width, height
+}
+
+func matrixRowsWidth(rows []MatrixRow, fallback int) float64 {
+	width := fallback
+	for _, row := range rows {
+		width = max(width, int(row.Offset)+row.Cols)
+	}
+	return float64(width)
 }
 
 func hiddenMatrixColsByRow(productID uint32, width int) map[int][]int {
@@ -222,7 +244,7 @@ func hiddenMatrixIndexes(productID uint32) []int {
 		return []int{2, 3, 4}
 	case ceilingProducts[productID]:
 		return []int{0, 1, 6, 7, 56, 57, 62, 63}
-	case ceiling13Products[productID]:
+	case ceilingCapsuleProducts[productID]:
 		return []int{0, 1, 14, 15, 112, 113, 126, 127}
 	case lunaProducts[productID]:
 		return []int{0, 6, 28, 34}
@@ -232,14 +254,14 @@ func hiddenMatrixIndexes(productID uint32) []int {
 }
 
 var candleProducts = map[uint32]bool{
-	57: true, 68: true, 137: true, 138: true, 185: true, 186: true, 215: true, 216: true, 217: true, 218: true,
+	57: true, 67: true, 68: true, 81: true, 96: true, 137: true, 138: true, 185: true, 186: true, 187: true, 188: true, 215: true, 216: true, 217: true, 218: true,
 }
 
 var ceilingProducts = map[uint32]bool{
-	176: true, 177: true, 197: true, 198: true, 199: true, 200: true,
+	145: true, 146: true, 176: true, 177: true, 265: true, 266: true,
 }
 
-var ceiling13Products = map[uint32]bool{
+var ceilingCapsuleProducts = map[uint32]bool{
 	201: true, 202: true,
 }
 
@@ -300,7 +322,7 @@ func parseDeviceSerial(device Device) (lifxdevice.Serial, error) {
 	return lifxdevice.SerialFromHex(serial)
 }
 
-func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device) error {
+func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device, direct bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -316,7 +338,7 @@ func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice
 		return fmt.Errorf("set power on: %w", err)
 	}
 
-	for _, msg := range deviceStateMessages(device) {
+	for _, msg := range deviceStateMessages(device, direct) {
 		if msg == nil {
 			continue
 		}
@@ -331,13 +353,19 @@ func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice
 	return nil
 }
 
-func deviceStateMessages(device Device) []*protocol.Message {
+func deviceStateMessages(device Device, direct bool) []*protocol.Message {
 	switch device.Kind {
 	case "single":
 		return []*protocol.Message{singleZoneColorMessage(device)}
 	case "multizone":
+		if direct {
+			return []*protocol.Message{singleZoneColorMessage(device)}
+		}
 		return messages.SetMultizoneExtendedColors(0, hslColorsToHSBK(device.Zones, device.Brightness, device.Kelvin, device.Capability), time.Millisecond)
 	case "matrix":
+		if direct {
+			return []*protocol.Message{singleZoneColorMessage(device)}
+		}
 		msgs := make([]*protocol.Message, 0)
 		for _, matrix := range device.Chain {
 			width := matrixWidth(matrix)
@@ -359,6 +387,9 @@ func deviceStateMessages(device Device) []*protocol.Message {
 }
 
 func matrixWidth(matrix Matrix) int {
+	if matrix.SendWidth > 0 {
+		return matrix.SendWidth
+	}
 	for _, row := range matrix.Rows {
 		if row.Cols > 0 {
 			return row.Cols

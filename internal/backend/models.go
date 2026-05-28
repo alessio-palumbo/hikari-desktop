@@ -25,13 +25,14 @@ type MatrixRow struct {
 }
 
 type Matrix struct {
-	ID     int         `json:"id"`
-	X      float64     `json:"x"`
-	Y      float64     `json:"y"`
-	W      float64     `json:"w"`
-	H      float64     `json:"h"`
-	Rows   []MatrixRow `json:"rows"`
-	Pixels []HSLColor  `json:"pixels"`
+	ID        int         `json:"id"`
+	X         float64     `json:"x"`
+	Y         float64     `json:"y"`
+	W         float64     `json:"w"`
+	H         float64     `json:"h"`
+	SendWidth int         `json:"sendWidth,omitempty"`
+	Rows      []MatrixRow `json:"rows"`
+	Pixels    []HSLColor  `json:"pixels"`
 }
 
 type Device struct {
