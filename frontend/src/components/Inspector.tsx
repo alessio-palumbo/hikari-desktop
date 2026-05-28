@@ -7,6 +7,7 @@ import './Inspector.css';
 
 type PaintMode = 'color' | 'white';
 type PaintTool = 'brush' | 'fill' | 'gradient' | 'picker';
+type GradientStops = { start?: HslColor; end?: HslColor };
 
 interface InspectorProps {
   device?: Device;
@@ -35,6 +36,7 @@ export function Inspector(props: InspectorProps) {
   const [paintColor, setPaintColor] = useState(() => initialPaintColor(device));
   const [whiteKelvin, setWhiteKelvin] = useState(() => clampKelvin(device.kelvin ?? 3500, device));
   const [whiteColor, setWhiteColor] = useState(() => kelvinToHsl(clampKelvin(device.kelvin ?? 3500, device)));
+  const [gradientStops, setGradientStops] = useState<GradientStops>({});
   const hasColor = device.capability?.hasColor ?? true;
 
   useEffect(() => {
@@ -44,6 +46,7 @@ export function Inspector(props: InspectorProps) {
     const kelvin = clampKelvin(device.kelvin ?? 3500, device);
     setWhiteKelvin(kelvin);
     setWhiteColor(kelvinToHsl(kelvin));
+    setGradientStops({});
   }, [device.serial]);
 
   useEffect(() => {
@@ -64,6 +67,7 @@ export function Inspector(props: InspectorProps) {
   const setColor = (color: HslColor) => {
     const next = { ...color, l: brightnessValue };
     setPaintColor(next);
+    recordGradientColor(next);
     if (!props.editing && hasColor) props.onChange(applyDeviceColor(device, next));
   };
 
@@ -72,6 +76,7 @@ export function Inspector(props: InspectorProps) {
     const color = { ...kelvinToHsl(nextKelvin), l: brightnessValue };
     setWhiteKelvin(nextKelvin);
     setWhiteColor(color);
+    recordGradientColor(color);
     if (!props.editing) props.onChange(applyDeviceColor(device, color));
   };
 
@@ -97,7 +102,16 @@ export function Inspector(props: InspectorProps) {
 
   const chooseTool = (next: PaintTool) => {
     if (!props.editing) props.onEnterEditMode();
+    if (next === 'gradient' && tool !== 'gradient') setGradientStops({});
     setTool(next);
+  };
+
+  const recordGradientColor = (color: HslColor) => {
+    if (!props.editing || tool !== 'gradient') return;
+    setGradientStops((current) => {
+      if (!current.start) return { start: color };
+      return { start: current.end ?? current.start, end: color };
+    });
   };
 
   return (
@@ -142,11 +156,12 @@ export function Inspector(props: InspectorProps) {
             </button>
           </div>
           <ToolToggle value={tool} onChange={chooseTool} />
+          {props.editing && tool === 'gradient' ? <GradientStopsPreview stops={gradientStops} /> : null}
           {props.editing && device.kind === 'multizone' ? (
-            <MultizoneDraftEditor device={device} paintColor={activePaintColor} tool={tool} onPickColor={pickColor} onChange={props.onChange} />
+            <MultizoneDraftEditor device={device} paintColor={activePaintColor} gradientStops={gradientStops} tool={tool} onPickColor={pickColor} onChange={props.onChange} />
           ) : null}
           {props.editing && device.kind === 'matrix' ? (
-            <MatrixDraftEditor device={device} paintColor={activePaintColor} tool={tool} onPickColor={pickColor} onChange={props.onChange} />
+            <MatrixDraftEditor device={device} paintColor={activePaintColor} gradientStops={gradientStops} tool={tool} onPickColor={pickColor} onChange={props.onChange} />
           ) : null}
           {props.editing ? (
             <footer className="draft-bar">
@@ -166,6 +181,16 @@ export function Inspector(props: InspectorProps) {
         </section>
       ) : null}
     </aside>
+  );
+}
+
+function GradientStopsPreview({ stops }: { stops: GradientStops }) {
+  return (
+    <div className="gradient-stops" aria-label="Gradient colors">
+      <span className="gradient-stop" data-empty={!stops.start ? 'true' : 'false'} style={{ background: stops.start ? hsl(stops.start) : undefined }} />
+      <span className="gradient-arrow" />
+      <span className="gradient-stop" data-empty={!stops.end ? 'true' : 'false'} style={{ background: stops.end ? hsl(stops.end) : undefined }} />
+    </div>
   );
 }
 
@@ -226,12 +251,14 @@ function WhiteScale({ value, kelvinMin, kelvinMax, onChange }: { value: number; 
 function MultizoneDraftEditor({
   device,
   paintColor,
+  gradientStops,
   tool,
   onPickColor,
   onChange,
 }: {
   device: Device;
   paintColor: HslColor;
+  gradientStops: GradientStops;
   tool: PaintTool | null;
   onPickColor: (color: HslColor) => void;
   onChange: (device: Device) => void;
@@ -250,7 +277,8 @@ function MultizoneDraftEditor({
       return;
     }
     if (tool === 'gradient') {
-      onChange({ ...device, zones: applyLinearGradient(zones, index, paintColor) });
+      const gradient = applyMultizoneGradient(zones, gradientStops);
+      if (gradient) onChange({ ...device, zones: gradient });
       return;
     }
     next[index] = paintColor;
@@ -317,12 +345,14 @@ function MultizoneDraftEditor({
 function MatrixDraftEditor({
   device,
   paintColor,
+  gradientStops,
   tool,
   onPickColor,
   onChange,
 }: {
   device: Device;
   paintColor: HslColor;
+  gradientStops: GradientStops;
   tool: PaintTool | null;
   onPickColor: (color: HslColor) => void;
   onChange: (device: Device) => void;
@@ -345,19 +375,11 @@ function MatrixDraftEditor({
       return;
     }
     if (tool === 'gradient') {
-      const allPixels = chain.reduce((sum, matrix) => sum + matrix.pixels.length, 0);
-      let cursor = 0;
-      const targetOffset = chain.slice(0, matrixIndex).reduce((sum, matrix) => sum + matrix.pixels.length, 0) + pixelIndex;
+      const gradient = applyMatrixGradient(sourceMatrix, gradientStops);
+      if (!gradient) return;
       onChange({
         ...device,
-        chain: chain.map((matrix) => {
-          const pixels = matrix.pixels.map((pixel) => {
-            const color = interpolateHsl(pixel, paintColor, 1 - Math.abs(cursor - targetOffset) / Math.max(1, allPixels - 1));
-            cursor += 1;
-            return color;
-          });
-          return { ...matrix, pixels };
-        }),
+        chain: chain.map((matrix, index) => (index === matrixIndex ? { ...matrix, pixels: gradient } : matrix)),
       });
       return;
     }
@@ -528,8 +550,23 @@ function applyDeviceBrightness(device: Device, brightness: number): Device {
   };
 }
 
-function applyLinearGradient(colors: HslColor[], anchorIndex: number, paintColor: HslColor): HslColor[] {
-  return colors.map((color, index) => interpolateHsl(color, paintColor, 1 - Math.abs(index - anchorIndex) / Math.max(1, colors.length - 1)));
+function applyMultizoneGradient(colors: HslColor[], stops: GradientStops): HslColor[] | undefined {
+  if (!stops.start || !stops.end) return undefined;
+  return colors.map((_, index) => interpolateHsl(stops.start!, stops.end!, index / Math.max(1, colors.length - 1)));
+}
+
+function applyMatrixGradient(matrix: NonNullable<Device['chain']>[number], stops: GradientStops): HslColor[] | undefined {
+  if (!stops.start || !stops.end) return undefined;
+  const pixels = [...matrix.pixels];
+  const width = matrixGridCols(matrix);
+  for (const [rowIndex, row] of matrix.rows.entries()) {
+    const rowStart = matrix.rows.slice(0, rowIndex).reduce((sum, entry) => sum + entry.cols, 0);
+    for (let columnIndex = 0; columnIndex < row.cols; columnIndex += 1) {
+      const pixelIndex = rowStart + columnIndex;
+      pixels[pixelIndex] = interpolateHsl(stops.start, stops.end, (row.offset + columnIndex) / Math.max(1, width - 1));
+    }
+  }
+  return pixels;
 }
 
 function interpolateHsl(from: HslColor, to: HslColor, amount: number): HslColor {

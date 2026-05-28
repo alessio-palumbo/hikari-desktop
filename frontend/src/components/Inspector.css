@@ -165,6 +165,44 @@
   color: var(--fg-0);
 }
 
+.gradient-stops {
+  display: grid;
+  grid-template-columns: 1fr 18px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.gradient-stop {
+  height: 16px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: oklch(1 0 0 / 0.035);
+}
+
+.gradient-stop[data-empty="true"] {
+  background:
+    linear-gradient(135deg, transparent 47%, var(--fg-4) 48%, var(--fg-4) 52%, transparent 53%),
+    oklch(1 0 0 / 0.02);
+}
+
+.gradient-arrow {
+  height: 1px;
+  background: var(--fg-4);
+  position: relative;
+}
+
+.gradient-arrow::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-top: 1px solid var(--fg-4);
+  border-right: 1px solid var(--fg-4);
+  transform: rotate(45deg);
+}
+
 .temperature-label {
   display: flex;
   justify-content: space-between;
