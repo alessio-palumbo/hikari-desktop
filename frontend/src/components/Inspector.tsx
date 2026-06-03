@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Brush, Droplet, LogOut, Pipette, RotateCcw, Undo2, Wand2, X } from 'lucide-react';
+import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, LogOut, Pipette, RotateCcw, Undo2, Wand2, X } from 'lucide-react';
 import type { Device, HslColor } from '../domain/lifx';
 import { hsl, previewLightness, previewOpacity } from '../domain/lifx';
 import { ColorWheel, Slider } from './primitives';
@@ -8,6 +8,7 @@ import './Inspector.css';
 type PaintMode = 'color' | 'white';
 type PaintTool = 'brush' | 'fill' | 'gradient' | 'picker';
 type GradientStops = { start?: HslColor; end?: HslColor };
+type GradientDirection = 'e' | 'w' | 's' | 'n' | 'se' | 'nw' | 'ne' | 'sw';
 
 interface InspectorProps {
   device?: Device;
@@ -37,6 +38,7 @@ export function Inspector(props: InspectorProps) {
   const [whiteKelvin, setWhiteKelvin] = useState(() => clampKelvin(device.kelvin ?? 3500, device));
   const [whiteColor, setWhiteColor] = useState(() => kelvinToHsl(clampKelvin(device.kelvin ?? 3500, device)));
   const [gradientStops, setGradientStops] = useState<GradientStops>({});
+  const [gradientDirection, setGradientDirection] = useState<GradientDirection>('e');
   const hasColor = device.capability?.hasColor ?? true;
 
   useEffect(() => {
@@ -47,6 +49,7 @@ export function Inspector(props: InspectorProps) {
     setWhiteKelvin(kelvin);
     setWhiteColor(kelvinToHsl(kelvin));
     setGradientStops({});
+    setGradientDirection('e');
   }, [device.serial]);
 
   useEffect(() => {
@@ -156,12 +159,30 @@ export function Inspector(props: InspectorProps) {
             </button>
           </div>
           <ToolToggle value={tool} onChange={chooseTool} />
-          {props.editing && tool === 'gradient' ? <GradientStopsPreview stops={gradientStops} /> : null}
+          {props.editing && tool === 'gradient' ? (
+            <GradientControls deviceKind={device.kind} stops={gradientStops} direction={gradientDirection} onDirectionChange={setGradientDirection} />
+          ) : null}
           {props.editing && device.kind === 'multizone' ? (
-            <MultizoneDraftEditor device={device} paintColor={activePaintColor} gradientStops={gradientStops} tool={tool} onPickColor={pickColor} onChange={props.onChange} />
+            <MultizoneDraftEditor
+              device={device}
+              paintColor={activePaintColor}
+              gradientStops={gradientStops}
+              gradientDirection={gradientDirection}
+              tool={tool}
+              onPickColor={pickColor}
+              onChange={props.onChange}
+            />
           ) : null}
           {props.editing && device.kind === 'matrix' ? (
-            <MatrixDraftEditor device={device} paintColor={activePaintColor} gradientStops={gradientStops} tool={tool} onPickColor={pickColor} onChange={props.onChange} />
+            <MatrixDraftEditor
+              device={device}
+              paintColor={activePaintColor}
+              gradientStops={gradientStops}
+              gradientDirection={gradientDirection}
+              tool={tool}
+              onPickColor={pickColor}
+              onChange={props.onChange}
+            />
           ) : null}
           {props.editing ? (
             <footer className="draft-bar">
@@ -184,12 +205,50 @@ export function Inspector(props: InspectorProps) {
   );
 }
 
-function GradientStopsPreview({ stops }: { stops: GradientStops }) {
+function GradientControls({
+  deviceKind,
+  stops,
+  direction,
+  onDirectionChange,
+}: {
+  deviceKind: Device['kind'];
+  stops: GradientStops;
+  direction: GradientDirection;
+  onDirectionChange: (direction: GradientDirection) => void;
+}) {
+  const directions: Array<{ id: GradientDirection; label: string; icon: typeof ArrowRight }> =
+    deviceKind === 'multizone'
+      ? [
+          { id: 'e', label: 'Forward', icon: ArrowRight },
+          { id: 'w', label: 'Reverse', icon: ArrowLeft },
+        ]
+      : [
+          { id: 'e', label: 'Right', icon: ArrowRight },
+          { id: 'se', label: 'Down right', icon: ArrowDownRight },
+          { id: 's', label: 'Down', icon: ArrowDown },
+          { id: 'sw', label: 'Down left', icon: ArrowDownLeft },
+          { id: 'w', label: 'Left', icon: ArrowLeft },
+          { id: 'nw', label: 'Up left', icon: ArrowUpLeft },
+          { id: 'n', label: 'Up', icon: ArrowUp },
+          { id: 'ne', label: 'Up right', icon: ArrowUpRight },
+        ];
   return (
-    <div className="gradient-stops" aria-label="Gradient colors">
-      <span className="gradient-stop" data-empty={!stops.start ? 'true' : 'false'} style={{ background: stops.start ? hsl(stops.start) : undefined }} />
-      <span className="gradient-arrow" />
-      <span className="gradient-stop" data-empty={!stops.end ? 'true' : 'false'} style={{ background: stops.end ? hsl(stops.end) : undefined }} />
+    <div className="gradient-controls">
+      <div className="gradient-stops" aria-label="Gradient colors">
+        <span className="gradient-stop" data-empty={!stops.start ? 'true' : 'false'} style={{ background: stops.start ? hsl(stops.start) : undefined }} />
+        <span className="gradient-arrow" />
+        <span className="gradient-stop" data-empty={!stops.end ? 'true' : 'false'} style={{ background: stops.end ? hsl(stops.end) : undefined }} />
+      </div>
+      <div className="gradient-directions" data-kind={deviceKind} aria-label="Gradient direction">
+        {directions.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button key={item.id} type="button" aria-label={item.label} title={item.label} data-active={direction === item.id} onClick={() => onDirectionChange(item.id)}>
+              <Icon size={10} strokeWidth={1.8} />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -252,6 +311,7 @@ function MultizoneDraftEditor({
   device,
   paintColor,
   gradientStops,
+  gradientDirection,
   tool,
   onPickColor,
   onChange,
@@ -259,16 +319,18 @@ function MultizoneDraftEditor({
   device: Device;
   paintColor: HslColor;
   gradientStops: GradientStops;
+  gradientDirection: GradientDirection;
   tool: PaintTool | null;
   onPickColor: (color: HslColor) => void;
   onChange: (device: Device) => void;
 }) {
   const zones = device.zones ?? [];
   const dragPaintedRef = useRef<Set<number>>(new Set());
-  const applyTool = (index: number) => {
+  const applyTool = (index?: number) => {
     if (!tool) return;
     const next = [...zones];
     if (tool === 'picker') {
+      if (index == null) return;
       onPickColor(zones[index]);
       return;
     }
@@ -277,10 +339,11 @@ function MultizoneDraftEditor({
       return;
     }
     if (tool === 'gradient') {
-      const gradient = applyMultizoneGradient(zones, gradientStops);
+      const gradient = applyMultizoneGradient(zones, gradientStops, gradientDirection);
       if (gradient) onChange({ ...device, zones: gradient });
       return;
     }
+    if (index == null) return;
     next[index] = paintColor;
     onChange({ ...device, zones: next });
   };
@@ -306,12 +369,13 @@ function MultizoneDraftEditor({
         onPointerDown={(event) => {
           if (!tool) return;
           const index = zoneFromPointer(event);
-          if (index == null) return;
+          if (index == null && tool !== 'fill' && tool !== 'gradient') return;
           event.currentTarget.setPointerCapture(event.pointerId);
           if (tool !== 'brush') {
-            applyTool(index);
+            applyTool(index ?? undefined);
             return;
           }
+          if (index == null) return;
           dragPaintedRef.current = new Set();
           applyBrush(index);
         }}
@@ -346,6 +410,7 @@ function MatrixDraftEditor({
   device,
   paintColor,
   gradientStops,
+  gradientDirection,
   tool,
   onPickColor,
   onChange,
@@ -353,17 +418,19 @@ function MatrixDraftEditor({
   device: Device;
   paintColor: HslColor;
   gradientStops: GradientStops;
+  gradientDirection: GradientDirection;
   tool: PaintTool | null;
   onPickColor: (color: HslColor) => void;
   onChange: (device: Device) => void;
 }) {
   const chain = device.chain ?? [];
   const dragPaintedRef = useRef<Set<string>>(new Set());
-  const applyTool = (matrixIndex: number, pixelIndex: number) => {
+  const applyTool = (matrixIndex: number, pixelIndex?: number) => {
     if (!tool) return;
     const sourceMatrix = chain[matrixIndex];
-    const sourcePixel = sourceMatrix.pixels[pixelIndex];
     if (tool === 'picker') {
+      if (pixelIndex == null) return;
+      const sourcePixel = sourceMatrix.pixels[pixelIndex];
       onPickColor(sourcePixel);
       return;
     }
@@ -375,7 +442,7 @@ function MatrixDraftEditor({
       return;
     }
     if (tool === 'gradient') {
-      const gradient = applyMatrixGradient(sourceMatrix, gradientStops);
+      const gradient = applyMatrixGradient(sourceMatrix, gradientStops, gradientDirection);
       if (!gradient) return;
       onChange({
         ...device,
@@ -383,6 +450,7 @@ function MatrixDraftEditor({
       });
       return;
     }
+    if (pixelIndex == null) return;
     onChange({
       ...device,
       chain: chain.map((matrix, index) => {
@@ -416,6 +484,29 @@ function MatrixDraftEditor({
       pixelIndex: Number(button.dataset.pixelIndex),
     };
   };
+  const matrixIndexFromPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    const entry = target instanceof HTMLElement ? target.closest<HTMLElement>('[data-matrix-entry-index]') : null;
+    if (entry) return Number(entry.dataset.matrixEntryIndex);
+    return nearestMatrixIndex(event);
+  };
+  const nearestMatrixIndex = (event: React.PointerEvent<HTMLDivElement>) => {
+    const entries = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-matrix-entry-index]'));
+    if (!entries.length) return null;
+    let nearest = Number(entries[0].dataset.matrixEntryIndex);
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const entry of entries) {
+      const rect = entry.getBoundingClientRect();
+      const clampedX = Math.max(rect.left, Math.min(event.clientX, rect.right));
+      const clampedY = Math.max(rect.top, Math.min(event.clientY, rect.bottom));
+      const distance = (event.clientX - clampedX) ** 2 + (event.clientY - clampedY) ** 2;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = Number(entry.dataset.matrixEntryIndex);
+      }
+    }
+    return nearest;
+  };
 
   return (
     <section className="control-section">
@@ -426,12 +517,14 @@ function MatrixDraftEditor({
         onPointerDown={(event) => {
           if (!tool) return;
           const hit = pixelFromPointer(event);
-          if (!hit) return;
+          const surfaceMatrixIndex = hit?.matrixIndex ?? (tool === 'fill' || tool === 'gradient' ? matrixIndexFromPointer(event) : null);
+          if (surfaceMatrixIndex == null) return;
           event.currentTarget.setPointerCapture(event.pointerId);
           if (tool !== 'brush') {
-            applyTool(hit.matrixIndex, hit.pixelIndex);
+            applyTool(surfaceMatrixIndex, hit?.pixelIndex);
             return;
           }
+          if (!hit) return;
           dragPaintedRef.current = new Set();
           applyBrush(hit.matrixIndex, hit.pixelIndex);
         }}
@@ -453,6 +546,7 @@ function MatrixDraftEditor({
           <div
             className="matrix-chain-entry"
             key={matrix.id}
+            data-matrix-entry-index={matrixIndex}
             style={{ gridTemplateColumns: `repeat(${matrixGridCols(matrix)}, 8px)`, gridTemplateRows: `repeat(${matrix.rows.length}, 8px)` }}
           >
             {matrix.rows.flatMap((row, rowIndex) =>
@@ -550,23 +644,57 @@ function applyDeviceBrightness(device: Device, brightness: number): Device {
   };
 }
 
-function applyMultizoneGradient(colors: HslColor[], stops: GradientStops): HslColor[] | undefined {
+function applyMultizoneGradient(colors: HslColor[], stops: GradientStops, direction: GradientDirection): HslColor[] | undefined {
   if (!stops.start || !stops.end) return undefined;
-  return colors.map((_, index) => interpolateHsl(stops.start!, stops.end!, index / Math.max(1, colors.length - 1)));
+  return colors.map((_, index) => {
+    const t = index / Math.max(1, colors.length - 1);
+    return interpolateHsl(stops.start!, stops.end!, direction === 'w' ? 1 - t : t);
+  });
 }
 
-function applyMatrixGradient(matrix: NonNullable<Device['chain']>[number], stops: GradientStops): HslColor[] | undefined {
+function applyMatrixGradient(matrix: NonNullable<Device['chain']>[number], stops: GradientStops, direction: GradientDirection): HslColor[] | undefined {
   if (!stops.start || !stops.end) return undefined;
   const pixels = [...matrix.pixels];
   const width = matrixGridCols(matrix);
+  const height = Math.max(1, matrix.rows.length);
   for (const [rowIndex, row] of matrix.rows.entries()) {
     const rowStart = matrix.rows.slice(0, rowIndex).reduce((sum, entry) => sum + entry.cols, 0);
     for (let columnIndex = 0; columnIndex < row.cols; columnIndex += 1) {
       const pixelIndex = rowStart + columnIndex;
-      pixels[pixelIndex] = interpolateHsl(stops.start, stops.end, (row.offset + columnIndex) / Math.max(1, width - 1));
+      const x = row.offset + columnIndex;
+      const y = rowIndex;
+      pixels[pixelIndex] = interpolateHsl(stops.start, stops.end, gradientAmount(x, y, width, height, direction));
     }
   }
   return pixels;
+}
+
+function gradientAmount(x: number, y: number, width: number, height: number, direction: GradientDirection): number {
+  const maxX = Math.max(1, width - 1);
+  const maxY = Math.max(1, height - 1);
+  const nx = x / maxX;
+  const ny = y / maxY;
+  const vectors: Record<GradientDirection, { x: number; y: number }> = {
+    e: { x: 1, y: 0 },
+    w: { x: -1, y: 0 },
+    s: { x: 0, y: 1 },
+    n: { x: 0, y: -1 },
+    se: { x: 1, y: 1 },
+    nw: { x: -1, y: -1 },
+    ne: { x: 1, y: -1 },
+    sw: { x: -1, y: 1 },
+  };
+  const vector = vectors[direction];
+  const projection = nx * vector.x + ny * vector.y;
+  const corners = [
+    0,
+    vector.x,
+    vector.y,
+    vector.x + vector.y,
+  ];
+  const min = Math.min(...corners);
+  const max = Math.max(...corners);
+  return (projection - min) / Math.max(1, max - min);
 }
 
 function interpolateHsl(from: HslColor, to: HslColor, amount: number): HslColor {

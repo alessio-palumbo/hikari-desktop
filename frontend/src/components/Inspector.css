@@ -165,6 +165,11 @@
   color: var(--fg-0);
 }
 
+.gradient-controls {
+  display: grid;
+  gap: 8px;
+}
+
 .gradient-stops {
   display: grid;
   grid-template-columns: 1fr 18px 1fr;
@@ -201,6 +206,38 @@
   border-top: 1px solid var(--fg-4);
   border-right: 1px solid var(--fg-4);
   transform: rotate(45deg);
+}
+
+.gradient-directions {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+
+.gradient-directions[data-kind="multizone"] {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.gradient-directions button {
+  display: grid;
+  height: 20px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: oklch(1 0 0 / 0.02);
+  color: var(--fg-3);
+  cursor: pointer;
+}
+
+.gradient-directions[data-kind="multizone"] button {
+  height: 26px;
+}
+
+.gradient-directions button[data-active="true"] {
+  border-color: var(--line-strong);
+  background: oklch(1 0 0 / 0.06);
+  color: var(--fg-0);
 }
 
 .temperature-label {
