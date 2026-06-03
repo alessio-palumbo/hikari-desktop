@@ -31,6 +31,7 @@ export interface Matrix {
   w: number;
   h: number;
   sendWidth?: number;
+  orientation?: number;
   rows: MatrixRow[];
   pixels: HslColor[];
 }

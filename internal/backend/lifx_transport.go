@@ -26,9 +26,8 @@ type lifxController interface {
 //
 // Snapshot maps controller.GetDevices() into the frontend DTO. SetDeviceState
 // sends power and color state for single-zone, multizone, and matrix devices.
-// Matrix orientation handling is still intentionally minimal: the UI draft chain
-// is sent in its current order, and MatrixProperties.ChainOrientations can be
-// folded in later if the editor starts storing orientation-aware coordinates.
+// Matrix colors are rotated into UI orientation for previews and rotated back
+// to device order when applying edited pixels.
 //
 // Start creates the controller and begins lifxlan-go discovery. Tests can inject
 // a fake controller directly with NewLifxTransportWithController.
@@ -186,17 +185,38 @@ func mapLifxMatrixChain(d lifxdevice.Device, capability DeviceCapability) []Matr
 		rows := makeMatrixRowsForDevice(d, len(zones))
 		displayWidth := matrixRowsWidth(rows, props.Width)
 		chain = append(chain, Matrix{
-			ID:        i,
-			X:         float64(i) * displayWidth,
-			Y:         0,
-			W:         displayWidth,
-			H:         float64(len(rows)),
-			SendWidth: props.Width,
-			Rows:      rows,
-			Pixels:    mapLifxColors(zones, capability),
+			ID:          i,
+			X:           float64(i) * displayWidth,
+			Y:           0,
+			W:           displayWidth,
+			H:           float64(len(rows)),
+			SendWidth:   props.Width,
+			Orientation: int(matrixOrientation(props, i)),
+			Rows:        rows,
+			Pixels:      mapLifxColors(adjustUIGridForOrientation(props.Width, props.Height, matrixOrientation(props, i), zones), capability),
 		})
 	}
 	return chain
+}
+
+func matrixOrientation(props lifxdevice.MatrixProperties, index int) lifxdevice.Orientation {
+	if index >= 0 && index < len(props.ChainOrientations) {
+		return props.ChainOrientations[index]
+	}
+	return lifxdevice.OrientationRightSideUp
+}
+
+func adjustUIGridForOrientation(width, height int, orientation lifxdevice.Orientation, colors []packets.LightHsbk) []packets.LightHsbk {
+	switch orientation {
+	case lifxdevice.OrientationRight:
+		return lifxdevice.RotateMatrix(lifxdevice.RotateMatrix90(width, height), colors)
+	case lifxdevice.OrientationUpsideDown:
+		return lifxdevice.RotateMatrix(lifxdevice.RotateMatrix180(width, height), colors)
+	case lifxdevice.OrientationLeft:
+		return lifxdevice.RotateMatrix(lifxdevice.RotateMatrix270(width, height), colors)
+	default:
+		return colors
+	}
 }
 
 func makeMatrixRows(width, height int) []MatrixRow {
@@ -394,7 +414,7 @@ func deviceStateMessages(device Device, direct bool) []*protocol.Message {
 				matrix.ID,
 				len(device.Chain),
 				width,
-				hslColorsToHSBK(matrix.Pixels, device.Brightness, device.Kelvin, device.Capability),
+				rotateMatrixForOrientation(matrix, hslColorsToHSBK(matrix.Pixels, device.Brightness, device.Kelvin, device.Capability)),
 				time.Millisecond,
 			)...)
 		}
@@ -402,6 +422,15 @@ func deviceStateMessages(device Device, direct bool) []*protocol.Message {
 	default:
 		return nil
 	}
+}
+
+func rotateMatrixForOrientation(matrix Matrix, colors []packets.LightHsbk) []packets.LightHsbk {
+	width := matrixWidth(matrix)
+	height := matrixHeight(matrix)
+	if width <= 0 || height <= 0 {
+		return colors
+	}
+	return lifxdevice.ReorientMatrix(width, height, lifxdevice.Orientation(matrix.Orientation), colors)
 }
 
 func matrixWidth(matrix Matrix) int {
@@ -414,6 +443,16 @@ func matrixWidth(matrix Matrix) int {
 		}
 	}
 	return int(matrix.W)
+}
+
+func matrixHeight(matrix Matrix) int {
+	if matrix.SendWidth > 0 && matrix.SendWidth <= len(matrix.Pixels) {
+		return len(matrix.Pixels) / matrix.SendWidth
+	}
+	if len(matrix.Rows) > 0 {
+		return len(matrix.Rows)
+	}
+	return int(matrix.H)
 }
 
 func hslColorsToHSBK(colors []HSLColor, brightness float64, kelvin int, capability DeviceCapability) []packets.LightHsbk {

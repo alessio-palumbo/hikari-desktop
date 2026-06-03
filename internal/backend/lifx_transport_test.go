@@ -271,6 +271,42 @@ func TestLifxTransportSnapshotRendersCeilingCapsuleAsWideGridWhenDeviceReportsTa
 	}
 }
 
+func TestLifxTransportSnapshotAppliesMatrixOrientationForPreview(t *testing.T) {
+	serial, err := lifxdevice.SerialFromHex("d073d501a2ca")
+	if err != nil {
+		t.Fatalf("SerialFromHex returned error: %v", err)
+	}
+	zones := []packets.LightHsbk{
+		testHSBK(0),
+		testHSBK(10),
+		testHSBK(20),
+		testHSBK(30),
+	}
+	dev := lifxdevice.Device{
+		Serial:    serial,
+		Label:     "Oriented Matrix",
+		Location:  "Studio",
+		Group:     "Desk",
+		PoweredOn: true,
+		Color:     lifxdevice.Color{Brightness: 50, Kelvin: 3500},
+		MatrixProperties: lifxdevice.MatrixProperties{
+			Width:             2,
+			Height:            2,
+			NZones:            4,
+			ChainOrientations: []lifxdevice.Orientation{lifxdevice.OrientationRight},
+			ChainZones:        [][]packets.LightHsbk{zones},
+		},
+	}
+	dev.SetProductInfo(55)
+
+	snapshot := mapLifxDevices([]lifxdevice.Device{dev})
+	matrix := snapshot.Devices[0].Chain[0]
+	if matrix.Orientation != int(lifxdevice.OrientationRight) {
+		t.Fatalf("orientation = %d, want %d", matrix.Orientation, lifxdevice.OrientationRight)
+	}
+	assertPixelHues(t, matrix.Pixels, []float64{20, 0, 30, 10})
+}
+
 func TestLifxTransportStartKeepsInjectedController(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
@@ -549,6 +585,44 @@ func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSetDeviceStateRevertsMatrixOrientationWhenSendingPixels(t *testing.T) {
+	controller := &fakeLifxController{}
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       "matrix",
+		On:         true,
+		Brightness: 0.66,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Kelvin:     2700,
+		Chain: []Matrix{{
+			ID:          0,
+			W:           2,
+			SendWidth:   2,
+			Orientation: int(lifxdevice.OrientationRight),
+			Rows:        []MatrixRow{{Cols: 2}, {Cols: 2}},
+			Pixels: []HSLColor{
+				{H: 20, S: 0.5, L: 0.2},
+				{H: 0, S: 0.5, L: 0.2},
+				{H: 30, S: 0.5, L: 0.2},
+				{H: 10, S: 0.5, L: 0.2},
+			},
+		}},
+	}
+	transport := NewLifxTransportWithController(controller)
+
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	if len(controller.sends) != 2 {
+		t.Fatalf("sent %d messages, want 2", len(controller.sends))
+	}
+	payload, ok := controller.sends[1].msg.Payload.(*packets.TileSet64)
+	if !ok {
+		t.Fatalf("second payload = %T, want *packets.TileSet64", controller.sends[1].msg.Payload)
+	}
+	assertPayloadHues(t, payload.Colors[:4], []float64{0, 10, 20, 30})
+}
+
 func TestLifxTransportSetDeviceStateSendsDirectMatrixAsSingleColor(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
@@ -599,4 +673,38 @@ func (f *fakeLifxController) Send(serial lifxdevice.Serial, msg *protocol.Messag
 type sentMessage struct {
 	serial lifxdevice.Serial
 	msg    *protocol.Message
+}
+
+func testHSBK(hue float64) packets.LightHsbk {
+	return packets.LightHsbk{
+		Hue:        lifxdevice.ConvertExternalToDeviceValue(hue, 360),
+		Saturation: lifxdevice.ConvertExternalToDeviceValue(50, 100),
+		Brightness: lifxdevice.ConvertExternalToDeviceValue(50, 100),
+		Kelvin:     3500,
+	}
+}
+
+func assertPixelHues(t *testing.T, colors []HSLColor, want []float64) {
+	t.Helper()
+	if len(colors) < len(want) {
+		t.Fatalf("colors = %d, want at least %d", len(colors), len(want))
+	}
+	for i, hue := range want {
+		if colors[i].H != hue {
+			t.Fatalf("color %d hue = %v, want %v; colors = %#v", i, colors[i].H, hue, colors)
+		}
+	}
+}
+
+func assertPayloadHues(t *testing.T, colors []packets.LightHsbk, want []float64) {
+	t.Helper()
+	if len(colors) < len(want) {
+		t.Fatalf("colors = %d, want at least %d", len(colors), len(want))
+	}
+	for i, hue := range want {
+		got := lifxdevice.NewColor(colors[i])
+		if got.Hue != hue {
+			t.Fatalf("color %d hue = %v, want %v", i, got.Hue, hue)
+		}
+	}
 }
