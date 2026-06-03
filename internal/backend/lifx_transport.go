@@ -143,6 +143,11 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 		Name:       nameOrUnknown(d.Label, d.Serial.String()),
 		Model:      nameOrUnknown(d.RegistryName, "LIFX"),
 		Kind:       mapLightKind(d.LightType.String()),
+		IPAddress:  deviceIPAddress(d),
+		ProductID:  d.ProductID,
+		Firmware:   d.FirmwareVersion,
+		RSSI:       int(d.WifiRSSI),
+		RSSIText:   d.WifiRSSI.String(),
 		Online:     true,
 		On:         d.PoweredOn,
 		Brightness: color.L,
@@ -153,12 +158,25 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 
 	switch device.Kind {
 	case "multizone":
+		device.ZoneCount = len(d.MultizoneProperties.Zones)
 		device.Zones = mapLifxColors(d.MultizoneProperties.Zones, capability)
 	case "matrix":
+		device.PixelCount = d.MatrixProperties.NZones
+		device.ChainLen = d.MatrixProperties.ChainLength
+		if device.ChainLen == 0 {
+			device.ChainLen = len(d.MatrixProperties.ChainZones)
+		}
 		device.Chain = mapLifxMatrixChain(d, capability)
 	}
 
 	return device
+}
+
+func deviceIPAddress(d lifxdevice.Device) string {
+	if d.Address == nil || d.Address.IP == nil {
+		return ""
+	}
+	return d.Address.IP.String()
 }
 
 func mapLifxMatrixChain(d lifxdevice.Device, capability DeviceCapability) []Matrix {

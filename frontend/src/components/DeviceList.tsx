@@ -1,5 +1,4 @@
 import type { Device, Group } from '../domain/lifx';
-import { deviceTypeLabel } from '../domain/lifx';
 import { DevicePreview } from './DevicePreview';
 import { PowerDot, RowChevron, Slider } from './primitives';
 import './DeviceList.css';
@@ -12,13 +11,12 @@ interface DeviceListProps {
   searching: boolean;
   refreshing: boolean;
   deviceStatus: Record<string, { loading?: boolean; error?: string }>;
-  onRefresh: () => void;
   onSelect: (serial: string) => void;
   onDeviceChange: (device: Device) => void;
   onMasterChange: (on: boolean, brightness?: number) => void;
 }
 
-export function DeviceList({ group, groups, devices, selectedSerial, searching, refreshing, deviceStatus, onRefresh, onSelect, onDeviceChange, onMasterChange }: DeviceListProps) {
+export function DeviceList({ group, groups, devices, selectedSerial, searching, refreshing, deviceStatus, onSelect, onDeviceChange, onMasterChange }: DeviceListProps) {
   const onCount = devices.filter((device) => device.on).length;
   const avgBrightness = devices.length ? devices.reduce((sum, device) => sum + device.brightness, 0) / devices.length : 0;
   const searchSections = groups
@@ -32,9 +30,6 @@ export function DeviceList({ group, groups, devices, selectedSerial, searching, 
           <header className="group-header">
             <div className="group-title-row">
               <h1>{group?.name.toLowerCase() ?? 'no group'}</h1>
-              <button className="refresh-button" disabled={refreshing} onClick={onRefresh}>
-                {refreshing ? 'refreshing' : 'refresh'}
-              </button>
             </div>
             <div className="group-controls">
               <PowerDot on={onCount > 0} onChange={(next) => onMasterChange(next)} />
@@ -106,7 +101,7 @@ function DeviceRow({
       <div className="device-name">
         <strong>{device.name}</strong>
         <span>
-          {status?.error ? status.error : !device.online ? 'offline' : `${deviceTypeLabel(device)} · ${device.model}`}
+          {status?.error ? status.error : !device.online ? 'offline' : device.model}
         </span>
       </div>
       <div className="device-preview-cell">

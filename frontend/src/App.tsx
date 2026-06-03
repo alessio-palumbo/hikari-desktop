@@ -232,7 +232,6 @@ export function App() {
         searching={query.trim().length > 0}
         refreshing={refreshing}
         deviceStatus={deviceStatus}
-        onRefresh={refreshSnapshot}
         onSelect={setSelectedSerial}
         onDeviceChange={updateListDevice}
         onMasterChange={(on, brightness) =>

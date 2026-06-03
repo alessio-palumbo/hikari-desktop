@@ -41,6 +41,14 @@ export interface Device {
   name: string;
   model: string;
   kind: DeviceKind;
+  ipAddress?: string;
+  productId?: number;
+  firmware?: string;
+  rssi?: number;
+  rssiText?: string;
+  zoneCount?: number;
+  pixelCount?: number;
+  chainLength?: number;
   online: boolean;
   on: boolean;
   brightness: number;

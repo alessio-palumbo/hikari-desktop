@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, LogOut, Pipette, RotateCcw, Undo2, Wand2, X } from 'lucide-react';
+import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, Info, LogOut, Pipette, RotateCcw, Undo2, Wand2, X } from 'lucide-react';
 import type { Device, HslColor } from '../domain/lifx';
 import { hsl, previewLightness, previewOpacity } from '../domain/lifx';
 import { ColorWheel, Slider } from './primitives';
@@ -39,6 +39,7 @@ export function Inspector(props: InspectorProps) {
   const [whiteColor, setWhiteColor] = useState(() => kelvinToHsl(clampKelvin(device.kelvin ?? 3500, device)));
   const [gradientStops, setGradientStops] = useState<GradientStops>({});
   const [gradientDirection, setGradientDirection] = useState<GradientDirection>('e');
+  const [showInfo, setShowInfo] = useState(false);
   const hasColor = device.capability?.hasColor ?? true;
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export function Inspector(props: InspectorProps) {
     setWhiteColor(kelvinToHsl(kelvin));
     setGradientStops({});
     setGradientDirection('e');
+    setShowInfo(false);
   }, [device.serial]);
 
   useEffect(() => {
@@ -131,8 +133,12 @@ export function Inspector(props: InspectorProps) {
 
       <div className="inspector-meta">
         <span>{device.model}</span>
-        <span>{device.kind}</span>
+        <button className="info-toggle" type="button" aria-label="Device info" aria-expanded={showInfo} data-active={showInfo ? 'true' : 'false'} onClick={() => setShowInfo((value) => !value)}>
+          <Info size={13} />
+        </button>
       </div>
+
+      {showInfo ? <DeviceInfo device={device} /> : null}
 
       <ModeToggle value={mode} hasColor={hasColor} onChange={setMode} />
 
@@ -203,6 +209,52 @@ export function Inspector(props: InspectorProps) {
       ) : null}
     </aside>
   );
+}
+
+function DeviceInfo({ device }: { device: Device }) {
+  const rows = [
+    ['type', deviceKindLabel(device)],
+    ...deviceShapeRows(device),
+    ['ip', device.ipAddress || 'unknown'],
+    ['product id', device.productId ? String(device.productId) : 'unknown'],
+    ['firmware', device.firmware || 'unknown'],
+    ['rssi', formatRSSI(device)],
+  ];
+  return (
+    <dl className="device-info">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function deviceShapeRows(device: Device): string[][] {
+  if (device.kind === 'multizone') {
+    return [['zones', String(device.zoneCount ?? device.zones?.length ?? 'unknown')]];
+  }
+  if (device.kind === 'matrix') {
+    const pixelCount = device.pixelCount ?? device.chain?.[0]?.pixels.length;
+    const chainLength = device.chainLength ?? device.chain?.length;
+    const rows = [['pixels', pixelCount === undefined ? 'unknown' : String(pixelCount)]];
+    if (chainLength !== undefined && chainLength > 1) rows.push(['chain length', String(chainLength)]);
+    return rows;
+  }
+  return [];
+}
+
+function deviceKindLabel(device: Device): string {
+  if (device.kind === 'single') return 'single zone';
+  return device.kind;
+}
+
+function formatRSSI(device: Device): string {
+  if (device.rssi === undefined && !device.rssiText) return 'unknown';
+  if (device.rssi === undefined) return device.rssiText ?? 'unknown';
+  return device.rssiText ? `${device.rssi} (${device.rssiText})` : String(device.rssi);
 }
 
 function GradientControls({

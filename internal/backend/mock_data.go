@@ -17,6 +17,7 @@ func MockDeviceSnapshot() DeviceSnapshot {
 			{
 				GroupID: "living", Serial: serial(0x01a2c3), Name: "Ceiling",
 				Model: "A19 color", Kind: "single", Online: true, On: true, Brightness: 0.62,
+				IPAddress: "192.168.1.21", ProductID: 27, Firmware: "3.90", RSSI: -54, RSSIText: "Good",
 				Capability: colorCapability(), Color: &HSLColor{H: 38, S: 0.35, L: 0.65}, Kelvin: 3200,
 			},
 			{
@@ -27,11 +28,14 @@ func MockDeviceSnapshot() DeviceSnapshot {
 			{
 				GroupID: "living", Serial: serial(0x01a2e1), Name: "TV Backlight",
 				Model: "Z 32", Kind: "multizone", Online: true, On: true, Brightness: 0.78,
+				ZoneCount:  32,
 				Capability: colorCapability(), Zones: makeZones(32, 290, 70),
 			},
 			{
 				GroupID: "living", Serial: serial(0x01a2e4), Name: "Wall Tiles",
 				Model: "Tile 5", Kind: "matrix", Online: true, On: true, Brightness: 0.55,
+				IPAddress: "192.168.1.42", ProductID: 55, Firmware: "3.90", RSSI: -49, RSSIText: "Excellent",
+				PixelCount: 64, ChainLen: 5,
 				Capability: colorCapability(),
 				Chain: makeMatrixChain([]matrixSpec{
 					{x: 0, y: 0, w: 8, h: 8},
@@ -49,11 +53,13 @@ func MockDeviceSnapshot() DeviceSnapshot {
 			{
 				GroupID: "kitchen", Serial: serial(0x02b110), Name: "Under-counter",
 				Model: "Z 24", Kind: "multizone", Online: true, On: false, Brightness: 0.55,
+				ZoneCount:  24,
 				Capability: colorCapability(), Zones: makeZones(24, 30, 60),
 			},
 			{
 				GroupID: "desk", Serial: serial(0x10f501), Name: "Desk Strip",
 				Model: "Z 32", Kind: "multizone", Online: true, On: true, Brightness: 0.85,
+				ZoneCount:  32,
 				Capability: colorCapability(), Zones: makeZones(32, 200, 260),
 			},
 		},

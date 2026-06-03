@@ -41,6 +41,14 @@ type Device struct {
 	Name       string           `json:"name"`
 	Model      string           `json:"model"`
 	Kind       string           `json:"kind"`
+	IPAddress  string           `json:"ipAddress,omitempty"`
+	ProductID  uint32           `json:"productId,omitempty"`
+	Firmware   string           `json:"firmware,omitempty"`
+	RSSI       int              `json:"rssi,omitempty"`
+	RSSIText   string           `json:"rssiText,omitempty"`
+	ZoneCount  int              `json:"zoneCount,omitempty"`
+	PixelCount int              `json:"pixelCount,omitempty"`
+	ChainLen   int              `json:"chainLength,omitempty"`
 	Online     bool             `json:"online"`
 	On         bool             `json:"on"`
 	Brightness float64          `json:"brightness"`

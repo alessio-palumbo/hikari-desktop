@@ -17,7 +17,7 @@
 }
 
 .sidebar-search:focus-within {
-  border-color: var(--accent);
+  border-color: oklch(1 0 0 / 0.16);
 }
 
 .sidebar-search input {

@@ -42,11 +42,57 @@
 
 .inspector-meta {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--line);
   color: var(--fg-3);
   font-size: 11px;
+}
+
+.info-toggle {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg-3);
+  cursor: pointer;
+  padding: 0;
+}
+
+.info-toggle:hover,
+.info-toggle[data-active="true"] {
+  background: oklch(1 0 0 / 0.04);
+  color: var(--fg-0);
+}
+
+.device-info {
+  display: grid;
+  gap: 8px;
+  margin: -6px 0 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+}
+
+.device-info div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.device-info dt {
+  color: var(--fg-3);
+}
+
+.device-info dd {
+  margin: 0;
+  color: var(--fg-1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  text-align: right;
 }
 
 .control-section {

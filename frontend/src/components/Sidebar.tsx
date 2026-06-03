@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { ChevronDown, Search, X } from 'lucide-react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { PowerDot } from './primitives';
@@ -20,6 +21,7 @@ interface SidebarProps {
 }
 
 export function Sidebar(props: SidebarProps) {
+  const searchRef = useRef<HTMLInputElement>(null);
   const groupsInLocation = props.groups.filter((group) => group.locationId === props.selectedLocationId);
   const selectedLocation = props.locations.find((location) => location.id === props.selectedLocationId);
   const selectedLocationGroupIds = new Set(groupsInLocation.map((group) => group.id));
@@ -33,11 +35,28 @@ export function Sidebar(props: SidebarProps) {
         ? 'discovering LAN devices'
         : 'no LAN devices found';
 
+  useEffect(() => {
+    searchRef.current?.focus();
+  }, []);
+
   return (
     <aside className="left-panel sidebar">
       <div className="sidebar-search">
         <Search size={13} />
-        <input value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} placeholder="Search..." />
+        <input
+          ref={searchRef}
+          value={props.query}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          onChange={(event) => props.onQueryChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            if (props.query) props.onQueryChange('');
+            else event.currentTarget.blur();
+          }}
+          placeholder="Search..."
+        />
         {props.query ? (
           <button type="button" aria-label="Clear search" onClick={() => props.onQueryChange('')}>
             <X size={12} />
