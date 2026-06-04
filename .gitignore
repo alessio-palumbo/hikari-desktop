@@ -4,7 +4,8 @@ frontend/dist/*
 frontend/dist-test
 frontend/wailsjs
 frontend/package.json.md5
-build/
+build/bin/
+build/darwin/
 *.app
 *.log
 .DS_Store

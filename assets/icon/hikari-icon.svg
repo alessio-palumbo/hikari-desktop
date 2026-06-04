@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><defs>
+  <radialGradient id="bg" cx="50%" cy="40%" r="75%"><stop offset="0%" stop-color="#15191F"></stop><stop offset="100%" stop-color="#0B0D11"></stop></radialGradient>
+  <filter id="g" x="-70%" y="-70%" width="240%" height="240%"><feGaussianBlur stdDeviation="26"></feGaussianBlur></filter>
+  <filter id="gn" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="14"></feGaussianBlur></filter></defs><g transform="translate(72 72) scale(0.859375)"><rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#bg)"></rect><rect x="2" y="2" width="1020" height="1020" rx="228" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="2"></rect>
+    <circle cx="512" cy="512" r="214" fill="#FFF4DE" opacity="0.14" filter="url(#g)"></circle>
+    <circle cx="512" cy="512" r="162" fill="#FFF4DE" opacity="0.5" filter="url(#g)"></circle>
+    <circle cx="512" cy="512" r="132" fill="#FFF4DE"></circle>
+    <circle cx="512" cy="512" r="244" fill="none" stroke="#34E7D6" stroke-width="18" stroke-linecap="round" stroke-dasharray="1226.5 1533.1" transform="rotate(150 512 512)"></circle>
+    <circle cx="668.8" cy="325.1" r="46" fill="#5BE08C" opacity="0.55" filter="url(#gn)"></circle>
+    <circle cx="668.8" cy="325.1" r="30" fill="#5BE08C"></circle></g></svg>
