@@ -19,6 +19,11 @@ body {
   letter-spacing: 0;
 }
 
+body:has(.startup-error) {
+  display: grid;
+  place-items: center;
+}
+
 button,
 input {
   font: inherit;
@@ -86,6 +91,28 @@ button {
   place-items: center;
   color: var(--fg-3);
   font-size: 13px;
+}
+
+.startup-error {
+  width: min(420px, calc(100vw - 48px));
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  color: var(--fg-0);
+  background: var(--bg-sink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+}
+
+.startup-error strong {
+  font-size: 15px;
+}
+
+.startup-error span {
+  color: var(--fg-3);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 @keyframes pulse-dot {

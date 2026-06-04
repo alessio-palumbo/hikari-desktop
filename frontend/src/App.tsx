@@ -263,11 +263,20 @@ export function App() {
 }
 
 function loadPreference(key: string): string {
-  return window.localStorage.getItem(key) ?? '';
+  try {
+    return window.localStorage.getItem(key) ?? '';
+  } catch (error) {
+    console.warn(`Unable to read preference ${key}`, error);
+    return '';
+  }
 }
 
 function savePreference(key: string, value: string) {
-  if (value) window.localStorage.setItem(key, value);
+  try {
+    if (value) window.localStorage.setItem(key, value);
+  } catch (error) {
+    console.warn(`Unable to save preference ${key}`, error);
+  }
 }
 
 function prepareDeviceCommand(next: Device, previous?: Device): Device {
