@@ -3,6 +3,8 @@ frontend/dist/*
 !frontend/dist/.gitkeep
 frontend/dist-test
 frontend/wailsjs
-build/bin
+frontend/package.json.md5
+build/
 *.app
 *.log
+.DS_Store
