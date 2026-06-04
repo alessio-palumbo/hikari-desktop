@@ -15,7 +15,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:  "Hikari Desktop",
+		Title:  "Hikari",
 		Width:  1180,
 		Height: 760,
 		AssetServer: &assetserver.Options{
