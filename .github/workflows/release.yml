@@ -20,12 +20,15 @@ jobs:
           - name: macos
             os: macos-latest
             artifact: hikari-desktop-macos
+            archive: Hikari-Desktop-macos.zip
           - name: windows
             os: windows-latest
             artifact: hikari-desktop-windows
+            archive: Hikari-Desktop-windows.zip
           - name: linux
             os: ubuntu-22.04
             artifact: hikari-desktop-linux
+            archive: Hikari-Desktop-linux.tar.gz
 
     steps:
       - name: Checkout
@@ -57,21 +60,44 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
-      - name: Test Go
-        run: go test ./...
-
       - name: Test frontend
         working-directory: frontend
         run: npm run test
 
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Test Go
+        run: go test ./...
+
       - name: Build Wails app
         run: wails build -clean
 
-      - name: Upload build output
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p release
+          ditto -c -k --keepParent build/bin/hikari-desktop.app release/${{ matrix.archive }}
+
+      - name: Package Windows app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Compress-Archive -Path build/bin/* -DestinationPath release/${{ matrix.archive }}
+
+      - name: Package Linux app
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release
+          tar -czf release/${{ matrix.archive }} -C build/bin .
+
+      - name: Upload packaged build
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: build/bin/**
+          path: release/${{ matrix.archive }}
           if-no-files-found: error
 
   release:
@@ -85,14 +111,11 @@ jobs:
         with:
           path: artifacts
 
-      - name: Package artifacts
+      - name: Collect release files
         run: |
-          cd artifacts/hikari-desktop-macos
-          zip -r ../../Hikari-Desktop-macos.zip .
-          cd ../hikari-desktop-windows
-          zip -r ../../Hikari-Desktop-windows.zip .
-          cd ../hikari-desktop-linux
-          tar -czf ../../Hikari-Desktop-linux.tar.gz .
+          mv artifacts/hikari-desktop-macos/Hikari-Desktop-macos.zip .
+          mv artifacts/hikari-desktop-windows/Hikari-Desktop-windows.zip .
+          mv artifacts/hikari-desktop-linux/Hikari-Desktop-linux.tar.gz .
 
       - name: Create release
         uses: softprops/action-gh-release@v2
