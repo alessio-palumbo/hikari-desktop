@@ -8,6 +8,7 @@ import type { Device, DeviceSnapshot, HslColor } from './domain/lifx';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
 const REFRESH_INTERVAL_MS = 5000;
+const STARTUP_MIN_MS = 1800;
 const LOCATION_KEY = 'hikari:selectedLocation';
 const GROUP_KEY = 'hikari:selectedGroup';
 
@@ -23,6 +24,7 @@ export function App() {
   const [draft, setDraft] = useState<DeviceDraft | undefined>();
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [startupReady, setStartupReady] = useState(false);
   const [refreshError, setRefreshError] = useState<string | undefined>();
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
   const [pendingState, setPendingState] = useState<PendingDeviceStates>({});
@@ -54,12 +56,21 @@ export function App() {
     }
   }, []);
 
-  useEffect(() => void refreshSnapshot(), [refreshSnapshot]);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.allSettled([refreshSnapshot(), delay(STARTUP_MIN_MS)]).finally(() => {
+      if (!cancelled) setStartupReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshSnapshot]);
 
   useEffect(() => {
+    if (!startupReady) return undefined;
     const timer = window.setInterval(() => void refreshSnapshot(), REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [refreshSnapshot]);
+  }, [refreshSnapshot, startupReady]);
 
   useEffect(() => {
     if (snapshot.locations.length && !snapshot.locations.some((location) => location.id === locationId)) {
@@ -191,6 +202,10 @@ export function App() {
     }
   };
 
+  if (!startupReady) {
+    return <StartupLoading />;
+  }
+
   return (
     <div className="app-shell">
       <Sidebar
@@ -262,6 +277,23 @@ export function App() {
   );
 }
 
+function StartupLoading() {
+  return (
+    <div className="startup-loading">
+      <div className="startup-mark" aria-hidden="true">
+        <span />
+      </div>
+      <div className="startup-copy">
+        <strong>Hikari</strong>
+        <span>
+          discovering LAN devices
+          <i aria-hidden="true" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function loadPreference(key: string): string {
   try {
     return window.localStorage.getItem(key) ?? '';
@@ -303,4 +335,8 @@ function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   return 'device command failed';
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
