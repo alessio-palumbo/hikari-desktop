@@ -72,6 +72,14 @@ type DeviceSnapshot struct {
 	Devices   []Device   `json:"devices"`
 }
 
+func emptyDeviceSnapshot() DeviceSnapshot {
+	return DeviceSnapshot{
+		Locations: []Location{},
+		Groups:    []Group{},
+		Devices:   []Device{},
+	}
+}
+
 type SetDeviceStateRequest struct {
 	Device  Device `json:"device"`
 	Preview bool   `json:"preview"`

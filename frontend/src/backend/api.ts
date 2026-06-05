@@ -22,7 +22,7 @@ declare global {
 
 export async function getDeviceSnapshot(): Promise<DeviceSnapshot> {
   const app = window.go?.main?.App;
-  if (app?.GetDeviceSnapshot) return app.GetDeviceSnapshot();
+  if (app?.GetDeviceSnapshot) return normalizeSnapshot(await app.GetDeviceSnapshot());
   return mockSnapshot();
 }
 
@@ -97,6 +97,14 @@ function mockSnapshot(): DeviceSnapshot {
         zones: makeZones(32, 200, 260),
       },
     ],
+  };
+}
+
+function normalizeSnapshot(snapshot: DeviceSnapshot | null | undefined): DeviceSnapshot {
+  return {
+    locations: Array.isArray(snapshot?.locations) ? snapshot.locations : [],
+    groups: Array.isArray(snapshot?.groups) ? snapshot.groups : [],
+    devices: Array.isArray(snapshot?.devices) ? snapshot.devices : [],
   };
 }
 

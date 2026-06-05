@@ -18,6 +18,7 @@ import (
 // the transport. Keeping this tiny interface makes mapping and sends testable
 // without starting network discovery in unit tests.
 type lifxController interface {
+	Close() error
 	GetDevices() []lifxdevice.Device
 	Send(lifxdevice.Serial, *protocol.Message) error
 }
@@ -60,6 +61,18 @@ func (t *LifxTransport) Start(ctx context.Context) error {
 	return nil
 }
 
+func (t *LifxTransport) Close(ctx context.Context) error {
+	if t.controller == nil {
+		return nil
+	}
+	if err := t.controller.Close(); err != nil {
+		return fmt.Errorf("close lifx controller: %w", err)
+	}
+	t.controller = nil
+	log.Print("hikari: lifx controller closed")
+	return nil
+}
+
 func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	ctrl, err := t.requireController()
 	if err != nil {
@@ -95,7 +108,7 @@ func (t *LifxTransport) requireController() (lifxController, error) {
 }
 
 func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {
-	snapshot := DeviceSnapshot{}
+	snapshot := emptyDeviceSnapshot()
 	locationIDs := make(map[string]bool)
 	groupIDs := make(map[string]bool)
 

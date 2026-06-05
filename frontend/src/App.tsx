@@ -8,7 +8,9 @@ import type { Device, DeviceSnapshot, HslColor } from './domain/lifx';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
 const REFRESH_INTERVAL_MS = 5000;
-const STARTUP_MIN_MS = 1800;
+const DISCOVERY_REFRESH_INTERVAL_MS = 1000;
+const DISCOVERY_GRACE_MS = 10000;
+const INITIAL_DISCOVERY_DELAY_MS = 2000;
 const LOCATION_KEY = 'hikari:selectedLocation';
 const GROUP_KEY = 'hikari:selectedGroup';
 
@@ -17,6 +19,7 @@ type PendingDeviceStates = Record<string, PendingDeviceState>;
 
 export function App() {
   const [snapshot, setSnapshot] = useState<DeviceSnapshot>({ locations: [], groups: [], devices: [] });
+  const [startupStartedAt] = useState(() => Date.now());
   const [locationId, setLocationId] = useState(() => loadPreference(LOCATION_KEY));
   const [groupId, setGroupId] = useState(() => loadPreference(GROUP_KEY));
   const [selectedSerial, setSelectedSerial] = useState<string | undefined>();
@@ -25,6 +28,7 @@ export function App() {
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [startupReady, setStartupReady] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const [refreshError, setRefreshError] = useState<string | undefined>();
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
   const [pendingState, setPendingState] = useState<PendingDeviceStates>({});
@@ -58,9 +62,14 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.allSettled([refreshSnapshot(), delay(STARTUP_MIN_MS)]).finally(() => {
-      if (!cancelled) setStartupReady(true);
-    });
+    void delay(INITIAL_DISCOVERY_DELAY_MS)
+      .then(() => {
+        if (cancelled) return undefined;
+        return refreshSnapshot();
+      })
+      .finally(() => {
+        if (!cancelled) setStartupReady(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -68,9 +77,16 @@ export function App() {
 
   useEffect(() => {
     if (!startupReady) return undefined;
-    const timer = window.setInterval(() => void refreshSnapshot(), REFRESH_INTERVAL_MS);
+    const interval = snapshot.devices.length ? REFRESH_INTERVAL_MS : DISCOVERY_REFRESH_INTERVAL_MS;
+    const timer = window.setInterval(() => void refreshSnapshot(), interval);
     return () => window.clearInterval(timer);
-  }, [refreshSnapshot, startupReady]);
+  }, [refreshSnapshot, snapshot.devices.length, startupReady]);
+
+  useEffect(() => {
+    if (!startupReady || snapshot.devices.length) return undefined;
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [snapshot.devices.length, startupReady]);
 
   useEffect(() => {
     if (snapshot.locations.length && !snapshot.locations.some((location) => location.id === locationId)) {
@@ -203,7 +219,17 @@ export function App() {
   };
 
   if (!startupReady) {
-    return <StartupLoading />;
+    return <DiscoveryStatus title="ひかり" message="discovering LAN devices" />;
+  }
+
+  const showingInitialDiscovery = !snapshot.devices.length && now - startupStartedAt < DISCOVERY_GRACE_MS;
+
+  if (showingInitialDiscovery) {
+    return <DiscoveryStatus title="ひかり" message="discovering LAN devices" />;
+  }
+
+  if (!snapshot.devices.length) {
+    return <DiscoveryStatus title="No devices found." message="Discovering" />;
   }
 
   return (
@@ -277,16 +303,13 @@ export function App() {
   );
 }
 
-function StartupLoading() {
+function DiscoveryStatus(props: { title: string; message: string }) {
   return (
-    <div className="startup-loading">
-      <div className="startup-mark" aria-hidden="true">
-        <span />
-      </div>
-      <div className="startup-copy">
-        <strong>Hikari</strong>
+    <div className="discovery-status">
+      <div className="discovery-copy">
+        <strong>{props.title}</strong>
         <span>
-          discovering LAN devices
+          {props.message}
           <i aria-hidden="true" />
         </span>
       </div>

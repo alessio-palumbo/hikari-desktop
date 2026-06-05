@@ -19,16 +19,16 @@ jobs:
         include:
           - name: macos
             os: macos-latest
-            artifact: hikari-desktop-macos
-            archive: Hikari-macos.zip
+            artifact: hikari-macos
+            archive: hikari-macos.zip
           - name: windows
             os: windows-latest
-            artifact: hikari-desktop-windows
-            archive: Hikari-windows.zip
+            artifact: hikari-windows
+            archive: hikari-windows.zip
           - name: linux
             os: ubuntu-22.04
-            artifact: hikari-desktop-linux
-            archive: Hikari-linux.tar.gz
+            artifact: hikari-linux
+            archive: hikari-linux.tar.gz
 
     steps:
       - name: Checkout
@@ -71,15 +71,19 @@ jobs:
       - name: Test Go
         run: go test ./...
 
+      - name: Prepare build metadata
+        shell: bash
+        run: |
+          echo "HIKARI_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
       - name: Build Wails app
-        run: wails build -clean
+        run: wails build -clean -ldflags "-X main.version=${HIKARI_VERSION}"
 
       - name: Package macOS app
         if: runner.os == 'macOS'
         run: |
           mkdir -p release
-          cp -R build/bin/hikari.app build/bin/Hikari.app
-          ditto -c -k --keepParent build/bin/Hikari.app release/${{ matrix.archive }}
+          ditto -c -k --keepParent build/bin/hikari.app release/${{ matrix.archive }}
 
       - name: Package Windows app
         if: runner.os == 'Windows'
@@ -114,14 +118,14 @@ jobs:
 
       - name: Collect release files
         run: |
-          mv artifacts/hikari-desktop-macos/Hikari-macos.zip .
-          mv artifacts/hikari-desktop-windows/Hikari-windows.zip .
-          mv artifacts/hikari-desktop-linux/Hikari-linux.tar.gz .
+          mv artifacts/hikari-macos/hikari-macos.zip .
+          mv artifacts/hikari-windows/hikari-windows.zip .
+          mv artifacts/hikari-linux/hikari-linux.tar.gz .
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            Hikari-macos.zip
-            Hikari-windows.zip
-            Hikari-linux.tar.gz
+            hikari-macos.zip
+            hikari-windows.zip
+            hikari-linux.tar.gz

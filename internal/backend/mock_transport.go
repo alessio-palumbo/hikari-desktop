@@ -14,6 +14,10 @@ func (t *MockTransport) Start(ctx context.Context) error {
 	return nil
 }
 
+func (t *MockTransport) Close(ctx context.Context) error {
+	return nil
+}
+
 func (t *MockTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	return t.snapshot, nil
 }

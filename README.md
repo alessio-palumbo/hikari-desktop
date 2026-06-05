@@ -1,6 +1,6 @@
-# Hikari
+# hikari
 
-Hikari is a Wails desktop app for controlling LIFX devices on the local network.
+hikari is a Wails desktop app for controlling LIFX devices on the local network.
 
 The app is in active development. It currently has a real `lifxlan-go` transport for LAN discovery and direct device control, plus a mock transport for UI development. Scenes, effects, presets, final packaging, signing, and notarization are not implemented yet.
 

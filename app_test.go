@@ -45,6 +45,11 @@ func TestAppUsesTransport(t *testing.T) {
 	if got.Serial != device.Serial {
 		t.Fatalf("SetDeviceState returned %#v", got)
 	}
+
+	app.shutdown(context.Background())
+	if !transport.closeCalled {
+		t.Fatal("expected Close to be called")
+	}
 }
 
 func TestAppReturnsTransportError(t *testing.T) {
@@ -65,6 +70,7 @@ type recordingTransport struct {
 	device         backend.Device
 	err            error
 	startCalled    bool
+	closeCalled    bool
 	snapshotCalled bool
 	setCalled      bool
 	lastReq        backend.SetDeviceStateRequest
@@ -72,6 +78,11 @@ type recordingTransport struct {
 
 func (t *recordingTransport) Start(ctx context.Context) error {
 	t.startCalled = true
+	return t.err
+}
+
+func (t *recordingTransport) Close(ctx context.Context) error {
+	t.closeCalled = true
 	return t.err
 }
 

@@ -7,6 +7,7 @@ import "context"
 // discovery, before the frontend starts polling snapshots.
 type DeviceTransport interface {
 	Start(ctx context.Context) error
+	Close(ctx context.Context) error
 	Snapshot(ctx context.Context) (DeviceSnapshot, error)
 	SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error)
 }

@@ -24,9 +24,9 @@ body:has(.startup-error) {
   place-items: center;
 }
 
-body:has(.startup-loading) {
+body:has(.discovery-status) {
   display: grid;
-  place-items: center;
+  place-items: start center;
 }
 
 button,
@@ -120,83 +120,63 @@ button {
   line-height: 1.4;
 }
 
-.startup-loading {
+.discovery-status {
   display: grid;
   justify-items: center;
-  gap: 18px;
   color: var(--fg-0);
+  padding-top: 39vh;
 }
 
-.startup-mark {
-  width: 72px;
-  height: 72px;
+.discovery-copy {
   display: grid;
-  place-items: center;
-  border-radius: 22px;
-  background: radial-gradient(circle at center, oklch(0.92 0.08 83 / 0.2), transparent 62%), var(--bg-sink);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
-}
-
-.startup-mark span {
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: oklch(0.94 0.05 83);
-  box-shadow:
-    0 0 28px oklch(0.94 0.05 83 / 0.48),
-    0 0 70px oklch(0.72 0.16 185 / 0.22);
-}
-
-.startup-copy {
-  display: grid;
-  gap: 6px;
+  gap: 9px;
   justify-items: center;
 }
 
-.startup-copy strong {
-  font-size: 16px;
+.discovery-copy strong {
+  font-size: 22px;
+  font-weight: 520;
   letter-spacing: 0;
 }
 
-.startup-copy span {
+.discovery-copy span {
   display: inline-flex;
   align-items: baseline;
   color: var(--fg-3);
-  font-size: 13px;
+  font-size: 15px;
 }
 
-.startup-copy i,
-.startup-copy i::before,
-.startup-copy i::after {
-  width: 3px;
-  height: 3px;
+.discovery-copy i,
+.discovery-copy i::before,
+.discovery-copy i::after {
+  width: 4px;
+  height: 4px;
   display: inline-block;
   border-radius: 999px;
   background: currentColor;
   animation: loading-dot 1.15s infinite ease-in-out;
 }
 
-.startup-copy i {
+.discovery-copy i {
   position: relative;
-  margin-left: 7px;
+  margin-left: 9px;
   animation-delay: 0.16s;
 }
 
-.startup-copy i::before,
-.startup-copy i::after {
+.discovery-copy i::before,
+.discovery-copy i::after {
   content: "";
   position: absolute;
   top: 0;
 }
 
-.startup-copy i::before {
-  left: -6px;
+.discovery-copy i::before {
+  left: -8px;
   animation-delay: 0s;
 }
 
-.startup-copy i::after {
-  left: 6px;
+.discovery-copy i::after {
+  left: 8px;
   animation-delay: 0.32s;
 }
 

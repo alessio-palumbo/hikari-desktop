@@ -16,7 +16,7 @@ class ErrorBoundary extends React.Component<React.PropsWithChildren, ErrorBounda
   }
 
   componentDidCatch(error: Error) {
-    console.error('Hikari render failed', error);
+    console.error('hikari render failed', error);
   }
 
   render() {
@@ -28,7 +28,7 @@ class ErrorBoundary extends React.Component<React.PropsWithChildren, ErrorBounda
 function StartupError(props: { error: Error }) {
   return (
     <div className="startup-error">
-      <strong>Hikari could not load</strong>
+      <strong>hikari could not load</strong>
       <span>{props.error.message}</span>
     </div>
   );
@@ -37,7 +37,7 @@ function StartupError(props: { error: Error }) {
 const root = document.getElementById('root');
 
 if (!root) {
-  document.body.innerHTML = '<div class="startup-error"><strong>Hikari could not load</strong><span>Missing application root.</span></div>';
+  document.body.innerHTML = '<div class="startup-error"><strong>hikari could not load</strong><span>Missing application root.</span></div>';
 } else {
   ReactDOM.createRoot(root).render(
     <React.StrictMode>

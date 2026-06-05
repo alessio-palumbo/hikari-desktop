@@ -37,6 +37,12 @@ func (a *App) startup(ctx context.Context) {
 	}
 }
 
+func (a *App) shutdown(ctx context.Context) {
+	if err := a.transport.Close(ctx); err != nil {
+		log.Printf("hikari: transport shutdown failed: %v", err)
+	}
+}
+
 func (a *App) context() context.Context {
 	if a.ctx == nil {
 		return context.Background()

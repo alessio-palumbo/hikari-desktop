@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"testing"
 
@@ -65,6 +66,21 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 	}
 	if len(got.Zones) != 1 || got.Zones[0].L != 0.5 {
 		t.Fatalf("zones = %#v", got.Zones)
+	}
+}
+
+func TestLifxTransportSnapshotMapsEmptyDiscoveryAsEmptyArrays(t *testing.T) {
+	snapshot := mapLifxDevices(nil)
+	if snapshot.Locations == nil || snapshot.Groups == nil || snapshot.Devices == nil {
+		t.Fatalf("snapshot contains nil slices: %#v", snapshot)
+	}
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	want := `{"locations":[],"groups":[],"devices":[]}`
+	if string(payload) != want {
+		t.Fatalf("json = %s, want %s", payload, want)
 	}
 }
 
@@ -659,6 +675,12 @@ func TestLifxTransportSetDeviceStateSendsDirectMatrixAsSingleColor(t *testing.T)
 type fakeLifxController struct {
 	devices []lifxdevice.Device
 	sends   []sentMessage
+	closed  bool
+}
+
+func (f *fakeLifxController) Close() error {
+	f.closed = true
+	return nil
 }
 
 func (f *fakeLifxController) GetDevices() []lifxdevice.Device {
