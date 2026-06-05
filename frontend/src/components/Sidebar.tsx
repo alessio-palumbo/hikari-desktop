@@ -52,6 +52,8 @@ export function Sidebar(props: SidebarProps) {
           onChange={(event) => props.onQueryChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
             if (props.query) props.onQueryChange('');
             else event.currentTarget.blur();
           }}

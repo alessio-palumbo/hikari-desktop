@@ -28,7 +28,7 @@ interface InspectorProps {
 
 export function Inspector(props: InspectorProps) {
   if (!props.device) {
-    return <aside className="right-panel panel-empty">select a light</aside>;
+    return null;
   }
 
   const device = props.device;

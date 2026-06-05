@@ -116,6 +116,18 @@ export function App() {
     });
   }, [selectedDevice]);
 
+  useEffect(() => {
+    if (!selectedSerial) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setSelectedSerial(undefined);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedSerial]);
+
   const visibleDevices = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q) {
@@ -284,21 +296,23 @@ export function App() {
         }
       />
 
-      <Inspector
-        device={inspectorDevice}
-        editing={!!draft}
-        dirty={draft?.dirty ?? false}
-        canUndo={(draft?.history.length ?? 0) > 0}
-        saving={saving}
-        error={inspectorDevice ? deviceStatus[inspectorDevice.serial]?.error : undefined}
-        onClose={() => setSelectedSerial(undefined)}
-        onChange={updateInspectorDevice}
-        onEnterEditMode={enterEditMode}
-        onExitEditMode={() => setDraft(undefined)}
-        onApply={applyDraft}
-        onRevert={() => setDraft((prev) => (prev ? revertDraft(prev) : prev))}
-        onUndo={() => setDraft((prev) => (prev ? undoDraft(prev) : prev))}
-      />
+      {inspectorDevice ? (
+        <Inspector
+          device={inspectorDevice}
+          editing={!!draft}
+          dirty={draft?.dirty ?? false}
+          canUndo={(draft?.history.length ?? 0) > 0}
+          saving={saving}
+          error={deviceStatus[inspectorDevice.serial]?.error}
+          onClose={() => setSelectedSerial(undefined)}
+          onChange={updateInspectorDevice}
+          onEnterEditMode={enterEditMode}
+          onExitEditMode={() => setDraft(undefined)}
+          onApply={applyDraft}
+          onRevert={() => setDraft((prev) => (prev ? revertDraft(prev) : prev))}
+          onUndo={() => setDraft((prev) => (prev ? undoDraft(prev) : prev))}
+        />
+      ) : null}
     </div>
   );
 }
