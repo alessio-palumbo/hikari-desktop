@@ -14,6 +14,8 @@ import (
 	"github.com/alessio-palumbo/lifxprotocol-go/gen/protocol/packets"
 )
 
+const defaultColorTransitionDuration = 300 * time.Millisecond
+
 // lifxController is the subset of lifxlan-go's controller.Controller used by
 // the transport. Keeping this tiny interface makes mapping and sends testable
 // without starting network discovery in unit tests.
@@ -412,7 +414,7 @@ func deviceStateMessages(device Device, direct bool) []*protocol.Message {
 		if direct {
 			return []*protocol.Message{singleZoneColorMessage(device)}
 		}
-		return messages.SetMultizoneExtendedColors(0, hslColorsToHSBK(device.Zones, device.Brightness, device.Kelvin, device.Capability), time.Millisecond)
+		return messages.SetMultizoneExtendedColors(0, hslColorsToHSBK(device.Zones, device.Brightness, device.Kelvin, device.Capability), defaultColorTransitionDuration)
 	case "matrix":
 		if direct {
 			return []*protocol.Message{singleZoneColorMessage(device)}
@@ -428,7 +430,7 @@ func deviceStateMessages(device Device, direct bool) []*protocol.Message {
 				len(device.Chain),
 				width,
 				rotateMatrixForOrientation(matrix, hslColorsToHSBK(matrix.Pixels, device.Brightness, device.Kelvin, device.Capability)),
-				time.Millisecond,
+				defaultColorTransitionDuration,
 			)...)
 		}
 		return msgs
@@ -517,7 +519,7 @@ func singleZoneColorMessage(device Device) *protocol.Message {
 		k := uint16(clampKelvin(value, deviceKelvinMin(device.Capability), deviceKelvinMax(device.Capability)))
 		kelvin = &k
 	}
-	return messages.SetColor(hue, saturation, &brightness, kelvin, time.Millisecond, 0)
+	return messages.SetColor(hue, saturation, &brightness, kelvin, defaultColorTransitionDuration, 0)
 }
 
 func deviceKelvinMin(capability DeviceCapability) int {
