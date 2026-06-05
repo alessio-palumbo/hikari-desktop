@@ -305,7 +305,7 @@ function GradientControls({
   );
 }
 
-function ModeToggle({ value, hasColor, onChange }: { value: PaintMode; hasColor: boolean; onChange: (value: PaintMode) => void }) {
+export function ModeToggle({ value, hasColor, onChange }: { value: PaintMode; hasColor: boolean; onChange: (value: PaintMode) => void }) {
   const options: PaintMode[] = hasColor ? ['color', 'white'] : ['white'];
   return (
     <div className="mode-toggle" role="tablist" aria-label="Color mode">
@@ -339,7 +339,7 @@ function ToolToggle({ value, onChange }: { value: PaintTool | null; onChange: (v
   );
 }
 
-function WhiteScale({ value, kelvinMin, kelvinMax, onChange }: { value: number; kelvinMin: number; kelvinMax: number; onChange: (value: number) => void }) {
+export function WhiteScale({ value, kelvinMin, kelvinMax, onChange }: { value: number; kelvinMin: number; kelvinMax: number; onChange: (value: number) => void }) {
   return (
     <section className="control-section">
       <div className="temperature-label">
@@ -629,7 +629,7 @@ function MatrixDraftEditor({
   );
 }
 
-function initialPaintColor(device: Device): HslColor {
+export function initialPaintColor(device: Device): HslColor {
   if (device.kind === 'single' && device.color) return device.color;
   if (device.kind === 'multizone' && device.zones?.length) return device.zones[Math.floor(device.zones.length / 2)];
   if (device.kind === 'matrix' && device.chain?.[0]?.pixels.length) {
@@ -643,7 +643,7 @@ function matrixGridCols(matrix: NonNullable<Device['chain']>[number]): number {
   return Math.max(1, ...matrix.rows.map((row) => Math.ceil(row.offset + row.cols)), Math.round(matrix.w));
 }
 
-function kelvinToHsl(kelvin: number): HslColor {
+export function kelvinToHsl(kelvin: number): HslColor {
   return { h: 0, s: 0, l: 0.72, kelvin };
 }
 
@@ -653,7 +653,7 @@ function clampKelvin(kelvin: number, device: Device): number {
   return Math.max(min, Math.min(max, kelvin));
 }
 
-function applyDeviceColor(device: Device, color: HslColor): Device {
+export function applyDeviceColor(device: Device, color: HslColor): Device {
   const brightness = device.brightness > 0 ? device.brightness : Math.max(color.l, 0.55);
   const nextColor = { ...color, l: brightness };
   if (device.kind === 'single') {
@@ -679,7 +679,7 @@ function applyDeviceColor(device: Device, color: HslColor): Device {
   };
 }
 
-function applyDeviceBrightness(device: Device, brightness: number): Device {
+export function applyDeviceBrightness(device: Device, brightness: number): Device {
   const on = brightness > 0;
   const withBrightness = (color: HslColor): HslColor => ({ ...color, l: brightness });
   if (device.kind === 'single') {

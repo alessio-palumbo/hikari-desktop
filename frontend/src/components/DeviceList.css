@@ -26,8 +26,32 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  max-width: 330px;
+  max-width: 370px;
   margin-top: 16px;
+}
+
+.group-color-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: oklch(1 0 0 / 0.025);
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+.group-color-button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: oklch(1 0 0 / 0.05);
+  color: var(--fg-0);
+}
+
+.group-color-button:disabled {
+  cursor: default;
+  opacity: 0.35;
 }
 
 .device-list {

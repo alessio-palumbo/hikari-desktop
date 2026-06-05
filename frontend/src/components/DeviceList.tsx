@@ -1,3 +1,4 @@
+import { Palette } from 'lucide-react';
 import type { Device, Group } from '../domain/lifx';
 import { DevicePreview } from './DevicePreview';
 import { PowerDot, RowChevron, Slider } from './primitives';
@@ -12,11 +13,12 @@ interface DeviceListProps {
   refreshing: boolean;
   deviceStatus: Record<string, { loading?: boolean; error?: string }>;
   onSelect: (serial: string) => void;
+  onGroupInspect: () => void;
   onDeviceChange: (device: Device) => void;
   onMasterChange: (on: boolean, brightness?: number) => void;
 }
 
-export function DeviceList({ group, groups, devices, selectedSerial, searching, refreshing, deviceStatus, onSelect, onDeviceChange, onMasterChange }: DeviceListProps) {
+export function DeviceList({ group, groups, devices, selectedSerial, searching, refreshing, deviceStatus, onSelect, onGroupInspect, onDeviceChange, onMasterChange }: DeviceListProps) {
   const onCount = devices.filter((device) => device.on).length;
   const avgBrightness = devices.length ? devices.reduce((sum, device) => sum + device.brightness, 0) / devices.length : 0;
   const searchSections = groups
@@ -34,6 +36,9 @@ export function DeviceList({ group, groups, devices, selectedSerial, searching, 
             <div className="group-controls">
               <PowerDot on={onCount > 0} onChange={(next) => onMasterChange(next)} />
               <Slider value={avgBrightness} onChange={(value) => onMasterChange(value > 0, value)} />
+              <button className="group-color-button" type="button" aria-label="Group color controls" disabled={!group || !devices.length} onClick={onGroupInspect}>
+                <Palette size={14} strokeWidth={1.7} />
+              </button>
             </div>
           </header>
         ) : null}

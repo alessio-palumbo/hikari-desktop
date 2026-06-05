@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getDeviceSnapshot, setDeviceState } from './backend/api';
 import { DeviceList } from './components/DeviceList';
+import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
 import { commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
@@ -23,6 +24,7 @@ export function App() {
   const [locationId, setLocationId] = useState(() => loadPreference(LOCATION_KEY));
   const [groupId, setGroupId] = useState(() => loadPreference(GROUP_KEY));
   const [selectedSerial, setSelectedSerial] = useState<string | undefined>();
+  const [selectedGroupInspectorId, setSelectedGroupInspectorId] = useState<string | undefined>();
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<DeviceDraft | undefined>();
   const [saving, setSaving] = useState(false);
@@ -104,6 +106,8 @@ export function App() {
   useEffect(() => savePreference(GROUP_KEY, groupId), [groupId]);
 
   const selectedDevice = snapshot.devices.find((device) => device.serial === selectedSerial);
+  const inspectorGroup = snapshot.groups.find((group) => group.id === selectedGroupInspectorId);
+  const inspectorGroupDevices = inspectorGroup ? snapshot.devices.filter((device) => device.groupId === inspectorGroup.id) : [];
 
   useEffect(() => {
     if (!selectedDevice) {
@@ -117,16 +121,28 @@ export function App() {
   }, [selectedDevice]);
 
   useEffect(() => {
-    if (!selectedSerial) return undefined;
+    if (!selectedSerial && !selectedGroupInspectorId) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
       event.stopPropagation();
       setSelectedSerial(undefined);
+      setSelectedGroupInspectorId(undefined);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedSerial]);
+  }, [selectedGroupInspectorId, selectedSerial]);
+
+  const selectDevice = (serial: string) => {
+    setSelectedGroupInspectorId(undefined);
+    setSelectedSerial(serial);
+  };
+
+  const openGroupInspector = () => {
+    if (!currentGroup) return;
+    setSelectedSerial(undefined);
+    setSelectedGroupInspectorId(currentGroup.id);
+  };
 
   const visibleDevices = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -256,10 +272,15 @@ export function App() {
         refreshing={refreshing}
         refreshError={refreshError}
         onQueryChange={setQuery}
-        onLocationChange={setLocationId}
+        onLocationChange={(id) => {
+          setLocationId(id);
+          setSelectedSerial(undefined);
+          setSelectedGroupInspectorId(undefined);
+        }}
         onGroupChange={(id) => {
           setGroupId(id);
           setSelectedSerial(undefined);
+          setSelectedGroupInspectorId(undefined);
           setQuery('');
         }}
         onLocationPower={(id, on) =>
@@ -285,7 +306,8 @@ export function App() {
         searching={query.trim().length > 0}
         refreshing={refreshing}
         deviceStatus={deviceStatus}
-        onSelect={setSelectedSerial}
+        onSelect={selectDevice}
+        onGroupInspect={openGroupInspector}
         onDeviceChange={updateListDevice}
         onMasterChange={(on, brightness) =>
           void Promise.all(
@@ -311,6 +333,13 @@ export function App() {
           onApply={applyDraft}
           onRevert={() => setDraft((prev) => (prev ? revertDraft(prev) : prev))}
           onUndo={() => setDraft((prev) => (prev ? undoDraft(prev) : prev))}
+        />
+      ) : inspectorGroup ? (
+        <GroupInspector
+          group={inspectorGroup}
+          devices={inspectorGroupDevices}
+          onClose={() => setSelectedGroupInspectorId(undefined)}
+          onDeviceChange={updateListDevice}
         />
       ) : null}
     </div>
