@@ -3,7 +3,7 @@ package backend
 import "fmt"
 
 func MockDeviceSnapshot() DeviceSnapshot {
-	return DeviceSnapshot{
+	return sortDeviceSnapshot(DeviceSnapshot{
 		Locations: []Location{
 			{ID: "home", Name: "Home"},
 			{ID: "studio", Name: "Studio"},
@@ -63,7 +63,7 @@ func MockDeviceSnapshot() DeviceSnapshot {
 				Capability: colorCapability(), Zones: makeZones(32, 200, 260),
 			},
 		},
-	}
+	})
 }
 
 func colorCapability() DeviceCapability {

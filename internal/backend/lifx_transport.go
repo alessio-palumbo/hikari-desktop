@@ -130,7 +130,7 @@ func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {
 		snapshot.Devices = append(snapshot.Devices, mapLifxDevice(d, groupID))
 	}
 
-	return snapshot
+	return sortDeviceSnapshot(snapshot)
 }
 
 func isSupportedLightDevice(d lifxdevice.Device) bool {

@@ -84,6 +84,21 @@ func TestLifxTransportSnapshotMapsEmptyDiscoveryAsEmptyArrays(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSnapshotSortsLocationsGroupsAndDevices(t *testing.T) {
+	devices := []lifxdevice.Device{
+		testLifxDevice(t, "d073d501a2c6", "Zulu Strip", "Studio", "Zebra"),
+		testLifxDevice(t, "d073d501a2c5", "Pendant", "Home", "Kitchen"),
+		testLifxDevice(t, "d073d501a2c4", "Alpha Strip", "Studio", "Zebra"),
+		testLifxDevice(t, "d073d501a2c3", "Desk Lamp", "Home", "Desk"),
+	}
+
+	snapshot := mapLifxDevices(devices)
+
+	assertNames(t, "locations", locationNames(snapshot.Locations), []string{"Home", "Studio"})
+	assertNames(t, "groups", groupNames(snapshot.Groups), []string{"Desk", "Kitchen", "Zebra"})
+	assertNames(t, "devices", deviceNames(snapshot.Devices), []string{"Desk Lamp", "Pendant", "Alpha Strip", "Zulu Strip"})
+}
+
 func TestLifxTransportSnapshotFiltersSwitchDevices(t *testing.T) {
 	switchSerial, err := lifxdevice.SerialFromHex("d073d501a2c4")
 	if err != nil {
@@ -703,6 +718,58 @@ func testHSBK(hue float64) packets.LightHsbk {
 		Saturation: lifxdevice.ConvertExternalToDeviceValue(50, 100),
 		Brightness: lifxdevice.ConvertExternalToDeviceValue(50, 100),
 		Kelvin:     3500,
+	}
+}
+
+func testLifxDevice(t *testing.T, serialHex, label, location, group string) lifxdevice.Device {
+	t.Helper()
+	serial, err := lifxdevice.SerialFromHex(serialHex)
+	if err != nil {
+		t.Fatalf("SerialFromHex returned error: %v", err)
+	}
+	return lifxdevice.Device{
+		Serial:    serial,
+		Label:     label,
+		Location:  location,
+		Group:     group,
+		PoweredOn: true,
+		Color:     lifxdevice.Color{Brightness: 50, Kelvin: 3500},
+	}
+}
+
+func locationNames(locations []Location) []string {
+	names := make([]string, len(locations))
+	for i, location := range locations {
+		names[i] = location.Name
+	}
+	return names
+}
+
+func groupNames(groups []Group) []string {
+	names := make([]string, len(groups))
+	for i, group := range groups {
+		names[i] = group.Name
+	}
+	return names
+}
+
+func deviceNames(devices []Device) []string {
+	names := make([]string, len(devices))
+	for i, device := range devices {
+		names[i] = device.Name
+	}
+	return names
+}
+
+func assertNames(t *testing.T, label string, got []string, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s = %#v, want %#v", label, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("%s = %#v, want %#v", label, got, want)
+		}
 	}
 }
 

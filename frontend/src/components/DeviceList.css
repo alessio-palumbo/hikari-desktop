@@ -45,6 +45,11 @@
   gap: 8px;
 }
 
+.search-section + .search-section {
+  padding-top: 18px;
+  border-top: 1px solid oklch(1 0 0 / 0.06);
+}
+
 .search-section-header {
   display: flex;
   align-items: center;
