@@ -30,26 +30,40 @@
   margin-top: 16px;
 }
 
-.group-color-button {
+.group-inspector-button {
   display: grid;
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: 6px;
-  background: oklch(1 0 0 / 0.025);
-  color: var(--fg-2);
+  background: transparent;
+  color: var(--fg-4);
   cursor: pointer;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
 }
 
-.group-color-button:hover:not(:disabled) {
-  border-color: var(--line-strong);
+.group-inspector-button:hover:not(:disabled),
+.group-inspector-button[data-active="true"] {
+  border-color: oklch(1 0 0 / 0.06);
   background: oklch(1 0 0 / 0.05);
   color: var(--fg-0);
 }
 
-.group-color-button:disabled {
+.group-inspector-button svg {
+  transition: transform 0.16s ease;
+}
+
+.group-inspector-button:hover:not(:disabled) svg,
+.group-inspector-button[data-active="true"] svg {
+  transform: translateX(2px);
+}
+
+.group-inspector-button:disabled {
   cursor: default;
   opacity: 0.35;
 }
@@ -103,6 +117,14 @@
   border-radius: 8px;
   color: var(--fg-1);
   cursor: pointer;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.device-row:hover {
+  border-color: oklch(1 0 0 / 0.045);
+  background: oklch(1 0 0 / 0.025);
 }
 
 .device-row[data-selected="true"] {
@@ -156,6 +178,22 @@
   display: grid;
   place-items: center;
   color: var(--fg-4);
+}
+
+.row-chevron svg {
+  transition:
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.device-row:hover .row-chevron,
+.device-row[data-selected="true"] .row-chevron {
+  color: var(--fg-1);
+}
+
+.device-row:hover .row-chevron svg,
+.device-row[data-selected="true"] .row-chevron svg {
+  transform: translateX(2px);
 }
 
 .empty-list {

@@ -1,4 +1,3 @@
-import { Palette } from 'lucide-react';
 import type { Device, Group } from '../domain/lifx';
 import { DevicePreview } from './DevicePreview';
 import { PowerDot, RowChevron, Slider } from './primitives';
@@ -9,16 +8,32 @@ interface DeviceListProps {
   groups: Group[];
   devices: Device[];
   selectedSerial?: string;
+  groupInspecting: boolean;
   searching: boolean;
   refreshing: boolean;
   deviceStatus: Record<string, { loading?: boolean; error?: string }>;
   onSelect: (serial: string) => void;
   onGroupInspect: () => void;
+  onSurfaceClick: () => void;
   onDeviceChange: (device: Device) => void;
   onMasterChange: (on: boolean, brightness?: number) => void;
 }
 
-export function DeviceList({ group, groups, devices, selectedSerial, searching, refreshing, deviceStatus, onSelect, onGroupInspect, onDeviceChange, onMasterChange }: DeviceListProps) {
+export function DeviceList({
+  group,
+  groups,
+  devices,
+  selectedSerial,
+  groupInspecting,
+  searching,
+  refreshing,
+  deviceStatus,
+  onSelect,
+  onGroupInspect,
+  onSurfaceClick,
+  onDeviceChange,
+  onMasterChange,
+}: DeviceListProps) {
   const onCount = devices.filter((device) => device.on).length;
   const avgBrightness = devices.length ? devices.reduce((sum, device) => sum + device.brightness, 0) / devices.length : 0;
   const searchSections = groups
@@ -26,7 +41,14 @@ export function DeviceList({ group, groups, devices, selectedSerial, searching, 
     .filter((section) => section.devices.length > 0);
 
   return (
-    <main className="center-panel">
+    <main
+      className="center-panel"
+      onClick={(event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest('.device-row, .group-controls, .search-section-header, button, input')) return;
+        onSurfaceClick();
+      }}
+    >
       <div className="device-list-shell">
         {!searching ? (
           <header className="group-header">
@@ -36,8 +58,8 @@ export function DeviceList({ group, groups, devices, selectedSerial, searching, 
             <div className="group-controls">
               <PowerDot on={onCount > 0} onChange={(next) => onMasterChange(next)} />
               <Slider value={avgBrightness} onChange={(value) => onMasterChange(value > 0, value)} />
-              <button className="group-color-button" type="button" aria-label="Group color controls" disabled={!group || !devices.length} onClick={onGroupInspect}>
-                <Palette size={14} strokeWidth={1.7} />
+              <button className="group-inspector-button" type="button" aria-label="Group controls" disabled={!group || !devices.length} data-active={groupInspecting} onClick={onGroupInspect}>
+                <RowChevron />
               </button>
             </div>
           </header>

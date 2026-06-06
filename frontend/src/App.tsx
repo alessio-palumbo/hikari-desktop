@@ -135,13 +135,18 @@ export function App() {
 
   const selectDevice = (serial: string) => {
     setSelectedGroupInspectorId(undefined);
-    setSelectedSerial(serial);
+    setSelectedSerial((current) => (current === serial ? undefined : serial));
   };
 
   const openGroupInspector = () => {
     if (!currentGroup) return;
     setSelectedSerial(undefined);
-    setSelectedGroupInspectorId(currentGroup.id);
+    setSelectedGroupInspectorId((current) => (current === currentGroup.id ? undefined : currentGroup.id));
+  };
+
+  const closeInspector = () => {
+    setSelectedSerial(undefined);
+    setSelectedGroupInspectorId(undefined);
   };
 
   const visibleDevices = useMemo(() => {
@@ -303,11 +308,13 @@ export function App() {
         groups={snapshot.groups}
         devices={visibleDevices}
         selectedSerial={selectedSerial}
+        groupInspecting={selectedGroupInspectorId === currentGroup?.id}
         searching={query.trim().length > 0}
         refreshing={refreshing}
         deviceStatus={deviceStatus}
         onSelect={selectDevice}
         onGroupInspect={openGroupInspector}
+        onSurfaceClick={closeInspector}
         onDeviceChange={updateListDevice}
         onMasterChange={(on, brightness) =>
           void Promise.all(
