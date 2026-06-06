@@ -39,6 +39,18 @@ export function Sidebar(props: SidebarProps) {
     searchRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'f' || (!event.metaKey && !event.ctrlKey) || event.altKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   return (
     <aside className="left-panel sidebar">
       <div className="sidebar-search">

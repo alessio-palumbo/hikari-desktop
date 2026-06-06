@@ -1,8 +1,8 @@
-# hikari
+# 光 (ひかり)
 
 hikari is a Wails desktop app for controlling LIFX devices on the local network.
 
-The app is in active development. It currently has a real `lifxlan-go` transport for LAN discovery and direct device control, plus a mock transport for UI development. Scenes, effects, presets, final packaging, signing, and notarization are not implemented yet.
+The app is in active development, but it is ready to try with real LAN devices. It currently has a real `lifxlan-go` transport for LAN discovery and direct device control, plus a mock transport for UI development. Scenes, effects, presets, full installer packaging, signing, and notarization are not implemented yet.
 
 ## Current Scope
 
@@ -12,6 +12,33 @@ The app is in active development. It currently has a real `lifxlan-go` transport
 - Multizone and matrix draft editing with brush, fill, picker, and gradient tools.
 - Matrix custom grids and orientation-aware preview/apply behavior.
 - Periodic refresh with pending-state reconciliation to avoid stale device updates fighting recent UI changes.
+
+## Download
+
+Prebuilt macOS, Windows, and Linux artifacts are published on the GitHub Releases page.
+
+To try hikari:
+
+1. Open the latest release.
+2. Download the artifact for your platform.
+3. Extract the archive.
+4. Run `hikari`.
+
+### macOS Quarantine
+
+macOS builds are not notarized yet. After extracting the release archive, macOS may block the app. Remove the quarantine attribute before opening it:
+
+```sh
+xattr -dr com.apple.quarantine hikari.app
+```
+
+Run the command from the folder containing `hikari.app`, or replace `hikari.app` with the full app path.
+
+## Shortcuts
+
+- `Cmd+F` on macOS or `Ctrl+F` on Windows/Linux: focus and select the search field.
+- `Esc` in search: clear the search text; when search is empty, blur the field.
+- `Esc` with the right panel open: close the active device or group panel.
 
 ## Requirements
 
@@ -104,7 +131,7 @@ The frontend calls:
 
 The backend keeps `lifxlan-go` behind the transport boundary so real device behavior can be hardened without coupling the UI directly to LAN implementation details.
 
-## Release
+## Release Builds
 
 The release workflow builds macOS, Windows, and Linux artifacts from tags matching `v*`.
 
