@@ -1,4 +1,4 @@
-import type { Device } from './lifx';
+import type { Device, HslColor } from './lifx';
 
 export interface DeviceDraft {
   base: Device;
@@ -61,6 +61,22 @@ export function commitDraft(state: DeviceDraft, committed: Device): DeviceDraft 
   };
 }
 
+export function activateEditedDevice(device: Device): Device {
+  const brightness = device.brightness > 0 ? device.brightness : averageLightness(deviceColors(device)) || 0.55;
+  return { ...device, on: true, brightness };
+}
+
 export function cloneDevice(device: Device): Device {
   return JSON.parse(JSON.stringify(device)) as Device;
+}
+
+function deviceColors(device: Device): HslColor[] {
+  if (device.kind === 'multizone') return device.zones ?? [];
+  if (device.kind === 'matrix') return device.chain?.flatMap((matrix) => matrix.pixels) ?? [];
+  return device.color ? [device.color] : [];
+}
+
+function averageLightness(colors: HslColor[]): number {
+  if (!colors.length) return 0;
+  return colors.reduce((sum, color) => sum + color.l, 0) / colors.length;
 }

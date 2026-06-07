@@ -81,6 +81,9 @@ func emptyDeviceSnapshot() DeviceSnapshot {
 }
 
 type SetDeviceStateRequest struct {
-	Device  Device `json:"device"`
-	Preview bool   `json:"preview"`
+	Device         Device `json:"device"`
+	Preview        bool   `json:"preview"`
+	PowerChanged   bool   `json:"powerChanged"`
+	PowerOnly      bool   `json:"powerOnly"`
+	BrightnessOnly bool   `json:"brightnessOnly"`
 }

@@ -4,7 +4,7 @@ import { DeviceList } from './components/DeviceList';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
-import { commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
+import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { Device, DeviceSnapshot, HslColor } from './domain/lifx';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
@@ -205,12 +205,15 @@ export function App() {
 
   const updateListDevice = async (next: Device) => {
     const previous = snapshot.devices.find((device) => device.serial === next.serial);
+    const brightnessOnly = isBrightnessOnlyChange(next, previous);
     const command = prepareDeviceCommand(next, previous);
+    const powerChanged = didPowerChange(command, previous);
+    const powerOnly = isPowerOnlyChange(command, previous);
     replaceDevice(command);
     recordPendingState(command, previous);
     setDeviceLoading(command.serial, true);
     try {
-      const committed = await setDeviceState(command, true);
+      const committed = await setDeviceState(command, true, powerChanged, powerOnly, brightnessOnly);
       replaceDevice(committed);
       setDeviceLoading(command.serial, false);
     } catch (error) {
@@ -225,7 +228,7 @@ export function App() {
       await updateListDevice(next);
       return;
     }
-    setDraft((prev) => (prev ? updateDraft(prev, next) : createDraft(next)));
+    setDraft((prev) => (prev ? updateDraft(prev, activateEditedDevice(next)) : createDraft(activateEditedDevice(next))));
   };
 
   const enterEditMode = () => {
@@ -238,7 +241,7 @@ export function App() {
     setSaving(true);
     setDeviceLoading(draft.draft.serial, true);
     try {
-      const committed = await setDeviceState(draft.draft, false);
+      const committed = await setDeviceState(draft.draft, false, didPowerChange(draft.draft, draft.base));
       recordPendingState(committed, draft.base);
       replaceDevice(committed);
       setDraft(commitDraft(draft, committed));
@@ -387,6 +390,54 @@ function savePreference(key: string, value: string) {
 function prepareDeviceCommand(next: Device, previous?: Device): Device {
   if (!previous || near(previous.brightness, next.brightness) || next.kind === 'single') return next;
   return applyBrightnessToZones(next, next.brightness);
+}
+
+function didPowerChange(next: Device, previous?: Device): boolean {
+  return !previous || next.on !== previous.on;
+}
+
+function isPowerOnlyChange(next: Device, previous?: Device): boolean {
+  if (!previous || next.on === previous.on) return false;
+  if (!near(next.brightness, previous.brightness)) return false;
+  if (!sameColor(next.color, previous.color)) return false;
+  if (!sameColors(next.zones, previous.zones)) return false;
+  return sameMatrixChain(next.chain, previous.chain);
+}
+
+function isBrightnessOnlyChange(next: Device, previous?: Device): boolean {
+  if (!previous || near(next.brightness, previous.brightness)) return false;
+  if (!sameColor(next.color, previous.color)) return false;
+  if (!sameColors(next.zones, previous.zones)) return false;
+  return sameMatrixChain(next.chain, previous.chain);
+}
+
+function sameColor(a?: HslColor, b?: HslColor): boolean {
+  if (!a || !b) return a === b;
+  return near(a.h, b.h) && near(a.s, b.s) && near(a.l, b.l) && (a.kelvin ?? 0) === (b.kelvin ?? 0);
+}
+
+function sameColors(a?: HslColor[], b?: HslColor[]): boolean {
+  if (!a || !b) return a === b;
+  if (a.length !== b.length) return false;
+  return a.every((color, index) => sameColor(color, b[index]));
+}
+
+function sameMatrixChain(a?: Device['chain'], b?: Device['chain']): boolean {
+  if (!a || !b) return a === b;
+  if (a.length !== b.length) return false;
+  return a.every((matrix, index) => {
+    const other = b[index];
+    return (
+      matrix.id === other.id &&
+      near(matrix.x, other.x) &&
+      near(matrix.y, other.y) &&
+      near(matrix.w, other.w) &&
+      near(matrix.h, other.h) &&
+      (matrix.sendWidth ?? 0) === (other.sendWidth ?? 0) &&
+      (matrix.orientation ?? 0) === (other.orientation ?? 0) &&
+      sameColors(matrix.pixels, other.pixels)
+    );
+  });
 }
 
 function applyBrightnessToZones(device: Device, brightness: number): Device {

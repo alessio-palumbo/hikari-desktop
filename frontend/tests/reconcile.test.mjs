@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { activateEditedDevice } from '../dist-test/domain/editor.js';
 import { previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
 import { createPendingState, isPendingConfirmed, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
 
@@ -152,4 +153,37 @@ test('preview lightness keeps maximum kelvin whites below washout range', () => 
 test('preview opacity only dims off devices', () => {
   assert.equal(previewOpacity(true), 1);
   assert.equal(previewOpacity(false), 0.3);
+});
+
+test('activates edited multizone devices before apply', () => {
+  const device = {
+    ...base.devices[0],
+    on: false,
+    brightness: 0,
+    zones: [
+      { h: 10, s: 0.8, l: 0.4 },
+      { h: 20, s: 0.8, l: 0.8 },
+    ],
+  };
+
+  const got = activateEditedDevice(device);
+
+  assert.equal(got.on, true);
+  assert.ok(Math.abs(got.brightness - 0.6) < 0.001);
+});
+
+test('activates edited matrix devices before apply', () => {
+  const device = {
+    ...base.devices[0],
+    kind: 'matrix',
+    on: false,
+    brightness: 0,
+    zones: undefined,
+    chain: [{ id: 0, x: 0, y: 0, w: 2, h: 1, rows: [{ cols: 2, offset: 0 }], pixels: [{ h: 10, s: 0.8, l: 0.3 }, { h: 20, s: 0.8, l: 0.7 }] }],
+  };
+
+  const got = activateEditedDevice(device);
+
+  assert.equal(got.on, true);
+  assert.equal(got.brightness, 0.5);
 });

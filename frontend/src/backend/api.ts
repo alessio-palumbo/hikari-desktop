@@ -8,6 +8,9 @@ interface WailsApp {
 interface SetDeviceStateRequest {
   device: Device;
   preview: boolean;
+  powerChanged: boolean;
+  powerOnly: boolean;
+  brightnessOnly: boolean;
 }
 
 declare global {
@@ -26,9 +29,9 @@ export async function getDeviceSnapshot(): Promise<DeviceSnapshot> {
   return mockSnapshot();
 }
 
-export async function setDeviceState(device: Device, preview = false): Promise<Device> {
+export async function setDeviceState(device: Device, preview = false, powerChanged = false, powerOnly = false, brightnessOnly = false): Promise<Device> {
   const app = window.go?.main?.App;
-  if (app?.SetDeviceState) return app.SetDeviceState({ device, preview });
+  if (app?.SetDeviceState) return app.SetDeviceState({ device, preview, powerChanged, powerOnly, brightnessOnly });
   await new Promise((resolve) => window.setTimeout(resolve, preview ? 60 : 180));
   return device;
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
+	"os"
 	"strings"
 	"time"
 
@@ -95,7 +97,7 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 		return req.Device, err
 	}
 
-	if err := sendDeviceState(ctx, ctrl, serial, req.Device, req.Preview); err != nil {
+	if err := sendDeviceState(ctx, ctrl, serial, req.Device, req.Preview, req.PowerChanged, req.PowerOnly, req.BrightnessOnly); err != nil {
 		log.Printf("hikari: set device state failed for %s: %v", req.Device.Serial, err)
 		return req.Device, err
 	}
@@ -174,6 +176,7 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 	case "multizone":
 		device.ZoneCount = len(d.MultizoneProperties.Zones)
 		device.Zones = mapLifxColors(d.MultizoneProperties.Zones, capability)
+		applyColorSummary(&device, device.Zones)
 	case "matrix":
 		device.PixelCount = d.MatrixProperties.NZones
 		device.ChainLen = d.MatrixProperties.ChainLength
@@ -181,9 +184,30 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 			device.ChainLen = len(d.MatrixProperties.ChainZones)
 		}
 		device.Chain = mapLifxMatrixChain(d, capability)
+		applyColorSummary(&device, matrixPixels(device.Chain))
 	}
 
 	return device
+}
+
+func applyColorSummary(device *Device, colors []HSLColor) {
+	if len(colors) == 0 {
+		return
+	}
+	summary := averageHSLColor(colors)
+	device.Brightness = summary.L
+	device.Color = &summary
+	if summary.Kelvin > 0 {
+		device.Kelvin = summary.Kelvin
+	}
+}
+
+func matrixPixels(chain []Matrix) []HSLColor {
+	var colors []HSLColor
+	for _, matrix := range chain {
+		colors = append(colors, matrix.Pixels...)
+	}
+	return colors
 }
 
 func deviceIPAddress(d lifxdevice.Device) string {
@@ -194,31 +218,51 @@ func deviceIPAddress(d lifxdevice.Device) string {
 }
 
 func mapLifxMatrixChain(d lifxdevice.Device, capability DeviceCapability) []Matrix {
-	props := d.MatrixProperties
-	chain := make([]Matrix, 0, len(props.ChainZones))
-	for i, zones := range props.ChainZones {
-		rows := makeMatrixRowsForDevice(d, len(zones))
-		displayWidth := matrixRowsWidth(rows, props.Width)
+	surface := lifxdevice.SurfaceFromDevice(d)
+	if surface.Matrix == nil {
+		return nil
+	}
+
+	chain := make([]Matrix, 0, len(d.MatrixProperties.ChainZones))
+	for i, zones := range d.MatrixProperties.ChainZones {
+		if i >= len(surface.Matrix.Chains) {
+			break
+		}
+		surfaceChain := surface.Matrix.Chains[i]
+		sendWidth := surfaceChain.SendWidth
+		sendHeight := matrixSendHeight(sendWidth, len(zones), surfaceChain.Bounds.Height)
 		chain = append(chain, Matrix{
-			ID:          i,
-			X:           float64(i) * displayWidth,
-			Y:           0,
-			W:           displayWidth,
-			H:           float64(len(rows)),
-			SendWidth:   props.Width,
-			Orientation: int(matrixOrientation(props, i)),
-			Rows:        rows,
-			Pixels:      mapLifxColors(adjustUIGridForOrientation(props.Width, props.Height, matrixOrientation(props, i), zones), capability),
+			ID:          surfaceChain.Index,
+			X:           float64(surfaceChain.Bounds.X),
+			Y:           float64(surfaceChain.Bounds.Y),
+			W:           float64(surfaceChain.Bounds.Width),
+			H:           float64(surfaceChain.Bounds.Height),
+			SendWidth:   sendWidth,
+			Orientation: int(surfaceChain.Orientation),
+			Rows:        mapSurfaceRows(surfaceChain.Rows),
+			Pixels:      mapLifxColors(adjustUIGridForOrientation(sendWidth, sendHeight, surfaceChain.Orientation, zones), capability),
 		})
 	}
 	return chain
 }
 
-func matrixOrientation(props lifxdevice.MatrixProperties, index int) lifxdevice.Orientation {
-	if index >= 0 && index < len(props.ChainOrientations) {
-		return props.ChainOrientations[index]
+func mapSurfaceRows(rows []lifxdevice.MatrixRow) []MatrixRow {
+	mapped := make([]MatrixRow, len(rows))
+	for i, row := range rows {
+		mapped[i] = MatrixRow{
+			Cols:       row.Cols,
+			Offset:     float64(row.Offset),
+			HiddenCols: append([]int(nil), row.HiddenCols...),
+		}
 	}
-	return lifxdevice.OrientationRightSideUp
+	return mapped
+}
+
+func matrixSendHeight(sendWidth int, pixels int, fallback int) int {
+	if sendWidth > 0 && pixels > 0 {
+		return max((pixels+sendWidth-1)/sendWidth, 1)
+	}
+	return max(fallback, 1)
 }
 
 func adjustUIGridForOrientation(width, height int, orientation lifxdevice.Orientation, colors []packets.LightHsbk) []packets.LightHsbk {
@@ -232,94 +276,6 @@ func adjustUIGridForOrientation(width, height int, orientation lifxdevice.Orient
 	default:
 		return colors
 	}
-}
-
-func makeMatrixRows(width, height int) []MatrixRow {
-	rows := make([]MatrixRow, max(0, height))
-	for i := range rows {
-		rows[i] = MatrixRow{Cols: width}
-	}
-	return rows
-}
-
-func makeMatrixRowsForDevice(d lifxdevice.Device, pixels int) []MatrixRow {
-	width, height := displayMatrixDimensions(d, pixels)
-	rows := makeMatrixRows(width, height)
-	if len(rows) == 0 {
-		return rows
-	}
-	hiddenCols := hiddenMatrixColsByRow(d.ProductID, width)
-	for rowIndex, cols := range hiddenCols {
-		if rowIndex >= len(rows) {
-			continue
-		}
-		rows[rowIndex].HiddenCols = cols
-	}
-	if candleProducts[d.ProductID] && len(rows) > 0 {
-		rows[0].Offset = 1
-	}
-	return rows
-}
-
-func displayMatrixDimensions(d lifxdevice.Device, pixels int) (width, height int) {
-	width = d.MatrixProperties.Width
-	height = d.MatrixProperties.Height
-	if ceilingCapsuleProducts[d.ProductID] && pixels%16 == 0 {
-		width = 16
-		height = pixels / width
-	}
-	return width, height
-}
-
-func matrixRowsWidth(rows []MatrixRow, fallback int) float64 {
-	width := fallback
-	for _, row := range rows {
-		width = max(width, int(row.Offset)+row.Cols)
-	}
-	return float64(width)
-}
-
-func hiddenMatrixColsByRow(productID uint32, width int) map[int][]int {
-	hidden := hiddenMatrixIndexes(productID)
-	if len(hidden) == 0 || width <= 0 {
-		return nil
-	}
-	byRow := make(map[int][]int)
-	for _, index := range hidden {
-		byRow[index/width] = append(byRow[index/width], index%width)
-	}
-	return byRow
-}
-
-func hiddenMatrixIndexes(productID uint32) []int {
-	switch {
-	case candleProducts[productID]:
-		return []int{2, 3, 4}
-	case ceilingProducts[productID]:
-		return []int{0, 1, 6, 7, 56, 57, 62, 63}
-	case ceilingCapsuleProducts[productID]:
-		return []int{0, 1, 14, 15, 112, 113, 126, 127}
-	case lunaProducts[productID]:
-		return []int{0, 6, 28, 34}
-	default:
-		return nil
-	}
-}
-
-var candleProducts = map[uint32]bool{
-	57: true, 67: true, 68: true, 81: true, 96: true, 137: true, 138: true, 185: true, 186: true, 187: true, 188: true, 215: true, 216: true, 217: true, 218: true,
-}
-
-var ceilingProducts = map[uint32]bool{
-	145: true, 146: true, 176: true, 177: true, 265: true, 266: true,
-}
-
-var ceilingCapsuleProducts = map[uint32]bool{
-	201: true, 202: true,
-}
-
-var lunaProducts = map[uint32]bool{
-	219: true, 220: true,
 }
 
 func mapLifxColors(colors []packets.LightHsbk, capability DeviceCapability) []HSLColor {
@@ -353,6 +309,49 @@ func mapLifxHSBK(color packets.LightHsbk, capability DeviceCapability) HSLColor 
 	return mapLifxColor(c, capability)
 }
 
+func averageHSLColor(colors []HSLColor) HSLColor {
+	var hueX, hueY, saturation, lightness float64
+	var kelvinSum, kelvinCount int
+	for _, color := range colors {
+		radians := color.H * math.Pi / 180
+		weight := math.Max(color.S, 0.01)
+		hueX += math.Cos(radians) * weight
+		hueY += math.Sin(radians) * weight
+		saturation += color.S
+		lightness += color.L
+		if color.Kelvin > 0 {
+			kelvinSum += color.Kelvin
+			kelvinCount++
+		}
+	}
+
+	count := float64(len(colors))
+	average := HSLColor{
+		H: averageHue(hueX, hueY),
+		S: saturation / count,
+		L: lightness / count,
+	}
+	if kelvinCount > 0 {
+		average.Kelvin = int(math.Round(float64(kelvinSum) / float64(kelvinCount)))
+		if average.S <= 0.005 {
+			average.H = 0
+			average.S = 0
+		}
+	}
+	return average
+}
+
+func averageHue(x, y float64) float64 {
+	if math.Abs(x) < 1e-9 && math.Abs(y) < 1e-9 {
+		return 0
+	}
+	hue := math.Atan2(y, x) * 180 / math.Pi
+	if hue < 0 {
+		hue += 360
+	}
+	return hue
+}
+
 func mapLifxCapability(props lifxdevice.ColorProperties) DeviceCapability {
 	minKelvin := props.TemperatureRange.Min
 	maxKelvin := props.TemperatureRange.Max
@@ -375,29 +374,51 @@ func parseDeviceSerial(device Device) (lifxdevice.Serial, error) {
 	return lifxdevice.SerialFromHex(serial)
 }
 
-func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device, direct bool) error {
+func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device, direct bool, powerChanged bool, powerOnly bool, brightnessOnly bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	logLifxRequest(serial, device, direct, powerChanged, powerOnly, brightnessOnly)
 
-	if !device.On {
-		if err := ctrl.Send(serial, messages.SetPowerOff()); err != nil {
+	if powerChanged && !device.On {
+		msg := messages.SetPowerOff()
+		logLifxSend(serial, device, "power-off", msg)
+		if err := ctrl.Send(serial, msg); err != nil {
 			return fmt.Errorf("set power off: %w", err)
 		}
 		return nil
 	}
-
-	if err := ctrl.Send(serial, messages.SetPowerOn()); err != nil {
-		return fmt.Errorf("set power on: %w", err)
+	if !device.On {
+		return nil
 	}
 
-	for _, msg := range deviceStateMessages(device, direct) {
+	if powerChanged {
+		powerMsg := messages.SetPowerOn()
+		logLifxSend(serial, device, "power-on", powerMsg)
+		if err := ctrl.Send(serial, powerMsg); err != nil {
+			return fmt.Errorf("set power on: %w", err)
+		}
+		if powerOnly {
+			return nil
+		}
+	}
+	if brightnessOnly {
+		msg := brightnessOnlyMessage(device)
+		logLifxSend(serial, device, "brightness-only", msg)
+		if err := ctrl.Send(serial, msg); err != nil {
+			return fmt.Errorf("set brightness: %w", err)
+		}
+		return nil
+	}
+
+	for index, msg := range deviceStateMessages(device, direct) {
 		if msg == nil {
 			continue
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		logLifxSend(serial, device, fmt.Sprintf("state-%d", index+1), msg)
 		if err := ctrl.Send(serial, msg); err != nil {
 			return fmt.Errorf("set %s state: %w", device.Kind, err)
 		}
@@ -520,6 +541,45 @@ func singleZoneColorMessage(device Device) *protocol.Message {
 		kelvin = &k
 	}
 	return messages.SetColor(hue, saturation, &brightness, kelvin, defaultColorTransitionDuration, 0)
+}
+
+func brightnessOnlyMessage(device Device) *protocol.Message {
+	brightness := clamp(device.Brightness, 0, 1) * 100
+	return messages.SetColor(nil, nil, &brightness, nil, defaultColorTransitionDuration, 0)
+}
+
+func logLifxRequest(serial lifxdevice.Serial, device Device, direct bool, powerChanged bool, powerOnly bool, brightnessOnly bool) {
+	if !lifxDebugEnabled() {
+		return
+	}
+	log.Printf(
+		"hikari: lifx request serial=%s name=%q kind=%s on=%v brightness=%.2f direct=%v powerChanged=%v powerOnly=%v brightnessOnly=%v",
+		serial.String(),
+		device.Name,
+		device.Kind,
+		device.On,
+		device.Brightness,
+		direct,
+		powerChanged,
+		powerOnly,
+		brightnessOnly,
+	)
+}
+
+func logLifxSend(serial lifxdevice.Serial, device Device, action string, msg *protocol.Message) {
+	if !lifxDebugEnabled() {
+		return
+	}
+	payload := "<nil>"
+	if msg != nil && msg.Payload != nil {
+		payload = fmt.Sprintf("%T", msg.Payload)
+	}
+	log.Printf("hikari: lifx send serial=%s kind=%s action=%s payload=%s", serial.String(), device.Kind, action, payload)
+}
+
+func lifxDebugEnabled() bool {
+	level := strings.ToLower(os.Getenv("HIKARI_LOG_LEVEL"))
+	return level == "debug" || level == "trace"
 }
 
 func deviceKelvinMin(capability DeviceCapability) int {

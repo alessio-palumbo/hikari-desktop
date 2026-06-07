@@ -40,9 +40,11 @@ export function Inspector(props: InspectorProps) {
   const [gradientStops, setGradientStops] = useState<GradientStops>({});
   const [gradientDirection, setGradientDirection] = useState<GradientDirection>('e');
   const [showInfo, setShowInfo] = useState(false);
+  const editRequestedRef = useRef(false);
   const hasColor = device.capability?.hasColor ?? true;
 
   useEffect(() => {
+    editRequestedRef.current = false;
     setMode((device.capability?.hasColor ?? true) ? 'color' : 'white');
     setTool(null);
     setPaintColor(initialPaintColor(device));
@@ -59,6 +61,7 @@ export function Inspector(props: InspectorProps) {
       setTool(null);
       return;
     }
+    editRequestedRef.current = false;
     setPaintColor((current) => ({ ...current, l: device.brightness }));
     setWhiteColor((current) => ({ ...current, l: device.brightness }));
   }, [device.brightness, props.editing]);
@@ -73,7 +76,7 @@ export function Inspector(props: InspectorProps) {
     const next = { ...color, l: brightnessValue };
     setPaintColor(next);
     recordGradientColor(next);
-    if (!props.editing && hasColor) props.onChange(applyDeviceColor(device, next));
+    if (!props.editing && !editRequestedRef.current && hasColor) props.onChange(applyDeviceColor(device, next));
   };
 
   const setKelvin = (value: number) => {
@@ -82,11 +85,11 @@ export function Inspector(props: InspectorProps) {
     setWhiteKelvin(nextKelvin);
     setWhiteColor(color);
     recordGradientColor(color);
-    if (!props.editing) props.onChange(applyDeviceColor(device, color));
+    if (!props.editing && !editRequestedRef.current) props.onChange(applyDeviceColor(device, color));
   };
 
   const setBrightness = (value: number) => {
-    if (!props.editing) {
+    if (!props.editing && !editRequestedRef.current) {
       props.onChange(applyDeviceBrightness(device, value));
       return;
     }
@@ -106,7 +109,10 @@ export function Inspector(props: InspectorProps) {
   };
 
   const chooseTool = (next: PaintTool) => {
-    if (!props.editing) props.onEnterEditMode();
+    if (!props.editing) {
+      editRequestedRef.current = true;
+      props.onEnterEditMode();
+    }
     if (next === 'gradient' && tool !== 'gradient') setGradientStops({});
     setTool(next);
   };
@@ -681,19 +687,7 @@ export function applyDeviceColor(device: Device, color: HslColor): Device {
 
 export function applyDeviceBrightness(device: Device, brightness: number): Device {
   const on = brightness > 0;
-  const withBrightness = (color: HslColor): HslColor => ({ ...color, l: brightness });
-  if (device.kind === 'single') {
-    return { ...device, on, brightness, color: device.color ? withBrightness(device.color) : device.color };
-  }
-  if (device.kind === 'multizone') {
-    return { ...device, on, brightness, zones: device.zones?.map(withBrightness) ?? [] };
-  }
-  return {
-    ...device,
-    on,
-    brightness,
-    chain: device.chain?.map((matrix) => ({ ...matrix, pixels: matrix.pixels.map(withBrightness) })) ?? [],
-  };
+  return { ...device, on, brightness };
 }
 
 function applyMultizoneGradient(colors: HslColor[], stops: GradientStops, direction: GradientDirection): HslColor[] | undefined {
