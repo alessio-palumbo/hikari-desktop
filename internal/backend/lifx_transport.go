@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	lifxcontroller "github.com/alessio-palumbo/lifxlan-go/pkg/controller"
@@ -38,14 +39,16 @@ type lifxController interface {
 // a fake controller directly with NewLifxTransportWithController.
 type LifxTransport struct {
 	controller lifxController
+	mu         sync.RWMutex
+	cache      map[string]Device
 }
 
 func NewLifxTransport() *LifxTransport {
-	return &LifxTransport{}
+	return &LifxTransport{cache: make(map[string]Device)}
 }
 
 func NewLifxTransportWithController(controller lifxController) *LifxTransport {
-	return &LifxTransport{controller: controller}
+	return &LifxTransport{controller: controller, cache: make(map[string]Device)}
 }
 
 func (t *LifxTransport) Start(ctx context.Context) error {
@@ -84,7 +87,9 @@ func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	}
 	devices := ctrl.GetDevices()
 	log.Printf("hikari: lifx snapshot read %d devices", len(devices))
-	return mapLifxDevices(devices), nil
+	snapshot := mapLifxDevices(devices)
+	t.updateCache(snapshot.Devices)
+	return snapshot, nil
 }
 
 func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error) {
@@ -97,10 +102,19 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 		return req.Device, err
 	}
 
-	if err := sendDeviceState(ctx, ctrl, serial, req.Device, req.Preview, req.PowerChanged, req.PowerOnly, req.BrightnessOnly); err != nil {
+	current := t.cachedDevice(req.Device.Serial)
+	if current == nil {
+		snapshot := mapLifxDevices(ctrl.GetDevices())
+		t.updateCache(snapshot.Devices)
+		current = t.cachedDevice(req.Device.Serial)
+	}
+
+	intent := normalizeDeviceCommandIntent(req.Intent, req.Device)
+	if err := sendDeviceState(ctx, ctrl, serial, req.Device, req.Preview, intent, current); err != nil {
 		log.Printf("hikari: set device state failed for %s: %v", req.Device.Serial, err)
 		return req.Device, err
 	}
+	t.updateCache([]Device{req.Device})
 	return req.Device, nil
 }
 
@@ -109,6 +123,27 @@ func (t *LifxTransport) requireController() (lifxController, error) {
 		return t.controller, nil
 	}
 	return nil, fmt.Errorf("lifx transport has not been started")
+}
+
+func (t *LifxTransport) updateCache(devices []Device) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.cache == nil {
+		t.cache = make(map[string]Device)
+	}
+	for _, device := range devices {
+		t.cache[device.Serial] = device
+	}
+}
+
+func (t *LifxTransport) cachedDevice(serial string) *Device {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	device, ok := t.cache[serial]
+	if !ok {
+		return nil
+	}
+	return &device
 }
 
 func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {
@@ -374,13 +409,21 @@ func parseDeviceSerial(device Device) (lifxdevice.Serial, error) {
 	return lifxdevice.SerialFromHex(serial)
 }
 
-func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device, direct bool, powerChanged bool, powerOnly bool, brightnessOnly bool) error {
+func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device, direct bool, intent DeviceCommandIntent, current *Device) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	logLifxRequest(serial, device, direct, powerChanged, powerOnly, brightnessOnly)
+	logLifxRequest(serial, device, direct, intent, current)
 
-	if powerChanged && !device.On {
+	if intent == DeviceCommandPower {
+		if device.On {
+			msg := messages.SetPowerOn()
+			logLifxSend(serial, device, "power-on", msg)
+			if err := ctrl.Send(serial, msg); err != nil {
+				return fmt.Errorf("set power on: %w", err)
+			}
+			return nil
+		}
 		msg := messages.SetPowerOff()
 		logLifxSend(serial, device, "power-off", msg)
 		if err := ctrl.Send(serial, msg); err != nil {
@@ -388,21 +431,26 @@ func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice
 		}
 		return nil
 	}
+
 	if !device.On {
+		if current != nil && current.On {
+			msg := messages.SetPowerOff()
+			logLifxSend(serial, device, "power-off", msg)
+			if err := ctrl.Send(serial, msg); err != nil {
+				return fmt.Errorf("set power off: %w", err)
+			}
+		}
 		return nil
 	}
 
-	if powerChanged {
+	if current != nil && !current.On {
 		powerMsg := messages.SetPowerOn()
 		logLifxSend(serial, device, "power-on", powerMsg)
 		if err := ctrl.Send(serial, powerMsg); err != nil {
 			return fmt.Errorf("set power on: %w", err)
 		}
-		if powerOnly {
-			return nil
-		}
 	}
-	if brightnessOnly {
+	if intent == DeviceCommandBrightness {
 		msg := brightnessOnlyMessage(device)
 		logLifxSend(serial, device, "brightness-only", msg)
 		if err := ctrl.Send(serial, msg); err != nil {
@@ -425,6 +473,21 @@ func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice
 	}
 
 	return nil
+}
+
+func normalizeDeviceCommandIntent(intent DeviceCommandIntent, device Device) DeviceCommandIntent {
+	switch intent {
+	case DeviceCommandPower, DeviceCommandBrightness, DeviceCommandColor, DeviceCommandZones, DeviceCommandMatrix:
+		return intent
+	}
+	switch device.Kind {
+	case "multizone":
+		return DeviceCommandZones
+	case "matrix":
+		return DeviceCommandMatrix
+	default:
+		return DeviceCommandColor
+	}
 }
 
 func deviceStateMessages(device Device, direct bool) []*protocol.Message {
@@ -548,21 +611,24 @@ func brightnessOnlyMessage(device Device) *protocol.Message {
 	return messages.SetColor(nil, nil, &brightness, nil, defaultColorTransitionDuration, 0)
 }
 
-func logLifxRequest(serial lifxdevice.Serial, device Device, direct bool, powerChanged bool, powerOnly bool, brightnessOnly bool) {
+func logLifxRequest(serial lifxdevice.Serial, device Device, direct bool, intent DeviceCommandIntent, current *Device) {
 	if !lifxDebugEnabled() {
 		return
 	}
+	currentPower := "unknown"
+	if current != nil {
+		currentPower = fmt.Sprintf("%v", current.On)
+	}
 	log.Printf(
-		"hikari: lifx request serial=%s name=%q kind=%s on=%v brightness=%.2f direct=%v powerChanged=%v powerOnly=%v brightnessOnly=%v",
+		"hikari: lifx request serial=%s name=%q kind=%s intent=%s on=%v currentOn=%s brightness=%.2f direct=%v",
 		serial.String(),
 		device.Name,
 		device.Kind,
+		intent,
 		device.On,
+		currentPower,
 		device.Brightness,
 		direct,
-		powerChanged,
-		powerOnly,
-		brightnessOnly,
 	)
 }
 

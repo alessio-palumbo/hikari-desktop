@@ -32,7 +32,7 @@ func TestAppUsesTransport(t *testing.T) {
 		t.Fatalf("GetDeviceSnapshot returned %#v", snapshot)
 	}
 
-	got, err := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device, Preview: true, PowerChanged: true, PowerOnly: true, BrightnessOnly: true})
+	got, err := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device, Preview: true, Intent: backend.DeviceCommandPower})
 	if err != nil {
 		t.Fatalf("SetDeviceState returned error: %v", err)
 	}
@@ -42,14 +42,8 @@ func TestAppUsesTransport(t *testing.T) {
 	if !transport.lastReq.Preview {
 		t.Fatal("expected preview flag to be forwarded")
 	}
-	if !transport.lastReq.PowerChanged {
-		t.Fatal("expected power-changed flag to be forwarded")
-	}
-	if !transport.lastReq.PowerOnly {
-		t.Fatal("expected power-only flag to be forwarded")
-	}
-	if !transport.lastReq.BrightnessOnly {
-		t.Fatal("expected brightness-only flag to be forwarded")
+	if transport.lastReq.Intent != "power" {
+		t.Fatalf("expected power intent to be forwarded, got %q", transport.lastReq.Intent)
 	}
 	if got.Serial != device.Serial {
 		t.Fatalf("SetDeviceState returned %#v", got)

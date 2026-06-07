@@ -72,6 +72,16 @@ type DeviceSnapshot struct {
 	Devices   []Device   `json:"devices"`
 }
 
+type DeviceCommandIntent string
+
+const (
+	DeviceCommandPower      DeviceCommandIntent = "power"
+	DeviceCommandBrightness DeviceCommandIntent = "brightness"
+	DeviceCommandColor      DeviceCommandIntent = "color"
+	DeviceCommandZones      DeviceCommandIntent = "zones"
+	DeviceCommandMatrix     DeviceCommandIntent = "matrix"
+)
+
 func emptyDeviceSnapshot() DeviceSnapshot {
 	return DeviceSnapshot{
 		Locations: []Location{},
@@ -81,9 +91,7 @@ func emptyDeviceSnapshot() DeviceSnapshot {
 }
 
 type SetDeviceStateRequest struct {
-	Device         Device `json:"device"`
-	Preview        bool   `json:"preview"`
-	PowerChanged   bool   `json:"powerChanged"`
-	PowerOnly      bool   `json:"powerOnly"`
-	BrightnessOnly bool   `json:"brightnessOnly"`
+	Device  Device              `json:"device"`
+	Preview bool                `json:"preview"`
+	Intent  DeviceCommandIntent `json:"intent"`
 }

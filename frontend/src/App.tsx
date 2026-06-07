@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getDeviceSnapshot, setDeviceState } from './backend/api';
+import { getDeviceSnapshot, setDeviceState, type DeviceCommandIntent } from './backend/api';
 import { DeviceList } from './components/DeviceList';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
@@ -205,15 +205,13 @@ export function App() {
 
   const updateListDevice = async (next: Device) => {
     const previous = snapshot.devices.find((device) => device.serial === next.serial);
-    const brightnessOnly = isBrightnessOnlyChange(next, previous);
+    const intent = commandIntent(next, previous);
     const command = prepareDeviceCommand(next, previous);
-    const powerChanged = didPowerChange(command, previous);
-    const powerOnly = isPowerOnlyChange(command, previous);
     replaceDevice(command);
     recordPendingState(command, previous);
     setDeviceLoading(command.serial, true);
     try {
-      const committed = await setDeviceState(command, true, powerChanged, powerOnly, brightnessOnly);
+      const committed = await setDeviceState(command, true, intent);
       replaceDevice(committed);
       setDeviceLoading(command.serial, false);
     } catch (error) {
@@ -241,7 +239,7 @@ export function App() {
     setSaving(true);
     setDeviceLoading(draft.draft.serial, true);
     try {
-      const committed = await setDeviceState(draft.draft, false, didPowerChange(draft.draft, draft.base));
+      const committed = await setDeviceState(draft.draft, false, draftIntent(draft.draft));
       recordPendingState(committed, draft.base);
       replaceDevice(committed);
       setDraft(commitDraft(draft, committed));
@@ -392,52 +390,24 @@ function prepareDeviceCommand(next: Device, previous?: Device): Device {
   return applyBrightnessToZones(next, next.brightness);
 }
 
-function didPowerChange(next: Device, previous?: Device): boolean {
-  return !previous || next.on !== previous.on;
+function commandIntent(next: Device, previous?: Device): DeviceCommandIntent {
+  if (previous && next.on !== previous.on && near(next.brightness, previous.brightness) && sameStatePayload(next, previous)) return 'power';
+  if (previous && !near(next.brightness, previous.brightness) && sameStatePayload(next, previous)) return 'brightness';
+  return 'color';
 }
 
-function isPowerOnlyChange(next: Device, previous?: Device): boolean {
-  if (!previous || next.on === previous.on) return false;
-  if (!near(next.brightness, previous.brightness)) return false;
-  if (!sameColor(next.color, previous.color)) return false;
-  if (!sameColors(next.zones, previous.zones)) return false;
-  return sameMatrixChain(next.chain, previous.chain);
+function draftIntent(device: Device): DeviceCommandIntent {
+  if (device.kind === 'multizone') return 'zones';
+  if (device.kind === 'matrix') return 'matrix';
+  return 'color';
 }
 
-function isBrightnessOnlyChange(next: Device, previous?: Device): boolean {
-  if (!previous || near(next.brightness, previous.brightness)) return false;
-  if (!sameColor(next.color, previous.color)) return false;
-  if (!sameColors(next.zones, previous.zones)) return false;
-  return sameMatrixChain(next.chain, previous.chain);
+function sameStatePayload(next: Device, previous: Device): boolean {
+  return sameValue(next.color, previous.color) && next.kelvin === previous.kelvin && sameValue(next.zones, previous.zones) && sameValue(next.chain, previous.chain);
 }
 
-function sameColor(a?: HslColor, b?: HslColor): boolean {
-  if (!a || !b) return a === b;
-  return near(a.h, b.h) && near(a.s, b.s) && near(a.l, b.l) && (a.kelvin ?? 0) === (b.kelvin ?? 0);
-}
-
-function sameColors(a?: HslColor[], b?: HslColor[]): boolean {
-  if (!a || !b) return a === b;
-  if (a.length !== b.length) return false;
-  return a.every((color, index) => sameColor(color, b[index]));
-}
-
-function sameMatrixChain(a?: Device['chain'], b?: Device['chain']): boolean {
-  if (!a || !b) return a === b;
-  if (a.length !== b.length) return false;
-  return a.every((matrix, index) => {
-    const other = b[index];
-    return (
-      matrix.id === other.id &&
-      near(matrix.x, other.x) &&
-      near(matrix.y, other.y) &&
-      near(matrix.w, other.w) &&
-      near(matrix.h, other.h) &&
-      (matrix.sendWidth ?? 0) === (other.sendWidth ?? 0) &&
-      (matrix.orientation ?? 0) === (other.orientation ?? 0) &&
-      sameColors(matrix.pixels, other.pixels)
-    );
-  });
+function sameValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 function applyBrightnessToZones(device: Device, brightness: number): Device {
