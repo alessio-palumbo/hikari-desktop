@@ -4,12 +4,24 @@ import type { DeviceCommandIntent } from '../domain/commands';
 interface WailsApp {
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
   SetDeviceState?: (request: SetDeviceStateRequest) => Promise<Device>;
+  StopDeviceEffect?: (request: StopDeviceEffectRequest) => Promise<DeviceEffectStatus>;
 }
 
 interface SetDeviceStateRequest {
   device: Device;
   preview: boolean;
   intent: DeviceCommandIntent;
+}
+
+interface StopDeviceEffectRequest {
+  device: Device;
+}
+
+export interface DeviceEffectStatus {
+  serial: string;
+  running: boolean;
+  effect?: string;
+  error?: string;
 }
 
 declare global {
@@ -33,6 +45,13 @@ export async function setDeviceState(device: Device, preview = false, intent: De
   if (app?.SetDeviceState) return app.SetDeviceState({ device, preview, intent });
   await new Promise((resolve) => window.setTimeout(resolve, preview ? 60 : 180));
   return device;
+}
+
+export async function stopDeviceEffect(device: Device): Promise<DeviceEffectStatus> {
+  const app = window.go?.main?.App;
+  if (app?.StopDeviceEffect) return app.StopDeviceEffect({ device });
+  await new Promise((resolve) => window.setTimeout(resolve, 80));
+  return { serial: device.serial, running: false };
 }
 
 function mockSnapshot(): DeviceSnapshot {

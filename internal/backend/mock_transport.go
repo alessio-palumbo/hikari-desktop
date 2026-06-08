@@ -27,3 +27,7 @@ func (t *MockTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 	// of truth for optimistic state until the real lifxlan-go transport exists.
 	return req.Device, nil
 }
+
+func (t *MockTransport) StopDeviceEffect(ctx context.Context, req StopDeviceEffectRequest) (DeviceEffectStatus, error) {
+	return DeviceEffectStatus{Serial: req.Device.Serial, Running: false}, nil
+}

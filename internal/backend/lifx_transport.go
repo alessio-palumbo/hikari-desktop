@@ -118,6 +118,38 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 	return req.Device, nil
 }
 
+func (t *LifxTransport) StopDeviceEffect(ctx context.Context, req StopDeviceEffectRequest) (DeviceEffectStatus, error) {
+	ctrl, err := t.requireController()
+	if err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Error: err.Error()}, err
+	}
+	serial, err := parseDeviceSerial(req.Device)
+	if err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Error: err.Error()}, err
+	}
+	for _, msg := range stopDeviceEffectMessages(req.Device) {
+		if err := ctx.Err(); err != nil {
+			return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Error: err.Error()}, err
+		}
+		logLifxSend(serial, req.Device, "effect-off", msg)
+		if err := ctrl.Send(serial, msg); err != nil {
+			return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Error: err.Error()}, fmt.Errorf("stop device effect: %w", err)
+		}
+	}
+	return DeviceEffectStatus{Serial: req.Device.Serial, Running: false}, nil
+}
+
+func stopDeviceEffectMessages(device Device) []*protocol.Message {
+	switch device.Kind {
+	case DeviceKindMultizone:
+		return []*protocol.Message{messages.SetMultizoneEffectOff()}
+	case DeviceKindMatrix:
+		return []*protocol.Message{messages.SetMatrixEffectOff()}
+	default:
+		return nil
+	}
+}
+
 func (t *LifxTransport) requireController() (lifxController, error) {
 	if t.controller != nil {
 		return t.controller, nil

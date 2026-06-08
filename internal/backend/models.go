@@ -103,3 +103,14 @@ type SetDeviceStateRequest struct {
 	Preview bool                `json:"preview"`
 	Intent  DeviceCommandIntent `json:"intent"`
 }
+
+type StopDeviceEffectRequest struct {
+	Device Device `json:"device"`
+}
+
+type DeviceEffectStatus struct {
+	Serial  string `json:"serial"`
+	Running bool   `json:"running"`
+	Effect  string `json:"effect,omitempty"`
+	Error   string `json:"error,omitempty"`
+}

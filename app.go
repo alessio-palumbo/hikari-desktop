@@ -57,3 +57,7 @@ func (a *App) GetDeviceSnapshot() (backend.DeviceSnapshot, error) {
 func (a *App) SetDeviceState(req backend.SetDeviceStateRequest) (backend.Device, error) {
 	return a.transport.SetDeviceState(a.context(), req)
 }
+
+func (a *App) StopDeviceEffect(req backend.StopDeviceEffectRequest) (backend.DeviceEffectStatus, error) {
+	return a.transport.StopDeviceEffect(a.context(), req)
+}

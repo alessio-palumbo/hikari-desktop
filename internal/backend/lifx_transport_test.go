@@ -936,6 +936,63 @@ func TestLifxTransportSetDeviceStateSendsDirectMatrixBrightnessOnly(t *testing.T
 	assertBrightnessOnlyPayload(t, payload, 25)
 }
 
+func TestLifxTransportStopDeviceEffectSendsMultizoneEffectOff(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMultizone}
+
+	status, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: device})
+	if err != nil {
+		t.Fatalf("StopDeviceEffect returned error: %v", err)
+	}
+	if status.Serial != device.Serial || status.Running {
+		t.Fatalf("status = %#v, want stopped status", status)
+	}
+	if len(controller.sends) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(controller.sends))
+	}
+	if _, ok := controller.sends[0].msg.Payload.(*packets.MultiZoneSetEffect); !ok {
+		t.Fatalf("payload = %T, want *packets.MultiZoneSetEffect", controller.sends[0].msg.Payload)
+	}
+}
+
+func TestLifxTransportStopDeviceEffectSendsMatrixEffectOff(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix}
+
+	status, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: device})
+	if err != nil {
+		t.Fatalf("StopDeviceEffect returned error: %v", err)
+	}
+	if status.Serial != device.Serial || status.Running {
+		t.Fatalf("status = %#v, want stopped status", status)
+	}
+	if len(controller.sends) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(controller.sends))
+	}
+	if _, ok := controller.sends[0].msg.Payload.(*packets.TileSetEffect); !ok {
+		t.Fatalf("payload = %T, want *packets.TileSetEffect", controller.sends[0].msg.Payload)
+	}
+}
+
+func TestLifxTransportStopDeviceEffectIsNoopForSingleZone(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindSingle}
+
+	status, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: device})
+	if err != nil {
+		t.Fatalf("StopDeviceEffect returned error: %v", err)
+	}
+	if status.Serial != device.Serial || status.Running {
+		t.Fatalf("status = %#v, want stopped status", status)
+	}
+	if len(controller.sends) != 0 {
+		t.Fatalf("sent %d messages, want 0", len(controller.sends))
+	}
+}
+
 type fakeLifxController struct {
 	devices []lifxdevice.Device
 	sends   []sentMessage
