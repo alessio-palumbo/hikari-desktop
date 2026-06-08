@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, Info, LogOut, Pipette, RotateCcw, Undo2, Wand2, X } from 'lucide-react';
+import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, Info, LogOut, Pipette, Play, RotateCcw, Square, Undo2, Wand2, X } from 'lucide-react';
+import type { DeviceEffectStatus } from '../backend/api';
 import { DeviceKind, hsl, previewLightness, previewOpacity, type Device, type HslColor } from '../domain/lifx';
 import {
   applyDeviceBrightness,
@@ -29,8 +30,11 @@ interface InspectorProps {
   canUndo: boolean;
   saving: boolean;
   error?: string;
+  effectStatus?: DeviceEffectStatus & { loading?: boolean };
   onClose: () => void;
   onChange: (device: Device) => void;
+  onStartEffect: () => void;
+  onStopEffect: () => void;
   onEnterEditMode: () => void;
   onExitEditMode: () => void;
   onApply: () => void;
@@ -174,6 +178,10 @@ export function Inspector(props: InspectorProps) {
       {props.error ? <div className="inspector-error">{props.error}</div> : null}
 
       {device.kind !== DeviceKind.Single ? (
+        <EffectControls device={device} status={props.effectStatus} onStart={props.onStartEffect} onStop={props.onStopEffect} />
+      ) : null}
+
+      {device.kind !== DeviceKind.Single ? (
         <section className="edit-tools-section" data-editing={props.editing ? 'true' : 'false'}>
           <div className="edit-tools-header">
             <span>{props.editing ? 'editing layout' : 'layout tools'}</span>
@@ -226,6 +234,41 @@ export function Inspector(props: InspectorProps) {
         </section>
       ) : null}
     </aside>
+  );
+}
+
+function EffectControls({
+  device,
+  status,
+  onStart,
+  onStop,
+}: {
+  device: Device;
+  status?: DeviceEffectStatus & { loading?: boolean };
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  const effectName = device.kind === DeviceKind.Multizone ? 'move' : 'flame';
+  const running = status?.running ?? false;
+  const loading = status?.loading ?? false;
+  return (
+    <section className="effect-section">
+      <div className="effect-header">
+        <span>firmware effect</span>
+        <span data-running={running ? 'true' : 'false'}>{running ? status?.effect ?? effectName : 'idle'}</span>
+      </div>
+      <div className="effect-actions">
+        <button type="button" disabled={loading || running} onClick={onStart}>
+          <Play size={13} />
+          <span>{loading && !running ? 'starting' : effectName}</span>
+        </button>
+        <button type="button" disabled={loading || !running} onClick={onStop}>
+          <Square size={12} />
+          <span>{loading && running ? 'stopping' : 'stop'}</span>
+        </button>
+      </div>
+      {status?.error ? <div className="inspector-error">{status.error}</div> : null}
+    </section>
   );
 }
 

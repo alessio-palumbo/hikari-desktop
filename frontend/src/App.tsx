@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getDeviceSnapshot, setDeviceState } from './backend/api';
+import { getDeviceSnapshot, setDeviceState, startDeviceEffect, stopDeviceEffect, type DeviceEffectStatus } from './backend/api';
 import { DeviceList } from './components/DeviceList';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
@@ -17,6 +17,7 @@ const LOCATION_KEY = 'hikari:selectedLocation';
 const GROUP_KEY = 'hikari:selectedGroup';
 
 type DeviceStatus = Record<string, { loading?: boolean; error?: string }>;
+type DeviceEffectStates = Record<string, DeviceEffectStatus & { loading?: boolean }>;
 type PendingDeviceStates = Record<string, PendingDeviceState>;
 
 export function App() {
@@ -34,6 +35,7 @@ export function App() {
   const [now, setNow] = useState(() => Date.now());
   const [refreshError, setRefreshError] = useState<string | undefined>();
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
+  const [deviceEffectStatus, setDeviceEffectStatus] = useState<DeviceEffectStates>({});
   const [pendingState, setPendingState] = useState<PendingDeviceStates>({});
   const draftRef = useRef<DeviceDraft | undefined>(undefined);
   const pendingStateRef = useRef<PendingDeviceStates>({});
@@ -204,6 +206,10 @@ export function App() {
     setDeviceStatus((prev) => ({ ...prev, [serial]: { loading, error } }));
   };
 
+  const setDeviceEffectLoading = (serial: string, loading: boolean, error?: string) => {
+    setDeviceEffectStatus((prev) => ({ ...prev, [serial]: { ...(prev[serial] ?? { serial, running: false }), loading, error } }));
+  };
+
   const updateListDevice = async (next: Device) => {
     const previous = snapshot.devices.find((device) => device.serial === next.serial);
     const intent = commandIntent(next, previous);
@@ -250,6 +256,26 @@ export function App() {
       setDeviceLoading(draft.draft.serial, false, errorMessage(error));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startInspectorEffect = async (device: Device) => {
+    setDeviceEffectLoading(device.serial, true);
+    try {
+      const status = await startDeviceEffect(device);
+      setDeviceEffectStatus((prev) => ({ ...prev, [device.serial]: { ...status, loading: false } }));
+    } catch (error) {
+      setDeviceEffectLoading(device.serial, false, errorMessage(error));
+    }
+  };
+
+  const stopInspectorEffect = async (device: Device) => {
+    setDeviceEffectLoading(device.serial, true);
+    try {
+      const status = await stopDeviceEffect(device);
+      setDeviceEffectStatus((prev) => ({ ...prev, [device.serial]: { ...status, loading: false } }));
+    } catch (error) {
+      setDeviceEffectLoading(device.serial, false, errorMessage(error));
     }
   };
 
@@ -335,8 +361,11 @@ export function App() {
           canUndo={(draft?.history.length ?? 0) > 0}
           saving={saving}
           error={deviceStatus[inspectorDevice.serial]?.error}
+          effectStatus={deviceEffectStatus[inspectorDevice.serial]}
           onClose={() => setSelectedSerial(undefined)}
           onChange={updateInspectorDevice}
+          onStartEffect={() => void startInspectorEffect(inspectorDevice)}
+          onStopEffect={() => void stopInspectorEffect(inspectorDevice)}
           onEnterEditMode={enterEditMode}
           onExitEditMode={() => setDraft(undefined)}
           onApply={applyDraft}
