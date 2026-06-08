@@ -215,11 +215,11 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 	}
 
 	switch device.Kind {
-	case "multizone":
+	case DeviceKindMultizone:
 		device.ZoneCount = len(d.MultizoneProperties.Zones)
 		device.Zones = mapLifxColors(d.MultizoneProperties.Zones, capability)
 		applyColorSummary(&device, device.Zones)
-	case "matrix":
+	case DeviceKindMatrix:
 		device.PixelCount = d.MatrixProperties.NZones
 		device.ChainLen = d.MatrixProperties.ChainLength
 		if device.ChainLen == 0 {
@@ -488,9 +488,9 @@ func normalizeDeviceCommandIntent(intent DeviceCommandIntent, device Device) Dev
 		return intent
 	}
 	switch device.Kind {
-	case "multizone":
+	case DeviceKindMultizone:
 		return DeviceCommandZones
-	case "matrix":
+	case DeviceKindMatrix:
 		return DeviceCommandMatrix
 	default:
 		return DeviceCommandColor
@@ -499,14 +499,14 @@ func normalizeDeviceCommandIntent(intent DeviceCommandIntent, device Device) Dev
 
 func deviceStateMessages(device Device, direct bool) []*protocol.Message {
 	switch device.Kind {
-	case "single":
+	case DeviceKindSingle:
 		return []*protocol.Message{singleZoneColorMessage(device)}
-	case "multizone":
+	case DeviceKindMultizone:
 		if direct {
 			return []*protocol.Message{singleZoneColorMessage(device)}
 		}
 		return messages.SetMultizoneExtendedColors(0, hslColorsToHSBK(device.Zones, device.Brightness, device.Kelvin, device.Capability), defaultColorTransitionDuration)
-	case "matrix":
+	case DeviceKindMatrix:
 		if direct {
 			return []*protocol.Message{singleZoneColorMessage(device)}
 		}
@@ -703,14 +703,14 @@ func clamp(value, minValue, maxValue float64) float64 {
 	return value
 }
 
-func mapLightKind(lightType string) string {
+func mapLightKind(lightType string) DeviceKind {
 	switch lightType {
 	case "multi_zone":
-		return "multizone"
+		return DeviceKindMultizone
 	case "matrix":
-		return "matrix"
+		return DeviceKindMatrix
 	default:
-		return "single"
+		return DeviceKindSingle
 	}
 }
 

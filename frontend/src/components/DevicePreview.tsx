@@ -1,14 +1,13 @@
-import type { Device, Matrix } from '../domain/lifx';
-import { deviceColor, hsl, previewLightness, previewOpacity } from '../domain/lifx';
+import { DeviceKind, deviceColor, hsl, previewLightness, previewOpacity, type Device, type Matrix } from '../domain/lifx';
 import './DevicePreview.css';
 
 export function DevicePreview({ device }: { device: Device }) {
-  if (device.kind === 'single') {
+  if (device.kind === DeviceKind.Single) {
     const color = deviceColor(device);
     return <span className="preview-single" style={{ background: hsl(color, previewLightness(color, device.brightness, device.on)), opacity: previewOpacity(device.on) }} />;
   }
 
-  if (device.kind === 'multizone') {
+  if (device.kind === DeviceKind.Multizone) {
     return (
       <span className="preview-zones" data-on={device.on ? 'true' : 'false'} style={{ opacity: previewOpacity(device.on) }}>
         {device.zones?.map((zone, index) => <i key={index} style={{ background: hsl(zone, previewLightness(zone, zone.l || device.brightness, device.on)) }} />)}

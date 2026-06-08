@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { commandIntent, draftIntent, prepareDeviceCommand } from '../dist-test/domain/commands.js';
 import { activateEditedDevice } from '../dist-test/domain/editor.js';
-import { previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
+import { DeviceKind, previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
 import { createPendingState, isPendingConfirmed, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
 
 const base = {
@@ -14,7 +14,7 @@ const base = {
       serial: 'd073d501a2c3',
       name: 'Strip',
       model: 'Z',
-      kind: 'multizone',
+      kind: DeviceKind.Multizone,
       online: true,
       on: true,
       brightness: 0.5,
@@ -83,7 +83,7 @@ test('overlays pending multizone zones over stale snapshot values', () => {
 test('overlays pending matrix pixels over stale snapshot values', () => {
   const previous = {
     ...base.devices[0],
-    kind: 'matrix',
+    kind: DeviceKind.Matrix,
     zones: undefined,
     chain: [{ id: 0, x: 0, y: 0, w: 2, h: 1, rows: [{ cols: 2, offset: 0 }], pixels: [{ h: 10, s: 0.8, l: 0.5 }, { h: 20, s: 0.8, l: 0.5 }] }],
   };
@@ -176,7 +176,7 @@ test('activates edited multizone devices before apply', () => {
 test('activates edited matrix devices before apply', () => {
   const device = {
     ...base.devices[0],
-    kind: 'matrix',
+    kind: DeviceKind.Matrix,
     on: false,
     brightness: 0,
     zones: undefined,
@@ -223,6 +223,6 @@ test('prepares multizone brightness command without changing intent payload sour
 
 test('maps draft devices to zone and matrix intents', () => {
   assert.equal(draftIntent(base.devices[0]), 'zones');
-  assert.equal(draftIntent({ ...base.devices[0], kind: 'matrix', zones: undefined, chain: [] }), 'matrix');
-  assert.equal(draftIntent({ ...base.devices[0], kind: 'single', zones: undefined, color: { h: 10, s: 0.8, l: 0.5 } }), 'color');
+  assert.equal(draftIntent({ ...base.devices[0], kind: DeviceKind.Matrix, zones: undefined, chain: [] }), 'matrix');
+  assert.equal(draftIntent({ ...base.devices[0], kind: DeviceKind.Single, zones: undefined, color: { h: 10, s: 0.8, l: 0.5 } }), 'color');
 });

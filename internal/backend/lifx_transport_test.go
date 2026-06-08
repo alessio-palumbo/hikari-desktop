@@ -440,7 +440,7 @@ func TestLifxTransportRequiresStart(t *testing.T) {
 	if _, err := transport.Snapshot(context.Background()); err == nil {
 		t.Fatal("Snapshot returned nil error, want not started error")
 	}
-	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: Device{Serial: "d073d501a2c3", Kind: "single"}}); err == nil {
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: Device{Serial: "d073d501a2c3", Kind: DeviceKindSingle}}); err == nil {
 		t.Fatal("SetDeviceState returned nil error, want not started error")
 	}
 }
@@ -450,7 +450,7 @@ func TestLifxTransportSetDeviceStateSendsSingleZoneColor(t *testing.T) {
 	device := Device{
 		Serial:     "d073d501a2c3",
 		Name:       "Test",
-		Kind:       "single",
+		Kind:       DeviceKindSingle,
 		On:         true,
 		Brightness: 0.42,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -495,7 +495,7 @@ func TestLifxTransportSetDeviceStateSendsPowerOnThenSingleZoneColor(t *testing.T
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "single",
+		Kind:       DeviceKindSingle,
 		On:         true,
 		Brightness: 0.42,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -521,7 +521,7 @@ func TestLifxTransportSetDeviceStateSendsPowerOnThenSingleZoneColor(t *testing.T
 
 func TestLifxTransportSetDeviceStateSendsSingleZonePowerOffOnly(t *testing.T) {
 	controller := &fakeLifxController{}
-	device := Device{Serial: "d073d501a2c3", Kind: "single", On: false}
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindSingle, On: false}
 	transport := NewLifxTransportWithController(controller)
 
 	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device, Intent: DeviceCommandPower}); err != nil {
@@ -543,7 +543,7 @@ func TestLifxTransportSetDeviceStateClampsWhiteOnlyDevice(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "single",
+		Kind:       DeviceKindSingle,
 		On:         true,
 		Brightness: 0.5,
 		Capability: DeviceCapability{HasColor: false, KelvinMin: 2700, KelvinMax: 6500},
@@ -571,7 +571,7 @@ func TestLifxTransportSetDeviceStateSendsKelvinColorAsWhite(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "single",
+		Kind:       DeviceKindSingle,
 		On:         true,
 		Brightness: 0.5,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 2000, KelvinMax: 9000},
@@ -599,7 +599,7 @@ func TestLifxTransportSetDeviceStateSendsMultizonePowerAndColors(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "multizone",
+		Kind:       DeviceKindMultizone,
 		On:         true,
 		Brightness: 0.33,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -634,7 +634,7 @@ func TestLifxTransportSetDeviceStateSendsDirectMultizoneAsSingleColor(t *testing
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "multizone",
+		Kind:       DeviceKindMultizone,
 		On:         true,
 		Brightness: 0.33,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -662,7 +662,7 @@ func TestLifxTransportSetDeviceStateSendsDirectMultizonePowerOnly(t *testing.T) 
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "multizone",
+		Kind:       DeviceKindMultizone,
 		On:         true,
 		Brightness: 0.33,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -686,7 +686,7 @@ func TestLifxTransportSetDeviceStateSendsDirectMultizoneBrightnessOnly(t *testin
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "multizone",
+		Kind:       DeviceKindMultizone,
 		On:         true,
 		Brightness: 0.25,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -715,7 +715,7 @@ func TestLifxTransportSetDeviceStatePowersOnBeforeBrightnessWhenCachedOff(t *tes
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "multizone",
+		Kind:       DeviceKindMultizone,
 		On:         true,
 		Brightness: 0.25,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -744,7 +744,7 @@ func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "matrix",
+		Kind:       DeviceKindMatrix,
 		On:         true,
 		Brightness: 0.66,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -806,7 +806,7 @@ func TestLifxTransportSetDeviceStateRevertsMatrixOrientationWhenSendingPixels(t 
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "matrix",
+		Kind:       DeviceKindMatrix,
 		On:         true,
 		Brightness: 0.66,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -844,7 +844,7 @@ func TestLifxTransportSetDeviceStateSendsDirectMatrixAsSingleColor(t *testing.T)
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "matrix",
+		Kind:       DeviceKindMatrix,
 		On:         true,
 		Brightness: 0.66,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -877,7 +877,7 @@ func TestLifxTransportSetDeviceStateSendsDirectMatrixPowerOnly(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "matrix",
+		Kind:       DeviceKindMatrix,
 		On:         true,
 		Brightness: 0.66,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -906,7 +906,7 @@ func TestLifxTransportSetDeviceStateSendsDirectMatrixBrightnessOnly(t *testing.T
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
-		Kind:       "matrix",
+		Kind:       DeviceKindMatrix,
 		On:         true,
 		Brightness: 0.25,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},

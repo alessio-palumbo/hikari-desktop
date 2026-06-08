@@ -1,9 +1,9 @@
-import type { Device, HslColor } from './lifx';
+import { DeviceKind, type Device, type HslColor } from './lifx.js';
 
 export type DeviceCommandIntent = 'power' | 'brightness' | 'color' | 'zones' | 'matrix';
 
 export function prepareDeviceCommand(next: Device, previous?: Device): Device {
-  if (!previous || near(previous.brightness, next.brightness) || next.kind === 'single') return next;
+  if (!previous || near(previous.brightness, next.brightness) || next.kind === DeviceKind.Single) return next;
   return applyBrightnessToZones(next, next.brightness);
 }
 
@@ -14,17 +14,17 @@ export function commandIntent(next: Device, previous?: Device): DeviceCommandInt
 }
 
 export function draftIntent(device: Device): DeviceCommandIntent {
-  if (device.kind === 'multizone') return 'zones';
-  if (device.kind === 'matrix') return 'matrix';
+  if (device.kind === DeviceKind.Multizone) return 'zones';
+  if (device.kind === DeviceKind.Matrix) return 'matrix';
   return 'color';
 }
 
 function applyBrightnessToZones(device: Device, brightness: number): Device {
   const withBrightness = (color: HslColor): HslColor => ({ ...color, l: brightness });
-  if (device.kind === 'multizone') {
+  if (device.kind === DeviceKind.Multizone) {
     return { ...device, zones: device.zones?.map(withBrightness) ?? [] };
   }
-  if (device.kind === 'matrix') {
+  if (device.kind === DeviceKind.Matrix) {
     return { ...device, chain: device.chain?.map((matrix) => ({ ...matrix, pixels: matrix.pixels.map(withBrightness) })) ?? [] };
   }
   return device;

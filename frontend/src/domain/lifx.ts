@@ -1,4 +1,10 @@
-export type DeviceKind = 'single' | 'multizone' | 'matrix';
+export const DeviceKind = {
+  Single: 'single',
+  Multizone: 'multizone',
+  Matrix: 'matrix',
+} as const;
+
+export type DeviceKind = (typeof DeviceKind)[keyof typeof DeviceKind];
 
 export interface Location {
   id: string;
@@ -103,9 +109,9 @@ function previewBaseLightness(color: HslColor): number {
 }
 
 export function deviceColor(device: Device): HslColor {
-  if (device.kind === 'single' && device.color) return device.color;
-  if (device.kind === 'multizone' && device.zones?.length) return device.zones[Math.floor(device.zones.length / 2)];
-  if (device.kind === 'matrix' && device.chain?.length) {
+  if (device.kind === DeviceKind.Single && device.color) return device.color;
+  if (device.kind === DeviceKind.Multizone && device.zones?.length) return device.zones[Math.floor(device.zones.length / 2)];
+  if (device.kind === DeviceKind.Matrix && device.chain?.length) {
     const pixels = device.chain.flatMap((matrix) => matrix.pixels);
     const sum = pixels.reduce(
       (acc, color) => ({ h: acc.h + color.h, s: acc.s + color.s, l: acc.l + color.l }),
@@ -117,8 +123,8 @@ export function deviceColor(device: Device): HslColor {
 }
 
 export function deviceTypeLabel(device: Device): string {
-  if (device.kind === 'single') return 'single zone';
-  if (device.kind === 'multizone') return `multizone · ${device.zones?.length ?? 0} zones`;
+  if (device.kind === DeviceKind.Single) return 'single zone';
+  if (device.kind === DeviceKind.Multizone) return `multizone · ${device.zones?.length ?? 0} zones`;
   const pixels = device.chain?.reduce((sum, matrix) => sum + matrix.pixels.length, 0) ?? 0;
   return `matrix chain · ${device.chain?.length ?? 0} matrices · ${pixels}px`;
 }

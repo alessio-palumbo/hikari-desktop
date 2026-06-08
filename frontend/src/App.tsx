@@ -6,7 +6,7 @@ import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
-import type { Device, DeviceSnapshot } from './domain/lifx';
+import { DeviceKind, type Device, type DeviceSnapshot } from './domain/lifx';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
 const REFRESH_INTERVAL_MS = 5000;
@@ -223,7 +223,7 @@ export function App() {
   };
 
   const updateInspectorDevice = async (next: Device) => {
-    if (next.kind === 'single' || !draft) {
+    if (next.kind === DeviceKind.Single || !draft) {
       await updateListDevice(next);
       return;
     }
@@ -231,7 +231,7 @@ export function App() {
   };
 
   const enterEditMode = () => {
-    if (!selectedDevice || selectedDevice.kind === 'single') return;
+    if (!selectedDevice || selectedDevice.kind === DeviceKind.Single) return;
     setDraft((prev) => (prev?.draft.serial === selectedDevice.serial ? prev : createDraft(selectedDevice)));
   };
 

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, Info, LogOut, Pipette, RotateCcw, Undo2, Wand2, X } from 'lucide-react';
-import type { Device, HslColor } from '../domain/lifx';
-import { hsl, previewLightness, previewOpacity } from '../domain/lifx';
+import { DeviceKind, hsl, previewLightness, previewOpacity, type Device, type HslColor } from '../domain/lifx';
 import { ColorWheel, Slider } from './primitives';
 import './Inspector.css';
 
@@ -161,7 +160,7 @@ export function Inspector(props: InspectorProps) {
       <Slider label={props.editing ? 'paint brightness' : 'brightness'} value={brightnessValue} onChange={setBrightness} />
       {props.error ? <div className="inspector-error">{props.error}</div> : null}
 
-      {device.kind !== 'single' ? (
+      {device.kind !== DeviceKind.Single ? (
         <section className="edit-tools-section" data-editing={props.editing ? 'true' : 'false'}>
           <div className="edit-tools-header">
             <span>{props.editing ? 'editing layout' : 'layout tools'}</span>
@@ -174,7 +173,7 @@ export function Inspector(props: InspectorProps) {
           {props.editing && tool === 'gradient' ? (
             <GradientControls deviceKind={device.kind} stops={gradientStops} direction={gradientDirection} onDirectionChange={setGradientDirection} />
           ) : null}
-          {props.editing && device.kind === 'multizone' ? (
+          {props.editing && device.kind === DeviceKind.Multizone ? (
             <MultizoneDraftEditor
               device={device}
               paintColor={activePaintColor}
@@ -185,7 +184,7 @@ export function Inspector(props: InspectorProps) {
               onChange={props.onChange}
             />
           ) : null}
-          {props.editing && device.kind === 'matrix' ? (
+          {props.editing && device.kind === DeviceKind.Matrix ? (
             <MatrixDraftEditor
               device={device}
               paintColor={activePaintColor}
@@ -239,10 +238,10 @@ function DeviceInfo({ device }: { device: Device }) {
 }
 
 function deviceShapeRows(device: Device): string[][] {
-  if (device.kind === 'multizone') {
+  if (device.kind === DeviceKind.Multizone) {
     return [['zones', String(device.zoneCount ?? device.zones?.length ?? 'unknown')]];
   }
-  if (device.kind === 'matrix') {
+  if (device.kind === DeviceKind.Matrix) {
     const pixelCount = device.pixelCount ?? device.chain?.[0]?.pixels.length;
     const chainLength = device.chainLength ?? device.chain?.length;
     const rows = [['pixels', pixelCount === undefined ? 'unknown' : String(pixelCount)]];
@@ -253,7 +252,7 @@ function deviceShapeRows(device: Device): string[][] {
 }
 
 function deviceKindLabel(device: Device): string {
-  if (device.kind === 'single') return 'single zone';
+  if (device.kind === DeviceKind.Single) return 'single zone';
   return device.kind;
 }
 
@@ -636,9 +635,9 @@ function MatrixDraftEditor({
 }
 
 export function initialPaintColor(device: Device): HslColor {
-  if (device.kind === 'single' && device.color) return device.color;
-  if (device.kind === 'multizone' && device.zones?.length) return device.zones[Math.floor(device.zones.length / 2)];
-  if (device.kind === 'matrix' && device.chain?.[0]?.pixels.length) {
+  if (device.kind === DeviceKind.Single && device.color) return device.color;
+  if (device.kind === DeviceKind.Multizone && device.zones?.length) return device.zones[Math.floor(device.zones.length / 2)];
+  if (device.kind === DeviceKind.Matrix && device.chain?.[0]?.pixels.length) {
     const pixels = device.chain[0].pixels;
     return pixels[Math.floor(pixels.length / 2)];
   }
@@ -662,10 +661,10 @@ function clampKelvin(kelvin: number, device: Device): number {
 export function applyDeviceColor(device: Device, color: HslColor): Device {
   const brightness = device.brightness > 0 ? device.brightness : Math.max(color.l, 0.55);
   const nextColor = { ...color, l: brightness };
-  if (device.kind === 'single') {
+  if (device.kind === DeviceKind.Single) {
     return { ...device, on: true, brightness, color: nextColor, kelvin: nextColor.kelvin ?? device.kelvin };
   }
-  if (device.kind === 'multizone') {
+  if (device.kind === DeviceKind.Multizone) {
     return {
       ...device,
       on: true,

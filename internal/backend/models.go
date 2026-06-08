@@ -41,7 +41,7 @@ type Device struct {
 	Serial     string           `json:"serial"`
 	Name       string           `json:"name"`
 	Model      string           `json:"model"`
-	Kind       string           `json:"kind"`
+	Kind       DeviceKind       `json:"kind"`
 	IPAddress  string           `json:"ipAddress,omitempty"`
 	ProductID  uint32           `json:"productId,omitempty"`
 	Firmware   string           `json:"firmware,omitempty"`
@@ -71,6 +71,14 @@ type DeviceSnapshot struct {
 	Groups    []Group    `json:"groups"`
 	Devices   []Device   `json:"devices"`
 }
+
+type DeviceKind string
+
+const (
+	DeviceKindSingle    DeviceKind = "single"
+	DeviceKindMultizone DeviceKind = "multizone"
+	DeviceKindMatrix    DeviceKind = "matrix"
+)
 
 type DeviceCommandIntent string
 

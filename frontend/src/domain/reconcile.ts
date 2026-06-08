@@ -1,4 +1,4 @@
-import type { Device, DeviceSnapshot } from './lifx';
+import { DeviceKind, type Device, type DeviceSnapshot } from './lifx.js';
 
 export const PENDING_STATE_TIMEOUT_MS = 4500;
 
@@ -22,7 +22,7 @@ export function reconcileSnapshot(current: DeviceSnapshot, incoming: DeviceSnaps
   const currentBySerial = new Map(current.devices.map((device) => [device.serial, device]));
   const devices = incoming.devices.map((device) => {
     const currentDevice = currentBySerial.get(device.serial);
-    if (currentDevice && draftSerials.has(device.serial) && currentDevice.kind !== 'single') {
+    if (currentDevice && draftSerials.has(device.serial) && currentDevice.kind !== DeviceKind.Single) {
       return applyPendingState({ ...currentDevice, online: device.online }, pending[device.serial], now);
     }
     return applyPendingState(device, pending[device.serial], now);
@@ -47,8 +47,8 @@ export function createPendingState(device: Device, previous?: Device, now = Date
   if (!previous || !near(previous.brightness, device.brightness)) expected.brightness = device.brightness;
   if (!previous || !sameValue(previous.color, device.color)) expected.color = clone(device.color);
   if (!previous || previous.kelvin !== device.kelvin) expected.kelvin = device.kelvin;
-  if (device.kind === 'multizone' && (!previous || !sameValue(previous.zones, device.zones))) expected.zones = clone(device.zones);
-  if (device.kind === 'matrix' && (!previous || !sameValue(previous.chain, device.chain))) expected.chain = clone(device.chain);
+  if (device.kind === DeviceKind.Multizone && (!previous || !sameValue(previous.zones, device.zones))) expected.zones = clone(device.zones);
+  if (device.kind === DeviceKind.Matrix && (!previous || !sameValue(previous.chain, device.chain))) expected.chain = clone(device.chain);
   if (!hasExpectedState(expected)) return undefined;
   return { serial: device.serial, expected, expiresAt: now + PENDING_STATE_TIMEOUT_MS };
 }

@@ -1,4 +1,4 @@
-import type { Device, HslColor } from './lifx';
+import { DeviceKind, type Device, type HslColor } from './lifx.js';
 
 export interface DeviceDraft {
   base: Device;
@@ -71,8 +71,8 @@ export function cloneDevice(device: Device): Device {
 }
 
 function deviceColors(device: Device): HslColor[] {
-  if (device.kind === 'multizone') return device.zones ?? [];
-  if (device.kind === 'matrix') return device.chain?.flatMap((matrix) => matrix.pixels) ?? [];
+  if (device.kind === DeviceKind.Multizone) return device.zones ?? [];
+  if (device.kind === DeviceKind.Matrix) return device.chain?.flatMap((matrix) => matrix.pixels) ?? [];
   return device.color ? [device.color] : [];
 }
 

@@ -1,4 +1,4 @@
-import type { Device, DeviceSnapshot, HslColor, Matrix } from '../domain/lifx';
+import { DeviceKind, type Device, type DeviceSnapshot, type HslColor, type Matrix } from '../domain/lifx';
 import type { DeviceCommandIntent } from '../domain/commands';
 
 interface WailsApp {
@@ -54,7 +54,7 @@ function mockSnapshot(): DeviceSnapshot {
         serial: 'd0:73:d5:01:a2:e1',
         name: 'TV Backlight',
         model: 'Z 32',
-        kind: 'multizone',
+        kind: DeviceKind.Multizone,
         online: true,
         on: true,
         brightness: 0.78,
@@ -66,7 +66,7 @@ function mockSnapshot(): DeviceSnapshot {
         serial: 'd0:73:d5:01:a2:e4',
         name: 'Wall Tiles',
         model: 'Tile 5',
-        kind: 'matrix',
+        kind: DeviceKind.Matrix,
         online: true,
         on: true,
         brightness: 0.55,
@@ -79,7 +79,7 @@ function mockSnapshot(): DeviceSnapshot {
         serial: 'd0:73:d5:02:b1:10',
         name: 'Under-counter',
         model: 'Z 24',
-        kind: 'multizone',
+        kind: DeviceKind.Multizone,
         online: true,
         on: false,
         brightness: 0.55,
@@ -91,7 +91,7 @@ function mockSnapshot(): DeviceSnapshot {
         serial: 'd0:73:d5:10:f5:01',
         name: 'Desk Strip',
         model: 'Z 32',
-        kind: 'multizone',
+        kind: DeviceKind.Multizone,
         online: true,
         on: true,
         brightness: 0.85,
@@ -111,7 +111,7 @@ function normalizeSnapshot(snapshot: DeviceSnapshot | null | undefined): DeviceS
 }
 
 function single(groupId: string, name: string, model: string, serial: string, brightness: number, color: HslColor, kelvin: number): Device {
-  return { groupId, serial, name, model, kind: 'single', online: true, on: brightness > 0, brightness, capability: colorCapability(), color, kelvin };
+  return { groupId, serial, name, model, kind: DeviceKind.Single, online: true, on: brightness > 0, brightness, capability: colorCapability(), color, kelvin };
 }
 
 function colorCapability() {
