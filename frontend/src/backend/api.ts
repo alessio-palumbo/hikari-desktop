@@ -1,6 +1,5 @@
 import type { Device, DeviceSnapshot, HslColor, Matrix } from '../domain/lifx';
-
-export type DeviceCommandIntent = 'power' | 'brightness' | 'color' | 'zones' | 'matrix';
+import type { DeviceCommandIntent } from '../domain/commands';
 
 interface WailsApp {
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;

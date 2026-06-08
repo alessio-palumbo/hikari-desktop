@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { commandIntent, draftIntent, prepareDeviceCommand } from '../dist-test/domain/commands.js';
 import { activateEditedDevice } from '../dist-test/domain/editor.js';
 import { previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
 import { createPendingState, isPendingConfirmed, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
@@ -186,4 +187,42 @@ test('activates edited matrix devices before apply', () => {
 
   assert.equal(got.on, true);
   assert.equal(got.brightness, 0.5);
+});
+
+test('classifies direct power changes as power intent', () => {
+  const previous = { ...base.devices[0], on: true, brightness: 0.5 };
+  const next = { ...previous, on: false };
+
+  assert.equal(commandIntent(next, previous), 'power');
+});
+
+test('classifies direct brightness changes as brightness intent', () => {
+  const previous = { ...base.devices[0], brightness: 0.5, zones: [{ h: 10, s: 0.8, l: 0.5 }] };
+  const next = { ...previous, brightness: 0.25 };
+
+  assert.equal(commandIntent(next, previous), 'brightness');
+});
+
+test('keeps off-device color selection as color intent', () => {
+  const previous = { ...base.devices[0], on: false, brightness: 0, color: { h: 10, s: 0.8, l: 0.5 } };
+  const next = { ...previous, on: true, brightness: 0.55, color: { h: 240, s: 0.9, l: 0.55 } };
+
+  assert.equal(commandIntent(next, previous), 'color');
+});
+
+test('prepares multizone brightness command without changing intent payload source', () => {
+  const previous = { ...base.devices[0], brightness: 0.5, zones: [{ h: 10, s: 0.8, l: 0.5 }] };
+  const next = { ...previous, brightness: 0.25 };
+
+  const got = prepareDeviceCommand(next, previous);
+
+  assert.equal(got.brightness, 0.25);
+  assert.equal(got.zones[0].h, 10);
+  assert.equal(got.zones[0].l, 0.25);
+});
+
+test('maps draft devices to zone and matrix intents', () => {
+  assert.equal(draftIntent(base.devices[0]), 'zones');
+  assert.equal(draftIntent({ ...base.devices[0], kind: 'matrix', zones: undefined, chain: [] }), 'matrix');
+  assert.equal(draftIntent({ ...base.devices[0], kind: 'single', zones: undefined, color: { h: 10, s: 0.8, l: 0.5 } }), 'color');
 });
