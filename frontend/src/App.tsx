@@ -340,6 +340,7 @@ export function App() {
         searching={query.trim().length > 0}
         refreshing={refreshing}
         deviceStatus={deviceStatus}
+        deviceEffectStatus={deviceEffectStatus}
         onSelect={selectDevice}
         onGroupInspect={openGroupInspector}
         onSurfaceClick={closeInspector}

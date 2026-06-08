@@ -131,51 +131,123 @@
 .effect-section {
   display: grid;
   gap: 10px;
-  padding: 12px 0 4px;
-  border-top: 1px solid var(--line);
+  padding: 0 0 4px;
 }
 
 .effect-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
   color: var(--fg-3);
   font-size: 11px;
 }
 
-.effect-header span[data-running="true"] {
-  color: var(--fg-1);
-}
-
-.effect-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.effect-actions button {
+.effect-option {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 30px;
+  gap: 10px;
+  min-height: 50px;
+  width: 100%;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: oklch(1 0 0 / 0.025);
+  border-radius: 8px;
+  background: transparent;
   color: var(--fg-2);
   cursor: pointer;
-  font-size: 12px;
+  padding: 8px 10px;
+  text-align: left;
 }
 
-.effect-actions button:hover:not(:disabled) {
+.effect-option:hover:not(:disabled),
+.effect-option[data-active="true"] {
   border-color: var(--line-strong);
-  background: oklch(1 0 0 / 0.05);
+  background: oklch(1 0 0 / 0.045);
   color: var(--fg-0);
 }
 
-.effect-actions button:disabled {
+.effect-option:disabled {
   cursor: default;
-  opacity: 0.42;
+}
+
+.effect-option:disabled {
+  opacity: 0.65;
+}
+
+.effect-option > span:nth-child(2) {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+}
+
+.effect-option strong {
+  color: var(--fg-0);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.effect-option small {
+  color: var(--fg-3);
+  font-size: 10px;
+}
+
+.effect-swatch {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.effect-swatch[data-effect="move"] {
+  background: linear-gradient(90deg, oklch(0.73 0.12 220), oklch(0.78 0.15 170), oklch(0.73 0.12 220));
+  background-size: 200% 100%;
+}
+
+.effect-swatch[data-effect="flame"] {
+  background: linear-gradient(180deg, oklch(0.82 0.13 78), oklch(0.58 0.12 38));
+}
+
+.effect-option[data-active="true"] .effect-swatch[data-effect="move"] {
+  animation: fx-move 1.6s linear infinite;
+}
+
+.effect-option[data-active="true"] .effect-swatch[data-effect="flame"] {
+  animation: fx-flame 1.2s ease-in-out infinite;
+}
+
+.effect-action {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--fg-3);
+}
+
+.effect-action[data-running="true"] {
+  background: oklch(0.58 0.13 230 / 0.18);
+  color: var(--accent);
+}
+
+@keyframes fx-move {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes fx-flame {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: translateY(6%) scaleY(0.94);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1.06);
+  }
 }
 
 .mode-toggle button {

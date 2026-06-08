@@ -1,3 +1,4 @@
+import type { DeviceEffectStatus } from '../backend/api';
 import type { Device, Group } from '../domain/lifx';
 import { DevicePreview } from './DevicePreview';
 import { PowerDot, RowChevron, Slider } from './primitives';
@@ -12,6 +13,7 @@ interface DeviceListProps {
   searching: boolean;
   refreshing: boolean;
   deviceStatus: Record<string, { loading?: boolean; error?: string }>;
+  deviceEffectStatus: Record<string, DeviceEffectStatus & { loading?: boolean }>;
   onSelect: (serial: string) => void;
   onGroupInspect: () => void;
   onSurfaceClick: () => void;
@@ -28,6 +30,7 @@ export function DeviceList({
   searching,
   refreshing,
   deviceStatus,
+  deviceEffectStatus,
   onSelect,
   onGroupInspect,
   onSurfaceClick,
@@ -78,6 +81,7 @@ export function DeviceList({
                       key={device.serial}
                       device={device}
                       status={deviceStatus[device.serial]}
+                      effectStatus={deviceEffectStatus[device.serial]}
                       selected={device.serial === selectedSerial}
                       onSelect={onSelect}
                       onChange={onDeviceChange}
@@ -95,6 +99,7 @@ export function DeviceList({
                 key={device.serial}
                 device={device}
                 status={deviceStatus[device.serial]}
+                effectStatus={deviceEffectStatus[device.serial]}
                 selected={device.serial === selectedSerial}
                 onSelect={onSelect}
                 onChange={onDeviceChange}
@@ -111,12 +116,14 @@ export function DeviceList({
 function DeviceRow({
   device,
   status,
+  effectStatus,
   selected,
   onSelect,
   onChange,
 }: {
   device: Device;
   status?: { loading?: boolean; error?: string };
+  effectStatus?: DeviceEffectStatus & { loading?: boolean };
   selected: boolean;
   onSelect: (serial: string) => void;
   onChange: (device: Device) => void;
@@ -127,9 +134,7 @@ function DeviceRow({
       <PowerDot on={device.on} disabled={disabled} onChange={(next) => onChange({ ...device, on: next })} />
       <div className="device-name">
         <strong>{device.name}</strong>
-        <span>
-          {status?.error ? status.error : !device.online ? 'offline' : device.model}
-        </span>
+        {effectStatus?.running ? <EffectRunning effect={effectStatus.effect ?? 'effect'} /> : <span>{status?.error ? status.error : !device.online ? 'offline' : device.model}</span>}
       </div>
       <div className="device-preview-cell">
         <DevicePreview device={device} />
@@ -142,5 +147,18 @@ function DeviceRow({
         <RowChevron />
       </span>
     </div>
+  );
+}
+
+function EffectRunning({ effect }: { effect: string }) {
+  return (
+    <span className="effect-running">
+      <i aria-hidden="true">
+        <b />
+        <b />
+        <b />
+      </i>
+      {effect}
+    </span>
   );
 }

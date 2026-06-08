@@ -70,7 +70,9 @@ export function GroupInspector({ group, devices, onClose, onDeviceChange }: Grou
         <span>group controls</span>
       </div>
 
-      <ModeToggle value={mode} hasColor={hasColor} onChange={setMode} />
+      <ModeToggle value={mode} hasColor={hasColor} onChange={(value) => {
+        if (value !== 'effects') setMode(value);
+      }} />
 
       {mode === 'color' ? (
         <section className="control-section">

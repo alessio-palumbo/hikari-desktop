@@ -21,6 +21,7 @@ import { ColorWheel, Slider } from './primitives';
 import './Inspector.css';
 
 type PaintMode = 'color' | 'white';
+type InspectorMode = PaintMode | 'effects';
 type PaintTool = 'brush' | 'fill' | 'gradient' | 'picker';
 
 interface InspectorProps {
@@ -48,7 +49,7 @@ export function Inspector(props: InspectorProps) {
   }
 
   const device = props.device;
-  const [mode, setMode] = useState<PaintMode>('color');
+  const [mode, setMode] = useState<InspectorMode>('color');
   const [tool, setTool] = useState<PaintTool | null>(null);
   const [paintColor, setPaintColor] = useState(() => initialPaintColor(device));
   const [whiteKelvin, setWhiteKelvin] = useState(() => clampKelvin(device.kelvin ?? 3500, device));
@@ -58,6 +59,7 @@ export function Inspector(props: InspectorProps) {
   const [showInfo, setShowInfo] = useState(false);
   const editRequestedRef = useRef(false);
   const hasColor = device.capability?.hasColor ?? true;
+  const hasEffects = device.kind !== DeviceKind.Single;
 
   useEffect(() => {
     editRequestedRef.current = false;
@@ -87,6 +89,11 @@ export function Inspector(props: InspectorProps) {
   const whiteValue = Math.max(0, Math.min(1, (whiteKelvin - kelvinMin) / Math.max(1, kelvinMax - kelvinMin)));
   const activePaintColor = mode === 'white' ? whiteColor : paintColor;
   const brightnessValue = props.editing ? activePaintColor.l : device.brightness;
+
+  const setInspectorMode = (next: InspectorMode) => {
+    setMode(next);
+    if (next === 'effects') props.onExitEditMode();
+  };
 
   const setColor = (color: HslColor) => {
     const next = { ...color, l: brightnessValue };
@@ -162,7 +169,7 @@ export function Inspector(props: InspectorProps) {
 
       {showInfo ? <DeviceInfo device={device} /> : null}
 
-      <ModeToggle value={mode} hasColor={hasColor} onChange={setMode} />
+      <ModeToggle value={mode} hasColor={hasColor} hasEffects={hasEffects} onChange={setInspectorMode} />
 
       {mode === 'color' ? (
         <section className="control-section">
@@ -170,18 +177,20 @@ export function Inspector(props: InspectorProps) {
             <ColorWheel color={paintColor} onChange={setColor} />
           </div>
         </section>
-      ) : (
+      ) : null}
+
+      {mode === 'white' ? (
         <WhiteScale value={whiteValue} kelvinMin={kelvinMin} kelvinMax={kelvinMax} onChange={setKelvin} />
-      )}
+      ) : null}
 
-      <Slider label={props.editing ? 'paint brightness' : 'brightness'} value={brightnessValue} onChange={setBrightness} />
-      {props.error ? <div className="inspector-error">{props.error}</div> : null}
+      {mode !== 'effects' ? <Slider label={props.editing ? 'paint brightness' : 'brightness'} value={brightnessValue} onChange={setBrightness} /> : null}
+      {props.error && mode !== 'effects' ? <div className="inspector-error">{props.error}</div> : null}
 
-      {device.kind !== DeviceKind.Single ? (
+      {mode === 'effects' && hasEffects ? (
         <EffectControls device={device} status={props.effectStatus} onStart={props.onStartEffect} onStop={props.onStopEffect} />
       ) : null}
 
-      {device.kind !== DeviceKind.Single ? (
+      {mode !== 'effects' && device.kind !== DeviceKind.Single ? (
         <section className="edit-tools-section" data-editing={props.editing ? 'true' : 'false'}>
           <div className="edit-tools-header">
             <span>{props.editing ? 'editing layout' : 'layout tools'}</span>
@@ -251,25 +260,36 @@ function EffectControls({
   const effectName = device.kind === DeviceKind.Multizone ? 'move' : 'flame';
   const running = status?.running ?? false;
   const loading = status?.loading ?? false;
+  const actionLabel = running ? `Stop ${effectLabel(effectName)}` : `Start ${effectLabel(effectName)}`;
   return (
     <section className="effect-section">
       <div className="effect-header">
-        <span>firmware effect</span>
-        <span data-running={running ? 'true' : 'false'}>{running ? status?.effect ?? effectName : 'idle'}</span>
+        <span>effect</span>
+        {running ? <span>running</span> : null}
       </div>
-      <div className="effect-actions">
-        <button type="button" disabled={loading || running} onClick={onStart}>
-          <Play size={13} />
-          <span>{loading && !running ? 'starting' : effectName}</span>
-        </button>
-        <button type="button" disabled={loading || !running} onClick={onStop}>
-          <Square size={12} />
-          <span>{loading && running ? 'stopping' : 'stop'}</span>
-        </button>
-      </div>
+      <button className="effect-option" type="button" data-active={running ? 'true' : 'false'} disabled={loading} aria-label={actionLabel} onClick={running ? onStop : onStart}>
+        <span className="effect-swatch" data-effect={effectName} />
+        <span>
+          <strong>{effectLabel(effectName)}</strong>
+          <small>{effectDescription(effectName)}</small>
+        </span>
+        <span className="effect-action" data-running={running ? 'true' : 'false'}>{running ? <Square size={11} /> : <Play size={13} />}</span>
+      </button>
       {status?.error ? <div className="inspector-error">{status.error}</div> : null}
     </section>
   );
+}
+
+function effectLabel(effect: string): string {
+  if (effect === 'move') return 'Move';
+  if (effect === 'flame') return 'Flame';
+  return effect;
+}
+
+function effectDescription(effect: string): string {
+  if (effect === 'move') return 'Animated zone sweep';
+  if (effect === 'flame') return 'Warm flickering motion';
+  return 'Firmware effect';
 }
 
 function DeviceInfo({ device }: { device: Device }) {
@@ -366,8 +386,18 @@ function GradientControls({
   );
 }
 
-export function ModeToggle({ value, hasColor, onChange }: { value: PaintMode; hasColor: boolean; onChange: (value: PaintMode) => void }) {
-  const options: PaintMode[] = hasColor ? ['color', 'white'] : ['white'];
+export function ModeToggle({
+  value,
+  hasColor,
+  hasEffects = false,
+  onChange,
+}: {
+  value: InspectorMode;
+  hasColor: boolean;
+  hasEffects?: boolean;
+  onChange: (value: InspectorMode) => void;
+}) {
+  const options: InspectorMode[] = [...(hasColor ? (['color', 'white'] as const) : (['white'] as const)), ...(hasEffects ? (['effects'] as const) : [])];
   return (
     <div className="mode-toggle" role="tablist" aria-label="Color mode">
       {options.map((option) => (
