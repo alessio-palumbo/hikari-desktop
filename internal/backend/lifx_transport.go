@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -174,13 +175,74 @@ func startDeviceEffectMessage(req StartDeviceEffectRequest) (*protocol.Message, 
 		}
 		return messages.SetMultizoneMoveEffect(speed, !strings.EqualFold(req.Direction, "reverse")), DeviceEffectMove, nil
 	case DeviceKindMatrix:
-		if req.Effect != "" && req.Effect != DeviceEffectFlame {
+		effect := req.Effect
+		if effect == "" {
+			effect = DeviceEffectFlame
+		}
+		if !matrixEffectSupported(req.Device, effect) {
+			return nil, effect, fmt.Errorf("effect %q requires matrix firmware 4.8 or newer", effect)
+		}
+		switch effect {
+		case DeviceEffectFlame:
+			return messages.SetMatrixFlameEffect(speed), DeviceEffectFlame, nil
+		case DeviceEffectMorph:
+			return messages.SetMatrixMorphEffect(speed, matrixEffectPalette(req.Device)...), DeviceEffectMorph, nil
+		case DeviceEffectClouds:
+			return messages.SetMatrixCloudsEffect(speed, nil), DeviceEffectClouds, nil
+		default:
 			return nil, req.Effect, fmt.Errorf("effect %q is not supported for matrix devices", req.Effect)
 		}
-		return messages.SetMatrixFlameEffect(speed), DeviceEffectFlame, nil
 	default:
 		return nil, req.Effect, fmt.Errorf("effects are not supported for %s devices", req.Device.Kind)
 	}
+}
+
+func matrixEffectSupported(device Device, effect DeviceEffect) bool {
+	switch effect {
+	case DeviceEffectClouds:
+		return firmwareAtLeast(device.Firmware, 4, 8)
+	default:
+		return true
+	}
+}
+
+func matrixEffectPalette(device Device) []packets.LightHsbk {
+	colors := matrixPixels(device.Chain)
+	if len(colors) == 0 && device.Color != nil {
+		colors = []HSLColor{*device.Color}
+	}
+	if len(colors) == 0 {
+		colors = []HSLColor{
+			{H: 28, S: 0.75, L: 0.7},
+			{H: 200, S: 0.7, L: 0.65},
+			{H: 280, S: 0.65, L: 0.62},
+		}
+	}
+	if len(colors) > 16 {
+		colors = colors[:16]
+	}
+	return hslColorsToHSBK(colors, device.Brightness, device.Kelvin, device.Capability)
+}
+
+func firmwareAtLeast(version string, major, minor int) bool {
+	fields := strings.FieldsFunc(version, func(r rune) bool {
+		return r < '0' || r > '9'
+	})
+	if len(fields) < 2 {
+		return false
+	}
+	gotMajor, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return false
+	}
+	gotMinor, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return false
+	}
+	if gotMajor != major {
+		return gotMajor > major
+	}
+	return gotMinor >= minor
 }
 
 func effectSpeed(speedMS int) time.Duration {

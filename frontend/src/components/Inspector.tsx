@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, Info, LogOut, Pipette, Play, RotateCcw, Square, Undo2, Wand2, X } from 'lucide-react';
 import type { DeviceEffectStatus } from '../backend/api';
+import { supportedFirmwareEffects, type DeviceEffect, type FirmwareEffectDefinition } from '../domain/effects';
 import { DeviceKind, hsl, previewLightness, previewOpacity, type Device, type HslColor } from '../domain/lifx';
 import {
   applyDeviceBrightness,
@@ -34,7 +35,7 @@ interface InspectorProps {
   effectStatus?: DeviceEffectStatus & { loading?: boolean };
   onClose: () => void;
   onChange: (device: Device) => void;
-  onStartEffect: () => void;
+  onStartEffect: (effect: DeviceEffect) => void;
   onStopEffect: () => void;
   onEnterEditMode: () => void;
   onExitEditMode: () => void;
@@ -254,42 +255,58 @@ function EffectControls({
 }: {
   device: Device;
   status?: DeviceEffectStatus & { loading?: boolean };
-  onStart: () => void;
+  onStart: (effect: DeviceEffect) => void;
   onStop: () => void;
 }) {
-  const effectName = device.kind === DeviceKind.Multizone ? 'move' : 'flame';
+  const effects = supportedFirmwareEffects(device);
   const running = status?.running ?? false;
   const loading = status?.loading ?? false;
-  const actionLabel = running ? `Stop ${effectLabel(effectName)}` : `Start ${effectLabel(effectName)}`;
   return (
     <section className="effect-section">
       <div className="effect-header">
         <span>effect</span>
         {running ? <span>running</span> : null}
       </div>
-      <button className="effect-option" type="button" data-active={running ? 'true' : 'false'} disabled={loading} aria-label={actionLabel} onClick={running ? onStop : onStart}>
-        <span className="effect-swatch" data-effect={effectName} />
-        <span>
-          <strong>{effectLabel(effectName)}</strong>
-          <small>{effectDescription(effectName)}</small>
-        </span>
-        <span className="effect-action" data-running={running ? 'true' : 'false'}>{running ? <Square size={11} /> : <Play size={13} />}</span>
-      </button>
+      {effects.map((effect) => (
+        <EffectOption
+          key={effect.id}
+          effect={effect}
+          running={running && status?.effect === effect.id}
+          loading={loading}
+          onStart={onStart}
+          onStop={onStop}
+        />
+      ))}
+      {!effects.length ? <div className="effect-empty">no compatible firmware effects</div> : null}
       {status?.error ? <div className="inspector-error">{status.error}</div> : null}
     </section>
   );
 }
 
-function effectLabel(effect: string): string {
-  if (effect === 'move') return 'Move';
-  if (effect === 'flame') return 'Flame';
-  return effect;
-}
-
-function effectDescription(effect: string): string {
-  if (effect === 'move') return 'Animated zone sweep';
-  if (effect === 'flame') return 'Warm flickering motion';
-  return 'Firmware effect';
+function EffectOption({
+  effect,
+  running,
+  loading,
+  onStart,
+  onStop,
+}: {
+  effect: FirmwareEffectDefinition;
+  running: boolean;
+  loading: boolean;
+  onStart: (effect: DeviceEffect) => void;
+  onStop: () => void;
+}) {
+  const actionLabel = running ? `Stop ${effect.label}` : `Start ${effect.label}`;
+  return (
+    <button className="effect-option" type="button" data-active={running ? 'true' : 'false'} disabled={loading} aria-label={actionLabel} onClick={running ? onStop : () => onStart(effect.id)}>
+      <span className="effect-swatch" data-effect={effect.id} />
+      <span>
+        <strong>{effect.label}</strong>
+        <small>{effect.description}</small>
+      </span>
+      <span className="effect-action" data-running={running ? 'true' : 'false'}>{running ? <Square size={11} /> : <Play size={13} />}</span>
+    </button>
+  );
 }
 
 function DeviceInfo({ device }: { device: Device }) {

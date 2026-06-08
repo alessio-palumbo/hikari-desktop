@@ -206,12 +206,27 @@
   background: linear-gradient(180deg, oklch(0.82 0.13 78), oklch(0.58 0.12 38));
 }
 
+.effect-swatch[data-effect="morph"] {
+  background: linear-gradient(135deg, oklch(0.7 0.16 320), oklch(0.76 0.12 210), oklch(0.8 0.14 145));
+  background-size: 180% 180%;
+}
+
+.effect-swatch[data-effect="clouds"] {
+  background: linear-gradient(135deg, oklch(0.86 0.04 230), oklch(0.66 0.11 245), oklch(0.88 0.025 250));
+  background-size: 180% 180%;
+}
+
 .effect-option[data-active="true"] .effect-swatch[data-effect="move"] {
   animation: fx-move 1.6s linear infinite;
 }
 
 .effect-option[data-active="true"] .effect-swatch[data-effect="flame"] {
   animation: fx-flame 1.2s ease-in-out infinite;
+}
+
+.effect-option[data-active="true"] .effect-swatch[data-effect="morph"],
+.effect-option[data-active="true"] .effect-swatch[data-effect="clouds"] {
+  animation: fx-morph 2.4s ease-in-out infinite alternate;
 }
 
 .effect-action {
@@ -227,6 +242,11 @@
 .effect-action[data-running="true"] {
   background: oklch(0.58 0.13 230 / 0.18);
   color: var(--accent);
+}
+
+.effect-empty {
+  color: var(--fg-3);
+  font-size: 12px;
 }
 
 @keyframes fx-move {
@@ -247,6 +267,15 @@
   45% {
     opacity: 1;
     transform: translateY(0) scaleY(1.06);
+  }
+}
+
+@keyframes fx-morph {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
   }
 }
 

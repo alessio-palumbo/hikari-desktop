@@ -6,6 +6,7 @@ import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
+import type { DeviceEffect } from './domain/effects';
 import { DeviceKind, type Device, type DeviceSnapshot } from './domain/lifx';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
@@ -259,10 +260,10 @@ export function App() {
     }
   };
 
-  const startInspectorEffect = async (device: Device) => {
+  const startInspectorEffect = async (device: Device, effect: DeviceEffect) => {
     setDeviceEffectLoading(device.serial, true);
     try {
-      const status = await startDeviceEffect(device);
+      const status = await startDeviceEffect(device, { effect });
       setDeviceEffectStatus((prev) => ({ ...prev, [device.serial]: { ...status, loading: false } }));
     } catch (error) {
       setDeviceEffectLoading(device.serial, false, errorMessage(error));
@@ -365,7 +366,7 @@ export function App() {
           effectStatus={deviceEffectStatus[inspectorDevice.serial]}
           onClose={() => setSelectedSerial(undefined)}
           onChange={updateInspectorDevice}
-          onStartEffect={() => void startInspectorEffect(inspectorDevice)}
+          onStartEffect={(effect) => void startInspectorEffect(inspectorDevice, effect)}
           onStopEffect={() => void stopInspectorEffect(inspectorDevice)}
           onEnterEditMode={enterEditMode}
           onExitEditMode={() => setDraft(undefined)}

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { commandIntent, draftIntent, prepareDeviceCommand } from '../dist-test/domain/commands.js';
 import { activateEditedDevice } from '../dist-test/domain/editor.js';
+import { supportedFirmwareEffects } from '../dist-test/domain/effects.js';
 import { DeviceKind, previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, paintMatrixBrush, paintMatrixFill, paintMatrixGradient, paintMultizoneBrush, paintMultizoneFill } from '../dist-test/domain/paint.js';
 import { createPendingState, isPendingConfirmed, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
@@ -312,6 +313,16 @@ test('initial paint color uses matrix pixels instead of top-level color', () => 
   };
 
   assert.deepEqual(initialPaintColor(device), { h: 20, s: 0.8, l: 0.5 });
+});
+
+test('firmware effect catalogue filters by device kind and firmware', () => {
+  const multizone = { ...base.devices[0], kind: DeviceKind.Multizone };
+  const oldMatrix = { ...matrixDevice(), firmware: '4.7' };
+  const newMatrix = { ...matrixDevice(), firmware: '4.8' };
+
+  assert.deepEqual(supportedFirmwareEffects(multizone).map((effect) => effect.id), ['move']);
+  assert.deepEqual(supportedFirmwareEffects(oldMatrix).map((effect) => effect.id), ['flame', 'morph']);
+  assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds']);
 });
 
 function matrixDevice() {

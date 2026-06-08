@@ -1015,6 +1015,103 @@ func TestLifxTransportStartDeviceEffectSendsMatrixFlame(t *testing.T) {
 	}
 }
 
+func TestLifxTransportStartDeviceEffectSendsMatrixMorph(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       DeviceKindMatrix,
+		Firmware:   "4.8",
+		Brightness: 0.5,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Chain: []Matrix{{
+			Pixels: []HSLColor{{H: 10, S: 0.8, L: 0.4}, {H: 220, S: 0.7, L: 0.6}},
+		}},
+	}
+
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectMorph, SpeedMS: 1400})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	if status.Effect != string(DeviceEffectMorph) || !status.Running {
+		t.Fatalf("status = %#v, want running morph", status)
+	}
+	payload, ok := controller.sends[0].msg.Payload.(*packets.TileSetEffect)
+	if !ok {
+		t.Fatalf("payload = %T, want *packets.TileSetEffect", controller.sends[0].msg.Payload)
+	}
+	if payload.Settings.Type != enums.TileEffectTypeTILEEFFECTTYPEMORPH {
+		t.Fatalf("effect type = %v, want morph", payload.Settings.Type)
+	}
+	if payload.Settings.PaletteCount != 2 {
+		t.Fatalf("palette count = %d, want 2", payload.Settings.PaletteCount)
+	}
+	if payload.Settings.Speed != 1400 {
+		t.Fatalf("speed = %d, want 1400", payload.Settings.Speed)
+	}
+}
+
+func TestLifxTransportStartDeviceEffectAllowsMorphBeforeFirmware48(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix, Firmware: "4.7"}
+
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectMorph})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	if status.Effect != string(DeviceEffectMorph) || !status.Running {
+		t.Fatalf("status = %#v, want running morph", status)
+	}
+	if len(controller.sends) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(controller.sends))
+	}
+}
+
+func TestLifxTransportStartDeviceEffectSendsMatrixClouds(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix, Firmware: "4.9"}
+
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectClouds, SpeedMS: 2200})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	if status.Effect != string(DeviceEffectClouds) || !status.Running {
+		t.Fatalf("status = %#v, want running clouds", status)
+	}
+	payload, ok := controller.sends[0].msg.Payload.(*packets.TileSetEffect)
+	if !ok {
+		t.Fatalf("payload = %T, want *packets.TileSetEffect", controller.sends[0].msg.Payload)
+	}
+	if payload.Settings.Type != enums.TileEffectTypeTILEEFFECTTYPESKY {
+		t.Fatalf("effect type = %v, want sky", payload.Settings.Type)
+	}
+	if payload.Settings.Parameter.Parameter0 != uint32(enums.TileEffectSkyTypeTILEEFFECTSKYTYPECLOUDS) {
+		t.Fatalf("sky effect = %d, want clouds", payload.Settings.Parameter.Parameter0)
+	}
+	if payload.Settings.Speed != 2200 {
+		t.Fatalf("speed = %d, want 2200", payload.Settings.Speed)
+	}
+}
+
+func TestLifxTransportStartDeviceEffectRejectsUnsupportedMatrixFirmware(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix, Firmware: "4.7"}
+
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectClouds})
+	if err == nil {
+		t.Fatal("StartDeviceEffect returned nil error, want firmware error")
+	}
+	if status.Running || status.Error == "" {
+		t.Fatalf("status = %#v, want stopped error status", status)
+	}
+	if len(controller.sends) != 0 {
+		t.Fatalf("sent %d messages, want 0", len(controller.sends))
+	}
+}
+
 func TestLifxTransportStartDeviceEffectRejectsUnsupportedDevice(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)

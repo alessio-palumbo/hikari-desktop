@@ -1,5 +1,6 @@
 import { DeviceKind, type Device, type DeviceSnapshot, type HslColor, type Matrix } from '../domain/lifx';
 import type { DeviceCommandIntent } from '../domain/commands';
+import type { DeviceEffect } from '../domain/effects';
 
 interface WailsApp {
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
@@ -17,8 +18,6 @@ interface SetDeviceStateRequest {
 interface StopDeviceEffectRequest {
   device: Device;
 }
-
-export type DeviceEffect = 'move' | 'flame';
 
 export interface StartDeviceEffectOptions {
   effect?: DeviceEffect;
