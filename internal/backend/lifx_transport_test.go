@@ -69,6 +69,31 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSnapshotReplacesDeviceCache(t *testing.T) {
+	first := testLifxDevice(t, "d073d501a2c3", "Desk Lamp", "Home", "Desk")
+	second := testLifxDevice(t, "d073d501a2c4", "Pendant", "Home", "Kitchen")
+	controller := &fakeLifxController{devices: []lifxdevice.Device{first, second}}
+	transport := NewLifxTransportWithController(controller)
+
+	if _, err := transport.Snapshot(context.Background()); err != nil {
+		t.Fatalf("Snapshot returned error: %v", err)
+	}
+	if transport.cachedDevice(first.Serial.String()) == nil || transport.cachedDevice(second.Serial.String()) == nil {
+		t.Fatal("snapshot did not populate cache")
+	}
+
+	controller.devices = []lifxdevice.Device{second}
+	if _, err := transport.Snapshot(context.Background()); err != nil {
+		t.Fatalf("second Snapshot returned error: %v", err)
+	}
+	if transport.cachedDevice(first.Serial.String()) != nil {
+		t.Fatal("stale device remained in cache after replacement snapshot")
+	}
+	if transport.cachedDevice(second.Serial.String()) == nil {
+		t.Fatal("active device missing from cache after replacement snapshot")
+	}
+}
+
 func TestLifxTransportSnapshotMapsEmptyDiscoveryAsEmptyArrays(t *testing.T) {
 	snapshot := mapLifxDevices(nil)
 	if snapshot.Locations == nil || snapshot.Groups == nil || snapshot.Devices == nil {
@@ -478,7 +503,7 @@ func TestLifxTransportSetDeviceStateSendsPowerOnThenSingleZoneColor(t *testing.T
 		Kelvin:     4000,
 	}
 	transport := NewLifxTransportWithController(controller)
-	transport.updateCache([]Device{{Serial: device.Serial, On: false}})
+	transport.storeCachedDevice(Device{Serial: device.Serial, On: false})
 
 	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device, Intent: DeviceCommandColor}); err != nil {
 		t.Fatalf("SetDeviceState returned error: %v", err)
@@ -697,7 +722,7 @@ func TestLifxTransportSetDeviceStatePowersOnBeforeBrightnessWhenCachedOff(t *tes
 		Zones:      []HSLColor{{H: 60, S: 1, L: 0.25}},
 	}
 	transport := NewLifxTransportWithController(controller)
-	transport.updateCache([]Device{{Serial: device.Serial, On: false}})
+	transport.storeCachedDevice(Device{Serial: device.Serial, On: false})
 
 	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device, Preview: true, Intent: DeviceCommandBrightness}); err != nil {
 		t.Fatalf("SetDeviceState returned error: %v", err)

@@ -88,7 +88,7 @@ func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	devices := ctrl.GetDevices()
 	log.Printf("hikari: lifx snapshot read %d devices", len(devices))
 	snapshot := mapLifxDevices(devices)
-	t.updateCache(snapshot.Devices)
+	t.replaceCache(snapshot.Devices)
 	return snapshot, nil
 }
 
@@ -105,7 +105,7 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 	current := t.cachedDevice(req.Device.Serial)
 	if current == nil {
 		snapshot := mapLifxDevices(ctrl.GetDevices())
-		t.updateCache(snapshot.Devices)
+		t.replaceCache(snapshot.Devices)
 		current = t.cachedDevice(req.Device.Serial)
 	}
 
@@ -114,7 +114,7 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 		log.Printf("hikari: set device state failed for %s: %v", req.Device.Serial, err)
 		return req.Device, err
 	}
-	t.updateCache([]Device{req.Device})
+	t.storeCachedDevice(req.Device)
 	return req.Device, nil
 }
 
@@ -125,15 +125,22 @@ func (t *LifxTransport) requireController() (lifxController, error) {
 	return nil, fmt.Errorf("lifx transport has not been started")
 }
 
-func (t *LifxTransport) updateCache(devices []Device) {
+func (t *LifxTransport) replaceCache(devices []Device) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.cache = make(map[string]Device, len(devices))
+	for _, device := range devices {
+		t.cache[device.Serial] = device
+	}
+}
+
+func (t *LifxTransport) storeCachedDevice(device Device) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.cache == nil {
 		t.cache = make(map[string]Device)
 	}
-	for _, device := range devices {
-		t.cache[device.Serial] = device
-	}
+	t.cache[device.Serial] = device
 }
 
 func (t *LifxTransport) cachedDevice(serial string) *Device {
