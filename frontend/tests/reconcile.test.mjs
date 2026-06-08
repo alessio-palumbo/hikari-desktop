@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { commandIntent, draftIntent, prepareDeviceCommand } from '../dist-test/domain/commands.js';
 import { activateEditedDevice } from '../dist-test/domain/editor.js';
 import { DeviceKind, previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
+import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, paintMatrixBrush, paintMatrixFill, paintMatrixGradient, paintMultizoneBrush, paintMultizoneFill } from '../dist-test/domain/paint.js';
 import { createPendingState, isPendingConfirmed, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
 
 const base = {
@@ -226,3 +227,101 @@ test('maps draft devices to zone and matrix intents', () => {
   assert.equal(draftIntent({ ...base.devices[0], kind: DeviceKind.Matrix, zones: undefined, chain: [] }), 'matrix');
   assert.equal(draftIntent({ ...base.devices[0], kind: DeviceKind.Single, zones: undefined, color: { h: 10, s: 0.8, l: 0.5 } }), 'color');
 });
+
+test('direct brightness changes do not rewrite multizone colors', () => {
+  const device = {
+    ...base.devices[0],
+    brightness: 0.5,
+    zones: [
+      { h: 60, s: 0.8, l: 0.5 },
+      { h: 240, s: 0.9, l: 0.5 },
+    ],
+  };
+
+  const got = applyDeviceBrightness(device, 0.25);
+
+  assert.equal(got.on, true);
+  assert.equal(got.brightness, 0.25);
+  assert.deepEqual(got.zones, device.zones);
+});
+
+test('direct color changes power off devices on and keep selected color brightness coherent', () => {
+  const device = {
+    ...base.devices[0],
+    on: false,
+    brightness: 0,
+    color: { h: 60, s: 0.8, l: 0.3 },
+    zones: [{ h: 60, s: 0.8, l: 0.3 }],
+  };
+
+  const got = applyDeviceColor(device, { h: 210, s: 0.7, l: 0.4 });
+
+  assert.equal(got.on, true);
+  assert.equal(got.brightness, 0.55);
+  assert.deepEqual(got.zones, [{ h: 210, s: 0.7, l: 0.55 }]);
+});
+
+test('multizone brush edits one zone while fill edits the whole strip', () => {
+  const device = {
+    ...base.devices[0],
+    zones: [
+      { h: 10, s: 0.8, l: 0.5 },
+      { h: 20, s: 0.8, l: 0.5 },
+      { h: 30, s: 0.8, l: 0.5 },
+    ],
+  };
+  const color = { h: 120, s: 0.9, l: 0.6 };
+
+  const brushed = paintMultizoneBrush(device, 1, color);
+  const filled = paintMultizoneFill(device, color);
+
+  assert.deepEqual(brushed.zones, [device.zones[0], color, device.zones[2]]);
+  assert.deepEqual(filled.zones, [color, color, color]);
+});
+
+test('matrix brush and fill only edit the targeted chain entry', () => {
+  const device = matrixDevice();
+  const color = { h: 120, s: 0.9, l: 0.6 };
+
+  const brushed = paintMatrixBrush(device, 1, 0, color);
+  const filled = paintMatrixFill(device, 1, color);
+
+  assert.deepEqual(brushed.chain[0].pixels, device.chain[0].pixels);
+  assert.deepEqual(brushed.chain[1].pixels, [color, device.chain[1].pixels[1]]);
+  assert.deepEqual(filled.chain[0].pixels, device.chain[0].pixels);
+  assert.deepEqual(filled.chain[1].pixels, [color, color]);
+});
+
+test('matrix gradient is deterministic and only targets one chain entry', () => {
+  const device = matrixDevice();
+  const stops = { start: { h: 0, s: 1, l: 0.4 }, end: { h: 120, s: 1, l: 0.6 } };
+
+  const first = paintMatrixGradient(device, 1, stops, 'e');
+  const second = paintMatrixGradient(device, 1, stops, 'e');
+
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.chain[0].pixels, device.chain[0].pixels);
+  assert.deepEqual(first.chain[1].pixels, [stops.start, stops.end]);
+});
+
+test('initial paint color uses matrix pixels instead of top-level color', () => {
+  const device = {
+    ...matrixDevice(),
+    color: { h: 300, s: 1, l: 0.9 },
+    chain: [{ id: 0, x: 0, y: 0, w: 3, h: 1, rows: [{ cols: 3, offset: 0 }], pixels: [{ h: 10, s: 0.8, l: 0.4 }, { h: 20, s: 0.8, l: 0.5 }, { h: 30, s: 0.8, l: 0.6 }] }],
+  };
+
+  assert.deepEqual(initialPaintColor(device), { h: 20, s: 0.8, l: 0.5 });
+});
+
+function matrixDevice() {
+  return {
+    ...base.devices[0],
+    kind: DeviceKind.Matrix,
+    zones: undefined,
+    chain: [
+      { id: 0, x: 0, y: 0, w: 2, h: 1, rows: [{ cols: 2, offset: 0 }], pixels: [{ h: 10, s: 0.8, l: 0.5 }, { h: 20, s: 0.8, l: 0.5 }] },
+      { id: 1, x: 2, y: 0, w: 2, h: 1, rows: [{ cols: 2, offset: 0 }], pixels: [{ h: 210, s: 0.8, l: 0.5 }, { h: 220, s: 0.8, l: 0.5 }] },
+    ],
+  };
+}

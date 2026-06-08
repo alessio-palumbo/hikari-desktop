@@ -1,13 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, Info, LogOut, Pipette, RotateCcw, Undo2, Wand2, X } from 'lucide-react';
 import { DeviceKind, hsl, previewLightness, previewOpacity, type Device, type HslColor } from '../domain/lifx';
+import {
+  applyDeviceBrightness,
+  applyDeviceColor,
+  initialPaintColor,
+  kelvinToHsl,
+  matrixGridCols,
+  paintMatrixBrush,
+  paintMatrixFill,
+  paintMatrixGradient,
+  paintMultizoneBrush,
+  paintMultizoneFill,
+  paintMultizoneGradient,
+  type GradientDirection,
+  type GradientStops,
+} from '../domain/paint';
 import { ColorWheel, Slider } from './primitives';
 import './Inspector.css';
 
 type PaintMode = 'color' | 'white';
 type PaintTool = 'brush' | 'fill' | 'gradient' | 'picker';
-type GradientStops = { start?: HslColor; end?: HslColor };
-type GradientDirection = 'e' | 'w' | 's' | 'n' | 'se' | 'nw' | 'ne' | 'sw';
 
 interface InspectorProps {
   device?: Device;
@@ -274,7 +287,7 @@ function GradientControls({
   onDirectionChange: (direction: GradientDirection) => void;
 }) {
   const directions: Array<{ id: GradientDirection; label: string; icon: typeof ArrowRight }> =
-    deviceKind === 'multizone'
+    deviceKind === DeviceKind.Multizone
       ? [
           { id: 'e', label: 'Forward', icon: ArrowRight },
           { id: 'w', label: 'Reverse', icon: ArrowLeft },
@@ -385,31 +398,27 @@ function MultizoneDraftEditor({
   const dragPaintedRef = useRef<Set<number>>(new Set());
   const applyTool = (index?: number) => {
     if (!tool) return;
-    const next = [...zones];
     if (tool === 'picker') {
       if (index == null) return;
       onPickColor(zones[index]);
       return;
     }
     if (tool === 'fill') {
-      onChange({ ...device, zones: zones.map(() => paintColor) });
+      onChange(paintMultizoneFill(device, paintColor));
       return;
     }
     if (tool === 'gradient') {
-      const gradient = applyMultizoneGradient(zones, gradientStops, gradientDirection);
-      if (gradient) onChange({ ...device, zones: gradient });
+      const next = paintMultizoneGradient(device, gradientStops, gradientDirection);
+      if (next) onChange(next);
       return;
     }
     if (index == null) return;
-    next[index] = paintColor;
-    onChange({ ...device, zones: next });
+    onChange(paintMultizoneBrush(device, index, paintColor));
   };
   const applyBrush = (index: number) => {
     if (dragPaintedRef.current.has(index)) return;
     dragPaintedRef.current.add(index);
-    const next = [...zones];
-    next[index] = paintColor;
-    onChange({ ...device, zones: next });
+    onChange(paintMultizoneBrush(device, index, paintColor));
   };
   const zoneFromPointer = (event: React.PointerEvent<HTMLDivElement>) => {
     const target = document.elementFromPoint(event.clientX, event.clientY);
@@ -492,45 +501,22 @@ function MatrixDraftEditor({
       return;
     }
     if (tool === 'fill') {
-      onChange({
-        ...device,
-        chain: chain.map((matrix, index) => (index === matrixIndex ? { ...matrix, pixels: matrix.pixels.map(() => paintColor) } : matrix)),
-      });
+      onChange(paintMatrixFill(device, matrixIndex, paintColor));
       return;
     }
     if (tool === 'gradient') {
-      const gradient = applyMatrixGradient(sourceMatrix, gradientStops, gradientDirection);
-      if (!gradient) return;
-      onChange({
-        ...device,
-        chain: chain.map((matrix, index) => (index === matrixIndex ? { ...matrix, pixels: gradient } : matrix)),
-      });
+      const next = paintMatrixGradient(device, matrixIndex, gradientStops, gradientDirection);
+      if (next) onChange(next);
       return;
     }
     if (pixelIndex == null) return;
-    onChange({
-      ...device,
-      chain: chain.map((matrix, index) => {
-        if (index !== matrixIndex) return matrix;
-        const pixels = [...matrix.pixels];
-        pixels[pixelIndex] = paintColor;
-        return { ...matrix, pixels };
-      }),
-    });
+    onChange(paintMatrixBrush(device, matrixIndex, pixelIndex, paintColor));
   };
   const applyBrush = (matrixIndex: number, pixelIndex: number) => {
     const key = `${matrixIndex}:${pixelIndex}`;
     if (dragPaintedRef.current.has(key)) return;
     dragPaintedRef.current.add(key);
-    onChange({
-      ...device,
-      chain: chain.map((matrix, index) => {
-        if (index !== matrixIndex) return matrix;
-        const pixels = [...matrix.pixels];
-        pixels[pixelIndex] = paintColor;
-        return { ...matrix, pixels };
-      }),
-    });
+    onChange(paintMatrixBrush(device, matrixIndex, pixelIndex, paintColor));
   };
   const pixelFromPointer = (event: React.PointerEvent<HTMLDivElement>) => {
     const target = document.elementFromPoint(event.clientX, event.clientY);
@@ -634,119 +620,8 @@ function MatrixDraftEditor({
   );
 }
 
-export function initialPaintColor(device: Device): HslColor {
-  if (device.kind === DeviceKind.Single && device.color) return device.color;
-  if (device.kind === DeviceKind.Multizone && device.zones?.length) return device.zones[Math.floor(device.zones.length / 2)];
-  if (device.kind === DeviceKind.Matrix && device.chain?.[0]?.pixels.length) {
-    const pixels = device.chain[0].pixels;
-    return pixels[Math.floor(pixels.length / 2)];
-  }
-  return { h: 38, s: 0.5, l: 0.55 };
-}
-
-function matrixGridCols(matrix: NonNullable<Device['chain']>[number]): number {
-  return Math.max(1, ...matrix.rows.map((row) => Math.ceil(row.offset + row.cols)), Math.round(matrix.w));
-}
-
-export function kelvinToHsl(kelvin: number): HslColor {
-  return { h: 0, s: 0, l: 0.72, kelvin };
-}
-
 function clampKelvin(kelvin: number, device: Device): number {
   const min = device.capability?.kelvinMin ?? 2500;
   const max = device.capability?.kelvinMax ?? 6500;
   return Math.max(min, Math.min(max, kelvin));
-}
-
-export function applyDeviceColor(device: Device, color: HslColor): Device {
-  const brightness = device.brightness > 0 ? device.brightness : Math.max(color.l, 0.55);
-  const nextColor = { ...color, l: brightness };
-  if (device.kind === DeviceKind.Single) {
-    return { ...device, on: true, brightness, color: nextColor, kelvin: nextColor.kelvin ?? device.kelvin };
-  }
-  if (device.kind === DeviceKind.Multizone) {
-    return {
-      ...device,
-      on: true,
-      brightness,
-      color: nextColor,
-      kelvin: nextColor.kelvin ?? device.kelvin,
-      zones: device.zones?.map(() => nextColor) ?? [],
-    };
-  }
-  return {
-    ...device,
-    on: true,
-    brightness,
-    color: nextColor,
-    kelvin: nextColor.kelvin ?? device.kelvin,
-    chain: device.chain?.map((matrix) => ({ ...matrix, pixels: matrix.pixels.map(() => nextColor) })) ?? [],
-  };
-}
-
-export function applyDeviceBrightness(device: Device, brightness: number): Device {
-  const on = brightness > 0;
-  return { ...device, on, brightness };
-}
-
-function applyMultizoneGradient(colors: HslColor[], stops: GradientStops, direction: GradientDirection): HslColor[] | undefined {
-  if (!stops.start || !stops.end) return undefined;
-  return colors.map((_, index) => {
-    const t = index / Math.max(1, colors.length - 1);
-    return interpolateHsl(stops.start!, stops.end!, direction === 'w' ? 1 - t : t);
-  });
-}
-
-function applyMatrixGradient(matrix: NonNullable<Device['chain']>[number], stops: GradientStops, direction: GradientDirection): HslColor[] | undefined {
-  if (!stops.start || !stops.end) return undefined;
-  const pixels = [...matrix.pixels];
-  const width = matrixGridCols(matrix);
-  const height = Math.max(1, matrix.rows.length);
-  for (const [rowIndex, row] of matrix.rows.entries()) {
-    const rowStart = matrix.rows.slice(0, rowIndex).reduce((sum, entry) => sum + entry.cols, 0);
-    for (let columnIndex = 0; columnIndex < row.cols; columnIndex += 1) {
-      const pixelIndex = rowStart + columnIndex;
-      const x = row.offset + columnIndex;
-      const y = rowIndex;
-      pixels[pixelIndex] = interpolateHsl(stops.start, stops.end, gradientAmount(x, y, width, height, direction));
-    }
-  }
-  return pixels;
-}
-
-function gradientAmount(x: number, y: number, width: number, height: number, direction: GradientDirection): number {
-  const maxX = Math.max(1, width - 1);
-  const maxY = Math.max(1, height - 1);
-  const nx = x / maxX;
-  const ny = y / maxY;
-  const vectors: Record<GradientDirection, { x: number; y: number }> = {
-    e: { x: 1, y: 0 },
-    w: { x: -1, y: 0 },
-    s: { x: 0, y: 1 },
-    n: { x: 0, y: -1 },
-    se: { x: 1, y: 1 },
-    nw: { x: -1, y: -1 },
-    ne: { x: 1, y: -1 },
-    sw: { x: -1, y: 1 },
-  };
-  const vector = vectors[direction];
-  const projection = nx * vector.x + ny * vector.y;
-  const corners = [
-    0,
-    vector.x,
-    vector.y,
-    vector.x + vector.y,
-  ];
-  const min = Math.min(...corners);
-  const max = Math.max(...corners);
-  return (projection - min) / Math.max(1, max - min);
-}
-
-function interpolateHsl(from: HslColor, to: HslColor, amount: number): HslColor {
-  const t = Math.max(0, Math.min(1, amount));
-  return {
-    h: from.h + (to.h - from.h) * t,
-    s: from.s + (to.s - from.s) * t,
-    l: from.l + (to.l - from.l) * t,
-  };
 }

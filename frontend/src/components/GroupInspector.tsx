@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Device, Group, HslColor } from '../domain/lifx';
+import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl } from '../domain/paint';
 import { ColorWheel, Slider } from './primitives';
-import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl, ModeToggle, WhiteScale } from './Inspector';
+import { ModeToggle, WhiteScale } from './Inspector';
 import './Inspector.css';
 
 type PaintMode = 'color' | 'white';
