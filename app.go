@@ -58,6 +58,10 @@ func (a *App) SetDeviceState(req backend.SetDeviceStateRequest) (backend.Device,
 	return a.transport.SetDeviceState(a.context(), req)
 }
 
+func (a *App) StartDeviceEffect(req backend.StartDeviceEffectRequest) (backend.DeviceEffectStatus, error) {
+	return a.transport.StartDeviceEffect(a.context(), req)
+}
+
 func (a *App) StopDeviceEffect(req backend.StopDeviceEffectRequest) (backend.DeviceEffectStatus, error) {
 	return a.transport.StopDeviceEffect(a.context(), req)
 }

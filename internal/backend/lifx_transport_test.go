@@ -8,6 +8,7 @@ import (
 
 	lifxdevice "github.com/alessio-palumbo/lifxlan-go/pkg/device"
 	"github.com/alessio-palumbo/lifxlan-go/pkg/protocol"
+	"github.com/alessio-palumbo/lifxprotocol-go/gen/protocol/enums"
 	"github.com/alessio-palumbo/lifxprotocol-go/gen/protocol/packets"
 )
 
@@ -934,6 +935,101 @@ func TestLifxTransportSetDeviceStateSendsDirectMatrixBrightnessOnly(t *testing.T
 		t.Fatalf("payload = %T, want *packets.LightSetWaveformOptional", controller.sends[0].msg.Payload)
 	}
 	assertBrightnessOnlyPayload(t, payload, 25)
+}
+
+func TestLifxTransportStartDeviceEffectSendsMultizoneMove(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMultizone}
+
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectMove, SpeedMS: 1200, Direction: "reverse"})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	if status.Serial != device.Serial || !status.Running || status.Effect != string(DeviceEffectMove) {
+		t.Fatalf("status = %#v, want running move status", status)
+	}
+	if len(controller.sends) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(controller.sends))
+	}
+	payload, ok := controller.sends[0].msg.Payload.(*packets.MultiZoneSetEffect)
+	if !ok {
+		t.Fatalf("payload = %T, want *packets.MultiZoneSetEffect", controller.sends[0].msg.Payload)
+	}
+	if payload.Settings.Type != enums.MultiZoneEffectTypeMULTIZONEEFFECTTYPEMOVE {
+		t.Fatalf("effect type = %v, want move", payload.Settings.Type)
+	}
+	if payload.Settings.Speed != 1200 {
+		t.Fatalf("speed = %d, want 1200", payload.Settings.Speed)
+	}
+	if payload.Settings.Parameter.Parameter1 != 0 {
+		t.Fatalf("direction parameter = %d, want reverse", payload.Settings.Parameter.Parameter1)
+	}
+}
+
+func TestLifxTransportStartDeviceEffectDefaultsMultizoneMove(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMultizone}
+
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	payload := controller.sends[0].msg.Payload.(*packets.MultiZoneSetEffect)
+	if status.Effect != string(DeviceEffectMove) {
+		t.Fatalf("effect = %q, want move", status.Effect)
+	}
+	if payload.Settings.Speed != uint32(defaultFirmwareEffectSpeed.Milliseconds()) {
+		t.Fatalf("speed = %d, want default", payload.Settings.Speed)
+	}
+	if payload.Settings.Parameter.Parameter1 != 1 {
+		t.Fatalf("direction parameter = %d, want forward", payload.Settings.Parameter.Parameter1)
+	}
+}
+
+func TestLifxTransportStartDeviceEffectSendsMatrixFlame(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix}
+
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectFlame, SpeedMS: 900})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	if status.Serial != device.Serial || !status.Running || status.Effect != string(DeviceEffectFlame) {
+		t.Fatalf("status = %#v, want running flame status", status)
+	}
+	if len(controller.sends) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(controller.sends))
+	}
+	payload, ok := controller.sends[0].msg.Payload.(*packets.TileSetEffect)
+	if !ok {
+		t.Fatalf("payload = %T, want *packets.TileSetEffect", controller.sends[0].msg.Payload)
+	}
+	if payload.Settings.Type != enums.TileEffectTypeTILEEFFECTTYPEFLAME {
+		t.Fatalf("effect type = %v, want flame", payload.Settings.Type)
+	}
+	if payload.Settings.Speed != 900 {
+		t.Fatalf("speed = %d, want 900", payload.Settings.Speed)
+	}
+}
+
+func TestLifxTransportStartDeviceEffectRejectsUnsupportedDevice(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindSingle}
+
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectFlame})
+	if err == nil {
+		t.Fatal("StartDeviceEffect returned nil error, want unsupported error")
+	}
+	if status.Running || status.Error == "" {
+		t.Fatalf("status = %#v, want stopped error status", status)
+	}
+	if len(controller.sends) != 0 {
+		t.Fatalf("sent %d messages, want 0", len(controller.sends))
+	}
 }
 
 func TestLifxTransportStopDeviceEffectSendsMultizoneEffectOff(t *testing.T) {

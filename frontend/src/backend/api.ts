@@ -4,6 +4,7 @@ import type { DeviceCommandIntent } from '../domain/commands';
 interface WailsApp {
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
   SetDeviceState?: (request: SetDeviceStateRequest) => Promise<Device>;
+  StartDeviceEffect?: (request: StartDeviceEffectRequest) => Promise<DeviceEffectStatus>;
   StopDeviceEffect?: (request: StopDeviceEffectRequest) => Promise<DeviceEffectStatus>;
 }
 
@@ -14,6 +15,18 @@ interface SetDeviceStateRequest {
 }
 
 interface StopDeviceEffectRequest {
+  device: Device;
+}
+
+export type DeviceEffect = 'move' | 'flame';
+
+export interface StartDeviceEffectOptions {
+  effect?: DeviceEffect;
+  speedMs?: number;
+  direction?: 'forward' | 'reverse';
+}
+
+interface StartDeviceEffectRequest extends StartDeviceEffectOptions {
   device: Device;
 }
 
@@ -45,6 +58,14 @@ export async function setDeviceState(device: Device, preview = false, intent: De
   if (app?.SetDeviceState) return app.SetDeviceState({ device, preview, intent });
   await new Promise((resolve) => window.setTimeout(resolve, preview ? 60 : 180));
   return device;
+}
+
+export async function startDeviceEffect(device: Device, options: StartDeviceEffectOptions = {}): Promise<DeviceEffectStatus> {
+  const app = window.go?.main?.App;
+  if (app?.StartDeviceEffect) return app.StartDeviceEffect({ device, ...options });
+  await new Promise((resolve) => window.setTimeout(resolve, 80));
+  if (device.kind === DeviceKind.Single) return { serial: device.serial, running: false, error: 'effects are not supported for single zone devices' };
+  return { serial: device.serial, running: true, effect: options.effect ?? (device.kind === DeviceKind.Multizone ? 'move' : 'flame') };
 }
 
 export async function stopDeviceEffect(device: Device): Promise<DeviceEffectStatus> {

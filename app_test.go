@@ -49,6 +49,20 @@ func TestAppUsesTransport(t *testing.T) {
 		t.Fatalf("SetDeviceState returned %#v", got)
 	}
 
+	startStatus, err := app.StartDeviceEffect(backend.StartDeviceEffectRequest{Device: device, Effect: backend.DeviceEffectFlame})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	if !transport.startEffectCalled {
+		t.Fatal("expected StartDeviceEffect to be called")
+	}
+	if transport.lastStartEffectReq.Effect != backend.DeviceEffectFlame {
+		t.Fatalf("expected start effect request to be forwarded, got %#v", transport.lastStartEffectReq)
+	}
+	if startStatus.Serial != device.Serial || !startStatus.Running {
+		t.Fatalf("StartDeviceEffect returned %#v", startStatus)
+	}
+
 	status, err := app.StopDeviceEffect(backend.StopDeviceEffectRequest{Device: device})
 	if err != nil {
 		t.Fatalf("StopDeviceEffect returned error: %v", err)
@@ -80,22 +94,27 @@ func TestAppReturnsTransportError(t *testing.T) {
 	if _, err := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device}); err == nil {
 		t.Fatal("SetDeviceState returned nil error, want transport error")
 	}
+	if _, err := app.StartDeviceEffect(backend.StartDeviceEffectRequest{Device: device}); err == nil {
+		t.Fatal("StartDeviceEffect returned nil error, want transport error")
+	}
 	if _, err := app.StopDeviceEffect(backend.StopDeviceEffectRequest{Device: device}); err == nil {
 		t.Fatal("StopDeviceEffect returned nil error, want transport error")
 	}
 }
 
 type recordingTransport struct {
-	snapshot         backend.DeviceSnapshot
-	device           backend.Device
-	err              error
-	startCalled      bool
-	closeCalled      bool
-	snapshotCalled   bool
-	setCalled        bool
-	stopEffectCalled bool
-	lastReq          backend.SetDeviceStateRequest
-	lastEffectReq    backend.StopDeviceEffectRequest
+	snapshot           backend.DeviceSnapshot
+	device             backend.Device
+	err                error
+	startCalled        bool
+	closeCalled        bool
+	snapshotCalled     bool
+	setCalled          bool
+	startEffectCalled  bool
+	stopEffectCalled   bool
+	lastReq            backend.SetDeviceStateRequest
+	lastStartEffectReq backend.StartDeviceEffectRequest
+	lastEffectReq      backend.StopDeviceEffectRequest
 }
 
 func (t *recordingTransport) Start(ctx context.Context) error {
@@ -117,6 +136,12 @@ func (t *recordingTransport) SetDeviceState(ctx context.Context, req backend.Set
 	t.setCalled = true
 	t.lastReq = req
 	return t.device, t.err
+}
+
+func (t *recordingTransport) StartDeviceEffect(ctx context.Context, req backend.StartDeviceEffectRequest) (backend.DeviceEffectStatus, error) {
+	t.startEffectCalled = true
+	t.lastStartEffectReq = req
+	return backend.DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(req.Effect)}, t.err
 }
 
 func (t *recordingTransport) StopDeviceEffect(ctx context.Context, req backend.StopDeviceEffectRequest) (backend.DeviceEffectStatus, error) {

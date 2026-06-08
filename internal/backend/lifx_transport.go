@@ -17,7 +17,10 @@ import (
 	"github.com/alessio-palumbo/lifxprotocol-go/gen/protocol/packets"
 )
 
-const defaultColorTransitionDuration = 300 * time.Millisecond
+const (
+	defaultColorTransitionDuration = 300 * time.Millisecond
+	defaultFirmwareEffectSpeed     = 5 * time.Second
+)
 
 // lifxController is the subset of lifxlan-go's controller.Controller used by
 // the transport. Keeping this tiny interface makes mapping and sends testable
@@ -118,6 +121,29 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 	return req.Device, nil
 }
 
+func (t *LifxTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEffectRequest) (DeviceEffectStatus, error) {
+	ctrl, err := t.requireController()
+	if err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
+	}
+	serial, err := parseDeviceSerial(req.Device)
+	if err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
+	}
+	msg, effect, err := startDeviceEffectMessage(req)
+	if err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(effect), Error: err.Error()}, err
+	}
+	logLifxSend(serial, req.Device, "effect-start", msg)
+	if err := ctrl.Send(serial, msg); err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(effect), Error: err.Error()}, fmt.Errorf("start device effect: %w", err)
+	}
+	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(effect)}, nil
+}
+
 func (t *LifxTransport) StopDeviceEffect(ctx context.Context, req StopDeviceEffectRequest) (DeviceEffectStatus, error) {
 	ctrl, err := t.requireController()
 	if err != nil {
@@ -137,6 +163,31 @@ func (t *LifxTransport) StopDeviceEffect(ctx context.Context, req StopDeviceEffe
 		}
 	}
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: false}, nil
+}
+
+func startDeviceEffectMessage(req StartDeviceEffectRequest) (*protocol.Message, DeviceEffect, error) {
+	speed := effectSpeed(req.SpeedMS)
+	switch req.Device.Kind {
+	case DeviceKindMultizone:
+		if req.Effect != "" && req.Effect != DeviceEffectMove {
+			return nil, req.Effect, fmt.Errorf("effect %q is not supported for multizone devices", req.Effect)
+		}
+		return messages.SetMultizoneMoveEffect(speed, !strings.EqualFold(req.Direction, "reverse")), DeviceEffectMove, nil
+	case DeviceKindMatrix:
+		if req.Effect != "" && req.Effect != DeviceEffectFlame {
+			return nil, req.Effect, fmt.Errorf("effect %q is not supported for matrix devices", req.Effect)
+		}
+		return messages.SetMatrixFlameEffect(speed), DeviceEffectFlame, nil
+	default:
+		return nil, req.Effect, fmt.Errorf("effects are not supported for %s devices", req.Device.Kind)
+	}
+}
+
+func effectSpeed(speedMS int) time.Duration {
+	if speedMS <= 0 {
+		return defaultFirmwareEffectSpeed
+	}
+	return time.Duration(speedMS) * time.Millisecond
 }
 
 func stopDeviceEffectMessages(device Device) []*protocol.Message {

@@ -90,6 +90,13 @@ const (
 	DeviceCommandMatrix     DeviceCommandIntent = "matrix"
 )
 
+type DeviceEffect string
+
+const (
+	DeviceEffectMove  DeviceEffect = "move"
+	DeviceEffectFlame DeviceEffect = "flame"
+)
+
 func emptyDeviceSnapshot() DeviceSnapshot {
 	return DeviceSnapshot{
 		Locations: []Location{},
@@ -102,6 +109,13 @@ type SetDeviceStateRequest struct {
 	Device  Device              `json:"device"`
 	Preview bool                `json:"preview"`
 	Intent  DeviceCommandIntent `json:"intent"`
+}
+
+type StartDeviceEffectRequest struct {
+	Device    Device       `json:"device"`
+	Effect    DeviceEffect `json:"effect"`
+	SpeedMS   int          `json:"speedMs,omitempty"`
+	Direction string       `json:"direction,omitempty"`
 }
 
 type StopDeviceEffectRequest struct {

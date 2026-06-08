@@ -28,6 +28,10 @@ func (t *MockTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 	return req.Device, nil
 }
 
+func (t *MockTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEffectRequest) (DeviceEffectStatus, error) {
+	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(req.Effect)}, nil
+}
+
 func (t *MockTransport) StopDeviceEffect(ctx context.Context, req StopDeviceEffectRequest) (DeviceEffectStatus, error) {
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: false}, nil
 }

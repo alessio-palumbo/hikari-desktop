@@ -10,5 +10,6 @@ type DeviceTransport interface {
 	Close(ctx context.Context) error
 	Snapshot(ctx context.Context) (DeviceSnapshot, error)
 	SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error)
+	StartDeviceEffect(ctx context.Context, req StartDeviceEffectRequest) (DeviceEffectStatus, error)
 	StopDeviceEffect(ctx context.Context, req StopDeviceEffectRequest) (DeviceEffectStatus, error)
 }
