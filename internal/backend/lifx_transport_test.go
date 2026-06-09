@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net"
 	"testing"
 
@@ -1051,6 +1052,144 @@ func TestLifxTransportStartDeviceEffectSendsMatrixMorph(t *testing.T) {
 	}
 }
 
+func TestLifxTransportStartDeviceEffectMorphUsesVisibleMatrixPalette(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       DeviceKindMatrix,
+		Brightness: 0.5,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Color:      &HSLColor{H: 120, S: 1, L: 0.5},
+		Chain: []Matrix{{
+			Rows: []MatrixRow{{Cols: 4, HiddenCols: []int{0, 3}}},
+			Pixels: []HSLColor{
+				{H: 0, S: 0, L: 0},
+				{H: 40, S: 1, L: 0.4},
+				{H: 80, S: 1, L: 0.6},
+				{H: 160, S: 1, L: 0.5},
+			},
+		}},
+	}
+
+	_, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectMorph})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	payload := controller.sends[0].msg.Payload.(*packets.TileSetEffect)
+	if payload.Settings.PaletteCount != 2 {
+		t.Fatalf("palette count = %d, want 2", payload.Settings.PaletteCount)
+	}
+	assertPayloadHues(t, payload.Settings.Palette[:int(payload.Settings.PaletteCount)], []float64{40, 80})
+}
+
+func TestLifxTransportStartDeviceEffectMorphUsesRepresentativeMatrixPalette(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	pixels := make([]HSLColor, 32)
+	for i := range pixels {
+		pixels[i] = HSLColor{H: float64(i) * 360 / float64(len(pixels)), S: 1, L: 0.2}
+	}
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       DeviceKindMatrix,
+		Brightness: 0.7,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Chain: []Matrix{{
+			Rows:   []MatrixRow{{Cols: 16}, {Cols: 16}},
+			Pixels: pixels,
+		}},
+	}
+
+	_, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectMorph})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	payload := controller.sends[0].msg.Payload.(*packets.TileSetEffect)
+	if payload.Settings.PaletteCount != matrixEffectPaletteMaxColors {
+		t.Fatalf("palette count = %d, want %d", payload.Settings.PaletteCount, matrixEffectPaletteMaxColors)
+	}
+	palette := payload.Settings.Palette[:int(payload.Settings.PaletteCount)]
+	assertPayloadHueClose(t, palette[0], 5.62)
+	assertPayloadHueClose(t, palette[len(palette)-1], 343.12)
+	assertPayloadBrightness(t, palette, 100)
+}
+
+func TestLifxTransportStartDeviceEffectMorphFallsBackWhenVisibleMatrixIsDark(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       DeviceKindMatrix,
+		Brightness: 0.5,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Color:      &HSLColor{H: 120, S: 1, L: 0.5},
+		Chain: []Matrix{{
+			Rows:   []MatrixRow{{Cols: 2}},
+			Pixels: []HSLColor{{H: 10, S: 1, L: 0}, {H: 220, S: 1, L: 0}},
+		}},
+	}
+
+	_, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectMorph})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	payload := controller.sends[0].msg.Payload.(*packets.TileSetEffect)
+	if payload.Settings.PaletteCount != 3 {
+		t.Fatalf("palette count = %d, want fallback palette", payload.Settings.PaletteCount)
+	}
+	assertPayloadHues(t, payload.Settings.Palette[:int(payload.Settings.PaletteCount)], []float64{28, 200, 280})
+}
+
+func TestLifxTransportStartDeviceEffectMorphUsesFullPaletteBrightness(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       DeviceKindMatrix,
+		Brightness: 0.07,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Color:      &HSLColor{H: 240, S: 1, L: 0.07},
+		Chain: []Matrix{{
+			Rows:   []MatrixRow{{Cols: 2}},
+			Pixels: []HSLColor{{H: 240, S: 1, L: 0.07}, {H: 280, S: 1, L: 0.07}},
+		}},
+	}
+
+	_, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectMorph})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	payload := controller.sends[0].msg.Payload.(*packets.TileSetEffect)
+	assertPayloadBrightness(t, payload.Settings.Palette[:int(payload.Settings.PaletteCount)], 100)
+}
+
+func TestLifxTransportStartDeviceEffectMorphOnlySendsEffect(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       DeviceKindMatrix,
+		Brightness: 0.07,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Color:      &HSLColor{H: 240, S: 1, L: 0.07},
+		Chain: []Matrix{{
+			Rows:   []MatrixRow{{Cols: 2}},
+			Pixels: []HSLColor{{H: 240, S: 1, L: 0.07}, {H: 280, S: 1, L: 0.07}},
+		}},
+	}
+
+	_, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectMorph})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	if len(controller.sends) != 1 {
+		t.Fatalf("sent %d messages, want only morph effect", len(controller.sends))
+	}
+	payload := controller.sends[0].msg.Payload.(*packets.TileSetEffect)
+	assertPayloadBrightness(t, payload.Settings.Palette[:int(payload.Settings.PaletteCount)], 100)
+}
+
 func TestLifxTransportStartDeviceEffectAllowsMorphBeforeFirmware48(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
@@ -1304,6 +1443,24 @@ func assertPayloadHues(t *testing.T, colors []packets.LightHsbk, want []float64)
 		got := lifxdevice.NewColor(colors[i])
 		if got.Hue != hue {
 			t.Fatalf("color %d hue = %v, want %v", i, got.Hue, hue)
+		}
+	}
+}
+
+func assertPayloadHueClose(t *testing.T, color packets.LightHsbk, want float64) {
+	t.Helper()
+	got := lifxdevice.NewColor(color)
+	if math.Abs(got.Hue-want) > 0.5 {
+		t.Fatalf("hue = %v, want close to %v", got.Hue, want)
+	}
+}
+
+func assertPayloadBrightness(t *testing.T, colors []packets.LightHsbk, want float64) {
+	t.Helper()
+	for i, color := range colors {
+		got := lifxdevice.NewColor(color)
+		if math.Abs(got.Brightness-want) > 0.05 {
+			t.Fatalf("color %d brightness = %v, want close to %v", i, got.Brightness, want)
 		}
 	}
 }

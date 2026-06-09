@@ -19,8 +19,11 @@ import (
 )
 
 const (
-	defaultColorTransitionDuration = 300 * time.Millisecond
-	defaultFirmwareEffectSpeed     = 5 * time.Second
+	defaultColorTransitionDuration  = 300 * time.Millisecond
+	defaultFirmwareEffectSpeed      = 5 * time.Second
+	matrixEffectPaletteMaxColors    = 16
+	matrixEffectPaletteHueBuckets   = 16
+	matrixEffectPaletteMinLightness = 0.01
 )
 
 // lifxController is the subset of lifxlan-go's controller.Controller used by
@@ -207,8 +210,9 @@ func matrixEffectSupported(device Device, effect DeviceEffect) bool {
 }
 
 func matrixEffectPalette(device Device) []packets.LightHsbk {
-	colors := matrixPixels(device.Chain)
-	if len(colors) == 0 && device.Color != nil {
+	visibleColors := visibleMatrixPixels(device.Chain)
+	colors := nonDarkPaletteColors(visibleColors)
+	if len(colors) == 0 && len(visibleColors) == 0 && device.Color != nil {
 		colors = []HSLColor{*device.Color}
 	}
 	if len(colors) == 0 {
@@ -218,10 +222,175 @@ func matrixEffectPalette(device Device) []packets.LightHsbk {
 			{H: 280, S: 0.65, L: 0.62},
 		}
 	}
-	if len(colors) > 16 {
-		colors = colors[:16]
-	}
+	targetBrightness := matrixEffectPaletteBrightness()
+	colors = normalizePaletteBrightness(representativePaletteColors(colors, matrixEffectPaletteMaxColors), targetBrightness)
+	logMatrixEffectPalette(device, visibleColors, colors, targetBrightness)
 	return hslColorsToHSBK(colors, device.Brightness, device.Kelvin, device.Capability)
+}
+
+func visibleMatrixPixels(chain []Matrix) []HSLColor {
+	var colors []HSLColor
+	for _, matrix := range chain {
+		if len(matrix.Rows) == 0 {
+			colors = append(colors, matrix.Pixels...)
+			continue
+		}
+		index := 0
+		for _, row := range matrix.Rows {
+			for col := 0; col < row.Cols; col++ {
+				if index >= len(matrix.Pixels) {
+					break
+				}
+				if !hiddenMatrixColumn(row.HiddenCols, col) {
+					colors = append(colors, matrix.Pixels[index])
+				}
+				index++
+			}
+		}
+	}
+	return colors
+}
+
+func hiddenMatrixColumn(hidden []int, col int) bool {
+	for _, hiddenCol := range hidden {
+		if hiddenCol == col {
+			return true
+		}
+	}
+	return false
+}
+
+func nonDarkPaletteColors(colors []HSLColor) []HSLColor {
+	filtered := make([]HSLColor, 0, len(colors))
+	for _, color := range colors {
+		if color.L > matrixEffectPaletteMinLightness {
+			filtered = append(filtered, color)
+		}
+	}
+	return filtered
+}
+
+func representativePaletteColors(colors []HSLColor, limit int) []HSLColor {
+	if limit <= 0 {
+		return nil
+	}
+	if len(colors) <= limit {
+		return append([]HSLColor(nil), colors...)
+	}
+	buckets := make([]paletteBucket, matrixEffectPaletteHueBuckets)
+	for _, color := range colors {
+		index := paletteHueBucket(color)
+		buckets[index].add(color)
+	}
+	palette := make([]HSLColor, 0, min(limit, len(buckets)))
+	for _, bucket := range buckets {
+		if bucket.count > 0 {
+			palette = append(palette, bucket.average())
+		}
+	}
+	if len(palette) > limit {
+		palette = samplePaletteColors(palette, limit)
+	}
+	return palette
+}
+
+func paletteHueBucket(color HSLColor) int {
+	hue := math.Mod(color.H, 360)
+	if hue < 0 {
+		hue += 360
+	}
+	index := int(math.Floor(hue / 360 * matrixEffectPaletteHueBuckets))
+	if index >= matrixEffectPaletteHueBuckets {
+		return matrixEffectPaletteHueBuckets - 1
+	}
+	return index
+}
+
+type paletteBucket struct {
+	count       int
+	hueX        float64
+	hueY        float64
+	saturation  float64
+	lightness   float64
+	kelvinSum   int
+	kelvinCount int
+}
+
+func (b *paletteBucket) add(color HSLColor) {
+	radians := color.H * math.Pi / 180
+	weight := math.Max(color.S, 0.01)
+	b.count++
+	b.hueX += math.Cos(radians) * weight
+	b.hueY += math.Sin(radians) * weight
+	b.saturation += color.S
+	b.lightness += color.L
+	if color.Kelvin > 0 {
+		b.kelvinSum += color.Kelvin
+		b.kelvinCount++
+	}
+}
+
+func (b paletteBucket) average() HSLColor {
+	count := float64(b.count)
+	color := HSLColor{
+		H: averageHue(b.hueX, b.hueY),
+		S: b.saturation / count,
+		L: b.lightness / count,
+	}
+	if b.kelvinCount > 0 {
+		color.Kelvin = int(math.Round(float64(b.kelvinSum) / float64(b.kelvinCount)))
+		if color.S <= 0.005 {
+			color.H = 0
+			color.S = 0
+		}
+	}
+	return color
+}
+
+func matrixEffectPaletteBrightness() float64 {
+	// Matrix Morph firmware appears to treat palette brightness as effect intensity;
+	// values below 100% can look much darker than the device brightness suggests.
+	return 1
+}
+
+func normalizePaletteBrightness(colors []HSLColor, brightness float64) []HSLColor {
+	normalized := make([]HSLColor, len(colors))
+	for i, color := range colors {
+		color.L = brightness
+		normalized[i] = color
+	}
+	return normalized
+}
+
+func samplePaletteColors(colors []HSLColor, limit int) []HSLColor {
+	if len(colors) <= limit {
+		return append([]HSLColor(nil), colors...)
+	}
+	sampled := make([]HSLColor, 0, limit)
+	for i := 0; i < limit; i++ {
+		index := int(math.Round(float64(i) * float64(len(colors)-1) / float64(limit-1)))
+		sampled = append(sampled, colors[index])
+	}
+	return sampled
+}
+
+func logMatrixEffectPalette(device Device, visibleColors []HSLColor, palette []HSLColor, brightness float64) {
+	if !lifxDebugEnabled() {
+		return
+	}
+	hues := make([]string, len(palette))
+	for i, color := range palette {
+		hues[i] = fmt.Sprintf("%.0f", color.H)
+	}
+	log.Printf(
+		"hikari: morph palette name=%q group=%s visible=%d palette=%d brightness=%.2f hues=[%s]",
+		device.Name,
+		device.GroupID,
+		len(visibleColors),
+		len(palette),
+		brightness,
+		strings.Join(hues, ","),
+	)
 }
 
 func firmwareAtLeast(version string, major, minor int) bool {
@@ -371,10 +540,37 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 			device.ChainLen = len(d.MatrixProperties.ChainZones)
 		}
 		device.Chain = mapLifxMatrixChain(d, capability)
-		applyColorSummary(&device, matrixPixels(device.Chain))
+		applyColorSummary(&device, visibleMatrixPixels(device.Chain))
+		logMatrixSnapshot(device)
 	}
 
 	return device
+}
+
+func logMatrixSnapshot(device Device) {
+	if !lifxDebugEnabled() {
+		return
+	}
+	visible := visibleMatrixPixels(device.Chain)
+	active := nonDarkPaletteColors(visible)
+	color := "<nil>"
+	if device.Color != nil {
+		color = fmt.Sprintf("h=%.0f s=%.2f l=%.2f k=%d", device.Color.H, device.Color.S, device.Color.L, device.Color.Kelvin)
+	}
+	log.Printf(
+		"hikari: matrix snapshot name=%q group=%s model=%q product=%d firmware=%q chains=%d pixels=%d visible=%d active=%d brightness=%.2f color=%s",
+		device.Name,
+		device.GroupID,
+		device.Model,
+		device.ProductID,
+		device.Firmware,
+		len(device.Chain),
+		device.PixelCount,
+		len(visible),
+		len(active),
+		device.Brightness,
+		color,
+	)
 }
 
 func applyColorSummary(device *Device, colors []HSLColor) {
