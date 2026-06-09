@@ -260,10 +260,10 @@ export function App() {
     }
   };
 
-  const startInspectorEffect = async (device: Device, effect: DeviceEffect) => {
+  const startInspectorEffect = async (device: Device, effect: DeviceEffect, speedMs: number) => {
     setDeviceEffectLoading(device.serial, true);
     try {
-      const status = await startDeviceEffect(device, { effect });
+      const status = await startDeviceEffect(device, { effect, speedMs });
       setDeviceEffectStatus((prev) => ({ ...prev, [device.serial]: { ...status, loading: false } }));
     } catch (error) {
       setDeviceEffectLoading(device.serial, false, errorMessage(error));
@@ -366,7 +366,7 @@ export function App() {
           effectStatus={deviceEffectStatus[inspectorDevice.serial]}
           onClose={() => setSelectedSerial(undefined)}
           onChange={updateInspectorDevice}
-          onStartEffect={(effect) => void startInspectorEffect(inspectorDevice, effect)}
+          onStartEffect={(effect, speedMs) => void startInspectorEffect(inspectorDevice, effect, speedMs)}
           onStopEffect={() => void stopInspectorEffect(inspectorDevice)}
           onEnterEditMode={enterEditMode}
           onExitEditMode={() => setDraft(undefined)}

@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, Info, LogOut, Pipette, Play, RotateCcw, Square, Undo2, Wand2, X } from 'lucide-react';
 import type { DeviceEffectStatus } from '../backend/api';
-import { supportedFirmwareEffects, type DeviceEffect, type FirmwareEffectDefinition } from '../domain/effects';
+import {
+  defaultEffectSpeedMs,
+  formatEffectSpeed,
+  speedToUnit,
+  supportedFirmwareEffects,
+  type DeviceEffect,
+  type FirmwareEffectDefinition,
+  unitToSpeedMs,
+} from '../domain/effects';
 import { DeviceKind, hsl, previewLightness, previewOpacity, type Device, type HslColor } from '../domain/lifx';
 import {
   applyDeviceBrightness,
@@ -35,7 +43,7 @@ interface InspectorProps {
   effectStatus?: DeviceEffectStatus & { loading?: boolean };
   onClose: () => void;
   onChange: (device: Device) => void;
-  onStartEffect: (effect: DeviceEffect) => void;
+  onStartEffect: (effect: DeviceEffect, speedMs: number) => void;
   onStopEffect: () => void;
   onEnterEditMode: () => void;
   onExitEditMode: () => void;
@@ -255,57 +263,128 @@ function EffectControls({
 }: {
   device: Device;
   status?: DeviceEffectStatus & { loading?: boolean };
-  onStart: (effect: DeviceEffect) => void;
+  onStart: (effect: DeviceEffect, speedMs: number) => void;
   onStop: () => void;
 }) {
   const effects = supportedFirmwareEffects(device);
   const running = status?.running ?? false;
   const loading = status?.loading ?? false;
+  const [selectedEffect, setSelectedEffect] = useState<DeviceEffect | undefined>();
+  const [effectSpeeds, setEffectSpeeds] = useState<Record<DeviceEffect, number>>(() => defaultEffectSpeeds(effects));
+
+  useEffect(() => {
+    setSelectedEffect(undefined);
+    setEffectSpeeds(defaultEffectSpeeds(effects));
+  }, [device.serial]);
+
   return (
     <section className="effect-section">
       <div className="effect-header">
         <span>effect</span>
         {running ? <span>running</span> : null}
       </div>
-      {effects.map((effect) => (
-        <EffectOption
-          key={effect.id}
-          effect={effect}
-          running={running && status?.effect === effect.id}
-          loading={loading}
-          onStart={onStart}
-          onStop={onStop}
-        />
-      ))}
+      {effects.map((effect) => {
+        const effectRunning = running && status?.effect === effect.id;
+        const active = effectRunning || (!running && selectedEffect === effect.id);
+        const speedMs = effectSpeeds[effect.id] ?? effect.speed.defaultMs;
+        return (
+          <EffectOption
+            key={effect.id}
+            effect={effect}
+            active={active}
+            running={effectRunning}
+            loading={loading}
+            speedMs={speedMs}
+            onSpeedChange={(nextSpeedMs) => setEffectSpeeds((current) => ({ ...current, [effect.id]: nextSpeedMs }))}
+            onSelect={() => setSelectedEffect(effect.id)}
+            onStart={onStart}
+            onStop={() => {
+              setSelectedEffect(undefined);
+              onStop();
+            }}
+          />
+        );
+      })}
       {!effects.length ? <div className="effect-empty">no compatible firmware effects</div> : null}
       {status?.error ? <div className="inspector-error">{status.error}</div> : null}
     </section>
   );
 }
 
+function defaultEffectSpeeds(effects: FirmwareEffectDefinition[]): Record<DeviceEffect, number> {
+  return effects.reduce(
+    (speeds, effect) => ({ ...speeds, [effect.id]: effect.speed.defaultMs }),
+    {} as Record<DeviceEffect, number>,
+  );
+}
+
 function EffectOption({
   effect,
+  active,
   running,
   loading,
+  speedMs,
+  onSpeedChange,
+  onSelect,
   onStart,
   onStop,
 }: {
   effect: FirmwareEffectDefinition;
+  active: boolean;
   running: boolean;
   loading: boolean;
-  onStart: (effect: DeviceEffect) => void;
+  speedMs: number;
+  onSpeedChange: (speedMs: number) => void;
+  onSelect: () => void;
+  onStart: (effect: DeviceEffect, speedMs: number) => void;
   onStop: () => void;
 }) {
   const actionLabel = running ? `Stop ${effect.label}` : `Start ${effect.label}`;
   return (
-    <button className="effect-option" type="button" data-active={running ? 'true' : 'false'} disabled={loading} aria-label={actionLabel} onClick={running ? onStop : () => onStart(effect.id)}>
-      <span className="effect-swatch" data-effect={effect.id} />
-      <span>
-        <strong>{effect.label}</strong>
-        <small>{effect.description}</small>
+    <div className="effect-option" data-active={active ? 'true' : 'false'} data-running={running ? 'true' : 'false'} onClick={onSelect}>
+      <button
+        className="effect-option-main"
+        type="button"
+        disabled={loading}
+        aria-label={actionLabel}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (running) {
+            onStop();
+            return;
+          }
+          onSelect();
+          onStart(effect.id, speedMs);
+        }}
+      >
+        <span className="effect-swatch" data-effect={effect.id} />
+        <span>
+          <strong>{effect.label}</strong>
+          <small>{effect.description}</small>
+        </span>
+        <span className="effect-action" data-running={running ? 'true' : 'false'}>{running ? <Square size={11} /> : <Play size={13} />}</span>
+      </button>
+      {active ? (
+        <EffectSpeedControl
+          value={speedToUnit(speedMs, effect.speed)}
+          label={formatEffectSpeed(speedMs)}
+          disabled={loading}
+          onChange={(value) => onSpeedChange(unitToSpeedMs(value, effect.speed))}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function EffectSpeedControl({ value, label, disabled, onChange }: { value: number; label: string; disabled: boolean; onChange: (value: number) => void }) {
+  return (
+    <label className="effect-speed">
+      <span className="effect-speed-label">
+        <span>speed</span>
+        <span className="mono">{label}</span>
       </span>
-      <span className="effect-action" data-running={running ? 'true' : 'false'}>{running ? <Square size={11} /> : <Play size={13} />}</span>
-    </button>
+      <input aria-label="Effect speed" type="range" min={0} max={100} value={Math.round(value * 100)} disabled={disabled} onChange={(event) => onChange(Number(event.target.value) / 100)} />
+    </label>
   );
 }
 
