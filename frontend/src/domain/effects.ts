@@ -1,6 +1,6 @@
 import { DeviceKind, type Device } from './lifx.js';
 
-export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake';
+export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets';
 
 export type DeviceEffectSource = 'firmware' | 'app';
 
@@ -60,7 +60,39 @@ export const deviceEffects: DeviceEffectDefinition[] = [
     description: 'Hikari-rendered matrix trail',
     source: 'app',
     deviceKinds: [DeviceKind.Matrix],
-    speed: { minMs: 5000, maxMs: 30000, defaultMs: 12000 },
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 12000 },
+  },
+  {
+    id: 'worm',
+    label: 'Worm',
+    description: 'Segmented matrix trail',
+    source: 'app',
+    deviceKinds: [DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 12000 },
+  },
+  {
+    id: 'concentric_frames',
+    label: 'Frames',
+    description: 'Concentric matrix borders',
+    source: 'app',
+    deviceKinds: [DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 1000 },
+  },
+  {
+    id: 'waterfall',
+    label: 'Waterfall',
+    description: 'Layered matrix cascade',
+    source: 'app',
+    deviceKinds: [DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 1000 },
+  },
+  {
+    id: 'rockets',
+    label: 'Rockets',
+    description: 'Fast pixel launch path',
+    source: 'app',
+    deviceKinds: [DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 1000 },
   },
 ];
 
@@ -83,7 +115,7 @@ export function speedToUnit(speedMs: number, speed: EffectSpeedDefinition): numb
 export function unitToSpeedMs(value: number, speed: EffectSpeedDefinition): number {
   const stepMs = 250;
   const raw = speed.minMs + clamp(value, 0, 1) * (speed.maxMs - speed.minMs);
-  return Math.round(raw / stepMs) * stepMs;
+  return clamp(Math.round(raw / stepMs) * stepMs, speed.minMs, speed.maxMs);
 }
 
 export function formatEffectSpeed(speedMs: number): string {

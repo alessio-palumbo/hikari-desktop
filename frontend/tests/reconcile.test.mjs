@@ -321,15 +321,15 @@ test('firmware effect catalogue filters by device kind and firmware', () => {
   const newMatrix = { ...matrixDevice(), firmware: '4.8' };
 
   assert.deepEqual(supportedFirmwareEffects(multizone).map((effect) => effect.id), ['move']);
-  assert.deepEqual(supportedFirmwareEffects(oldMatrix).map((effect) => effect.id), ['flame', 'morph', 'snake']);
-  assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds', 'snake']);
+  assert.deepEqual(supportedFirmwareEffects(oldMatrix).map((effect) => effect.id), ['flame', 'morph', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets']);
+  assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets']);
 });
 
 test('effect catalogue separates firmware and hikari-rendered effects', () => {
   const effects = supportedDeviceEffects({ ...matrixDevice(), firmware: '4.8' });
 
   assert.deepEqual(effects.filter((effect) => effect.source === 'firmware').map((effect) => effect.id), ['flame', 'morph', 'clouds']);
-  assert.deepEqual(effects.filter((effect) => effect.source === 'app').map((effect) => effect.id), ['snake']);
+  assert.deepEqual(effects.filter((effect) => effect.source === 'app').map((effect) => effect.id), ['snake', 'worm', 'concentric_frames', 'waterfall', 'rockets']);
 });
 
 test('firmware effect speed helpers expose defaults and ranges', () => {
@@ -338,12 +338,17 @@ test('firmware effect speed helpers expose defaults and ranges', () => {
   const morph = effects.find((effect) => effect.id === 'morph').speed;
   const clouds = effects.find((effect) => effect.id === 'clouds').speed;
   const snake = effects.find((effect) => effect.id === 'snake').speed;
+  const frames = effects.find((effect) => effect.id === 'concentric_frames').speed;
+  const waterfall = effects.find((effect) => effect.id === 'waterfall').speed;
 
   assert.equal(defaultEffectSpeedMs(effects), 3000);
   assert.deepEqual(flame, { minMs: 1000, maxMs: 25000, defaultMs: 3000 });
   assert.deepEqual(morph, { minMs: 1000, maxMs: 25000, defaultMs: 3000 });
   assert.deepEqual(clouds, { minMs: 1000, maxMs: 100000, defaultMs: 100000 });
-  assert.deepEqual(snake, { minMs: 5000, maxMs: 30000, defaultMs: 12000 });
+  assert.deepEqual(snake, { minMs: 1000, maxMs: 30000, defaultMs: 12000 });
+  assert.deepEqual(frames, { minMs: 1000, maxMs: 30000, defaultMs: 1000 });
+  assert.deepEqual(waterfall, { minMs: 1000, maxMs: 30000, defaultMs: 1000 });
+  assert.equal(unitToSpeedMs(0, morph), 1000);
   assert.equal(unitToSpeedMs(0.5, morph), 13000);
   assert.equal(speedToUnit(13000, morph), 0.5);
   assert.equal(formatEffectSpeed(3000), '3s');

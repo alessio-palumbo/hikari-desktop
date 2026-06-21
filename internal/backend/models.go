@@ -93,11 +93,15 @@ const (
 type DeviceEffect string
 
 const (
-	DeviceEffectMove   DeviceEffect = "move"
-	DeviceEffectFlame  DeviceEffect = "flame"
-	DeviceEffectMorph  DeviceEffect = "morph"
-	DeviceEffectClouds DeviceEffect = "clouds"
-	DeviceEffectSnake  DeviceEffect = "snake"
+	DeviceEffectMove      DeviceEffect = "move"
+	DeviceEffectFlame     DeviceEffect = "flame"
+	DeviceEffectMorph     DeviceEffect = "morph"
+	DeviceEffectClouds    DeviceEffect = "clouds"
+	DeviceEffectSnake     DeviceEffect = "snake"
+	DeviceEffectWorm      DeviceEffect = "worm"
+	DeviceEffectFrames    DeviceEffect = "concentric_frames"
+	DeviceEffectWaterfall DeviceEffect = "waterfall"
+	DeviceEffectRockets   DeviceEffect = "rockets"
 )
 
 func emptyDeviceSnapshot() DeviceSnapshot {

@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -24,9 +25,11 @@ const (
 	defaultColorTransitionDuration  = 300 * time.Millisecond
 	defaultFirmwareEffectSpeed      = 5 * time.Second
 	defaultAppEffectStep            = 180 * time.Millisecond
-	minAppEffectStep                = 80 * time.Millisecond
+	minAppEffectStep                = 100 * time.Millisecond
 	maxAppEffectStep                = 500 * time.Millisecond
+	effectPowerOffSettleDelay       = 250 * time.Millisecond
 	defaultAppEffectStopTimeout     = 750 * time.Millisecond
+	defaultAppEffectTailSize        = 5
 	matrixEffectPaletteMaxColors    = 16
 	matrixEffectPaletteHueBuckets   = 16
 	matrixEffectPaletteMinLightness = 0.01
@@ -55,6 +58,7 @@ type LifxTransport struct {
 	mu         sync.RWMutex
 	cache      map[string]Device
 	effects    map[string]runningAppEffect
+	firmware   map[string]runningFirmwareEffect
 	restores   map[string]effectRestore
 }
 
@@ -65,17 +69,22 @@ type runningAppEffect struct {
 	previous Device
 }
 
+type runningFirmwareEffect struct {
+	effect DeviceEffect
+	wasOff bool
+}
+
 type effectRestore struct {
 	device Device
 	until  time.Time
 }
 
 func NewLifxTransport() *LifxTransport {
-	return &LifxTransport{cache: make(map[string]Device), effects: make(map[string]runningAppEffect), restores: make(map[string]effectRestore)}
+	return &LifxTransport{cache: make(map[string]Device), effects: make(map[string]runningAppEffect), firmware: make(map[string]runningFirmwareEffect), restores: make(map[string]effectRestore)}
 }
 
 func NewLifxTransportWithController(controller lifxController) *LifxTransport {
-	return &LifxTransport{controller: controller, cache: make(map[string]Device), effects: make(map[string]runningAppEffect), restores: make(map[string]effectRestore)}
+	return &LifxTransport{controller: controller, cache: make(map[string]Device), effects: make(map[string]runningAppEffect), firmware: make(map[string]runningFirmwareEffect), restores: make(map[string]effectRestore)}
 }
 
 func (t *LifxTransport) Start(ctx context.Context) error {
@@ -96,9 +105,11 @@ func (t *LifxTransport) Start(ctx context.Context) error {
 }
 
 func (t *LifxTransport) Close(ctx context.Context) error {
-	t.stopAllAppEffects()
 	if t.controller == nil {
 		return nil
+	}
+	if err := t.restoreAllAppEffects(ctx, t.controller); err != nil {
+		log.Printf("hikari: restore app effects on close failed: %v", err)
 	}
 	if err := t.controller.Close(); err != nil {
 		return fmt.Errorf("close lifx controller: %w", err)
@@ -166,17 +177,30 @@ func (t *LifxTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEf
 	if err := ctx.Err(); err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(effect), Error: err.Error()}, err
 	}
-	if previous := t.stopAppEffect(req.Device.Serial); previous != nil {
-		if err := restoreDeviceState(ctx, ctrl, serial, *previous); err != nil {
+	appPrevious := t.stopAppEffect(req.Device.Serial)
+	if appPrevious != nil {
+		if err := restoreDeviceState(ctx, ctrl, serial, *appPrevious); err != nil {
 			return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(effect), Error: err.Error()}, fmt.Errorf("restore app effect state: %w", err)
 		}
-		t.storeCachedDevice(*previous)
-		t.storeRestoreDevice(*previous, time.Now().Add(3*time.Second))
+		t.storeCachedDevice(*appPrevious)
+		t.storeRestoreDevice(*appPrevious, time.Now().Add(3*time.Second))
 	}
+	wasOff := t.captureFirmwareEffectWasOff(req.Device.Serial, appPrevious, req.Device)
 	logLifxSend(serial, req.Device, "effect-start", msg)
 	if err := ctrl.Send(serial, msg); err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(effect), Error: err.Error()}, fmt.Errorf("start device effect: %w", err)
 	}
+	if wasOff {
+		powerMsg := messages.SetPowerOn()
+		logLifxSend(serial, req.Device, "effect-power-on", powerMsg)
+		if err := ctrl.Send(serial, powerMsg); err != nil {
+			return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(effect), Error: err.Error()}, fmt.Errorf("set power on for effect: %w", err)
+		}
+		active := req.Device
+		active.On = true
+		t.storeCachedDevice(active)
+	}
+	t.storeFirmwareEffect(req.Device.Serial, runningFirmwareEffect{effect: effect, wasOff: wasOff})
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(effect)}, nil
 }
 
@@ -197,6 +221,16 @@ func (t *LifxTransport) StopDeviceEffect(ctx context.Context, req StopDeviceEffe
 		t.storeCachedDevice(*previous)
 		t.storeRestoreDevice(*previous, time.Now().Add(3*time.Second))
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false}, nil
+	}
+	firmwareWasOff := t.stopFirmwareEffect(req.Device.Serial)
+	if firmwareWasOff != nil && *firmwareWasOff {
+		if err := sendEffectPowerOff(ctx, ctrl, serial, req.Device); err != nil {
+			return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Error: err.Error()}, fmt.Errorf("restore firmware effect power: %w", err)
+		}
+		off := req.Device
+		off.On = false
+		t.storeCachedDevice(off)
+		t.storeRestoreDevice(off, time.Now().Add(3*time.Second))
 	}
 	for _, msg := range stopDeviceEffectMessages(req.Device) {
 		if err := ctx.Err(); err != nil {
@@ -269,16 +303,33 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	if err := ctx.Err(); err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
-
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	renderer := lifxeffectadapters.NewRendererForDevice(lifxDevice, func(msg *protocol.Message) error {
 		logLifxSend(serial, req.Device, "app-effect-frame", msg)
 		return ctrl.Send(serial, msg)
 	})
-	t.storeCachedDevice(captured)
+	step := appEffectStep(req, lifxDevice)
+	if !captured.On {
+		frame, ok := effect.Next(step)
+		if !ok {
+			return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect)}, fmt.Errorf("effect %q produced no frame", req.Effect)
+		}
+		if err := renderer.RenderFrame(ctx, frame); err != nil {
+			return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, fmt.Errorf("prime effect frame: %w", err)
+		}
+		msg := messages.SetPowerOn()
+		logLifxSend(serial, req.Device, "effect-power-on", msg)
+		if err := ctrl.Send(serial, msg); err != nil {
+			return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, fmt.Errorf("set power on for effect: %w", err)
+		}
+		effect.Reset()
+	}
+	active := captured
+	active.On = true
+	t.storeCachedDevice(active)
 	t.storeAppEffect(req.Device.Serial, runningAppEffect{effect: req.Effect, cancel: cancel, done: done, previous: captured})
-	go t.runAppDeviceEffect(runCtx, req.Device.Serial, req.Effect, lifxeffects.NewRunner(effect, renderer, appEffectStep(req, lifxDevice)), done)
+	go t.runAppDeviceEffect(runCtx, req.Device.Serial, req.Effect, lifxeffects.NewRunner(effect, renderer, step), done)
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(req.Effect)}, nil
 }
 
@@ -291,13 +342,36 @@ func (t *LifxTransport) runAppDeviceEffect(ctx context.Context, serial string, e
 }
 
 func newAppEffect(effect DeviceEffect, lifxDevice lifxdevice.Device, previous Device) (lifxeffects.Effect, error) {
+	caps := appEffectCapabilities(lifxDevice)
 	switch effect {
 	case DeviceEffectSnake:
 		color := appEffectPrimaryColor(previous)
 		return lifxeffects.NewSnake(lifxeffects.SnakeConfig{
-			Capabilities: appEffectCapabilities(lifxDevice),
+			Capabilities: caps,
 			Size:         appEffectSnakeSize(lifxDevice),
 			Color:        color,
+		}), nil
+	case DeviceEffectWorm:
+		return lifxeffects.NewWorm(lifxeffects.WormConfig{
+			Capabilities: caps,
+			Size:         appEffectSnakeSize(lifxDevice),
+			Color:        appEffectPrimaryColor(previous),
+		}), nil
+	case DeviceEffectFrames:
+		return lifxeffects.NewConcentricFrames(lifxeffects.ConcentricFramesConfig{
+			Capabilities: caps,
+			Direction:    lifxeffects.DirectionInOut,
+			Colors:       appEffectPalette(previous),
+		}), nil
+	case DeviceEffectWaterfall:
+		return lifxeffects.NewWaterfall(lifxeffects.WaterfallConfig{
+			Capabilities: caps,
+			Colors:       appEffectPalette(previous),
+		}), nil
+	case DeviceEffectRockets:
+		return lifxeffects.NewRockets(lifxeffects.RocketsConfig{
+			Capabilities: caps,
+			Colors:       appEffectPalette(previous),
 		}), nil
 	default:
 		return nil, fmt.Errorf("effect %q is not supported as an app effect", effect)
@@ -322,8 +396,7 @@ func appEffectCapabilities(device lifxdevice.Device) lifxeffects.Capabilities {
 }
 
 func appEffectSnakeSize(device lifxdevice.Device) int {
-	width := appEffectCapabilities(device).Width
-	return min(max(width/2, 4), 16)
+	return min(defaultAppEffectTailSize, max(appEffectCapabilities(device).Width, 1))
 }
 
 func appEffectStep(req StartDeviceEffectRequest, device lifxdevice.Device) time.Duration {
@@ -331,11 +404,22 @@ func appEffectStep(req StartDeviceEffectRequest, device lifxdevice.Device) time.
 		return defaultAppEffectStep
 	}
 	switch req.Effect {
-	case DeviceEffectSnake:
+	case DeviceEffectSnake, DeviceEffectWorm:
 		caps := appEffectCapabilities(device)
-		snakeSize := min(max(max(caps.Width, 1)/2, 4), 16)
+		snakeSize := min(defaultAppEffectTailSize, max(caps.Width, 1))
 		steps := max(caps.Width, 1)*max(caps.Height, 1) + snakeSize
 		return clampDuration(time.Duration(req.SpeedMS)*time.Millisecond/time.Duration(max(steps, 1)), minAppEffectStep, maxAppEffectStep)
+	case DeviceEffectRockets:
+		caps := appEffectCapabilities(device)
+		steps := max(caps.Width, 1) * max(caps.Height, 1)
+		return clampDuration(time.Duration(req.SpeedMS)*time.Millisecond/time.Duration(max(steps, 1)), minAppEffectStep, maxAppEffectStep)
+	case DeviceEffectWaterfall:
+		caps := appEffectCapabilities(device)
+		return clampDuration(time.Duration(req.SpeedMS)*time.Millisecond/time.Duration(max(caps.Height, 1)), minAppEffectStep, maxAppEffectStep)
+	case DeviceEffectFrames:
+		caps := appEffectCapabilities(device)
+		steps := min((max(caps.Width, 1)-1)/2, (max(caps.Height, 1)-1)/2) + 1
+		return clampDuration(time.Duration(req.SpeedMS)*time.Millisecond/time.Duration(max(steps*2, 1)), minAppEffectStep, maxAppEffectStep)
 	default:
 		return defaultAppEffectStep
 	}
@@ -356,6 +440,25 @@ func appEffectPrimaryColor(device Device) lifxeffects.Color {
 		return hslColorToEffectColor(*device.Color, device.Brightness, device.Kelvin, device.Capability)
 	}
 	return hslColorToEffectColor(HSLColor{H: 220, S: 0.7, L: device.Brightness, Kelvin: device.Kelvin}, device.Brightness, device.Kelvin, device.Capability)
+}
+
+func appEffectPalette(device Device) []lifxeffects.Color {
+	colors := representativePaletteColors(nonDarkPaletteColors(visibleMatrixPixels(device.Chain)), 6)
+	if len(colors) == 0 {
+		if device.Color != nil {
+			return []lifxeffects.Color{hslColorToEffectColor(*device.Color, device.Brightness, device.Kelvin, device.Capability)}
+		}
+		colors = []HSLColor{
+			{H: 28, S: 0.75, L: 0.65},
+			{H: 200, S: 0.7, L: 0.62},
+			{H: 285, S: 0.62, L: 0.6},
+		}
+	}
+	palette := make([]lifxeffects.Color, 0, len(colors))
+	for _, color := range colors {
+		palette = append(palette, hslColorToEffectColor(color, device.Brightness, device.Kelvin, device.Capability))
+	}
+	return palette
 }
 
 func hslColorToEffectColor(color HSLColor, brightness float64, kelvin int, capability DeviceCapability) lifxeffects.Color {
@@ -382,12 +485,47 @@ func captureAppEffectState(requested Device, previous *Device, cached *Device) D
 
 func restoreDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device) error {
 	if !device.On {
-		msg := messages.SetPowerOff()
-		logLifxSend(serial, device, "effect-restore-power-off", msg)
-		return ctrl.Send(serial, msg)
+		if err := sendEffectPowerOff(ctx, ctrl, serial, device); err != nil {
+			return fmt.Errorf("restore power off: %w", err)
+		}
+		for index, msg := range deviceStateMessages(device, false) {
+			if msg == nil {
+				continue
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			logLifxSend(serial, device, fmt.Sprintf("effect-restore-state-%d", index+1), msg)
+			if err := ctrl.Send(serial, msg); err != nil {
+				return fmt.Errorf("restore %s state: %w", device.Kind, err)
+			}
+		}
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	intent := normalizeDeviceCommandIntent("", device)
 	return sendDeviceState(ctx, ctrl, serial, device, false, intent, &device)
+}
+
+func sendEffectPowerOff(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	msg := messages.SetPowerOff()
+	logLifxSend(serial, device, "effect-restore-power-off", msg)
+	if err := ctrl.Send(serial, msg); err != nil {
+		return err
+	}
+	timer := time.NewTimer(effectPowerOffSettleDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func lifxDeviceBySerial(devices []lifxdevice.Device, serial lifxdevice.Serial) (lifxdevice.Device, bool) {
@@ -400,7 +538,12 @@ func lifxDeviceBySerial(devices []lifxdevice.Device, serial lifxdevice.Serial) (
 }
 
 func isAppEffect(effect DeviceEffect) bool {
-	return effect == DeviceEffectSnake
+	switch effect {
+	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets:
+		return true
+	default:
+		return false
+	}
 }
 
 func matrixEffectPalette(device Device) []packets.LightHsbk {
@@ -683,6 +826,45 @@ func (t *LifxTransport) storeAppEffect(serial string, effect runningAppEffect) {
 	t.effects[serial] = effect
 }
 
+func (t *LifxTransport) storeFirmwareEffect(serial string, effect runningFirmwareEffect) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.firmware == nil {
+		t.firmware = make(map[string]runningFirmwareEffect)
+	}
+	t.firmware[serial] = effect
+}
+
+func (t *LifxTransport) captureFirmwareEffectWasOff(serial string, restored *Device, requested Device) bool {
+	t.mu.RLock()
+	running, ok := t.firmware[serial]
+	t.mu.RUnlock()
+	if ok {
+		return running.wasOff
+	}
+	if restored != nil {
+		return !restored.On
+	}
+	if cached := t.cachedDevice(serial); cached != nil {
+		return !cached.On
+	}
+	return !requested.On
+}
+
+func (t *LifxTransport) stopFirmwareEffect(serial string) *bool {
+	t.mu.Lock()
+	effect, ok := t.firmware[serial]
+	if ok {
+		delete(t.firmware, serial)
+	}
+	t.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	wasOff := effect.wasOff
+	return &wasOff
+}
+
 func (t *LifxTransport) stopAppEffect(serial string) *Device {
 	t.mu.Lock()
 	effect, ok := t.effects[serial]
@@ -708,6 +890,30 @@ func (t *LifxTransport) stopAllAppEffects() {
 		effect.cancel()
 		waitForAppEffectStop(effect)
 	}
+}
+
+func (t *LifxTransport) restoreAllAppEffects(ctx context.Context, ctrl lifxController) error {
+	t.mu.Lock()
+	effects := t.effects
+	t.effects = make(map[string]runningAppEffect)
+	t.mu.Unlock()
+
+	var restoreErr error
+	for _, effect := range effects {
+		effect.cancel()
+		waitForAppEffectStop(effect)
+		serial, err := parseDeviceSerial(effect.previous)
+		if err != nil {
+			restoreErr = errors.Join(restoreErr, err)
+			continue
+		}
+		if err := restoreDeviceState(ctx, ctrl, serial, effect.previous); err != nil {
+			restoreErr = errors.Join(restoreErr, err)
+			continue
+		}
+		t.storeCachedDevice(effect.previous)
+	}
+	return restoreErr
 }
 
 func (t *LifxTransport) clearAppEffect(serial string, effectID DeviceEffect) {
@@ -1098,18 +1304,19 @@ func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice
 		return nil
 	}
 
-	if current != nil && !current.On {
-		powerMsg := messages.SetPowerOn()
-		logLifxSend(serial, device, "power-on", powerMsg)
-		if err := ctrl.Send(serial, powerMsg); err != nil {
-			return fmt.Errorf("set power on: %w", err)
-		}
-	}
+	needsPowerOn := current != nil && !current.On
 	if intent == DeviceCommandBrightness {
 		msg := brightnessOnlyMessage(device)
 		logLifxSend(serial, device, "brightness-only", msg)
 		if err := ctrl.Send(serial, msg); err != nil {
 			return fmt.Errorf("set brightness: %w", err)
+		}
+		if needsPowerOn {
+			powerMsg := messages.SetPowerOn()
+			logLifxSend(serial, device, "power-on", powerMsg)
+			if err := ctrl.Send(serial, powerMsg); err != nil {
+				return fmt.Errorf("set power on: %w", err)
+			}
 		}
 		return nil
 	}
@@ -1124,6 +1331,13 @@ func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice
 		logLifxSend(serial, device, fmt.Sprintf("state-%d", index+1), msg)
 		if err := ctrl.Send(serial, msg); err != nil {
 			return fmt.Errorf("set %s state: %w", device.Kind, err)
+		}
+	}
+	if needsPowerOn {
+		powerMsg := messages.SetPowerOn()
+		logLifxSend(serial, device, "power-on", powerMsg)
+		if err := ctrl.Send(serial, powerMsg); err != nil {
+			return fmt.Errorf("set power on: %w", err)
 		}
 	}
 

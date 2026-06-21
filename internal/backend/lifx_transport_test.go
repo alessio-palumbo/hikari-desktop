@@ -494,7 +494,7 @@ func TestLifxTransportSetDeviceStateSendsSingleZoneColor(t *testing.T) {
 	}
 }
 
-func TestLifxTransportSetDeviceStateSendsPowerOnThenSingleZoneColor(t *testing.T) {
+func TestLifxTransportSetDeviceStateSendsSingleZoneColorBeforePowerOn(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
@@ -514,11 +514,11 @@ func TestLifxTransportSetDeviceStateSendsPowerOnThenSingleZoneColor(t *testing.T
 	if len(controller.sends) != 2 {
 		t.Fatalf("sent %d messages, want 2", len(controller.sends))
 	}
-	if _, ok := controller.sends[0].msg.Payload.(*packets.DeviceSetPower); !ok {
-		t.Fatalf("first payload = %T, want *packets.DeviceSetPower", controller.sends[0].msg.Payload)
+	if _, ok := controller.sends[0].msg.Payload.(*packets.LightSetWaveformOptional); !ok {
+		t.Fatalf("first payload = %T, want *packets.LightSetWaveformOptional", controller.sends[0].msg.Payload)
 	}
-	if _, ok := controller.sends[1].msg.Payload.(*packets.LightSetWaveformOptional); !ok {
-		t.Fatalf("second payload = %T, want *packets.LightSetWaveformOptional", controller.sends[1].msg.Payload)
+	if _, ok := controller.sends[1].msg.Payload.(*packets.DeviceSetPower); !ok {
+		t.Fatalf("second payload = %T, want *packets.DeviceSetPower", controller.sends[1].msg.Payload)
 	}
 }
 
@@ -714,7 +714,7 @@ func TestLifxTransportSetDeviceStateSendsDirectMultizoneBrightnessOnly(t *testin
 	assertBrightnessOnlyPayload(t, payload, 25)
 }
 
-func TestLifxTransportSetDeviceStatePowersOnBeforeBrightnessWhenCachedOff(t *testing.T) {
+func TestLifxTransportSetDeviceStateSendsBrightnessBeforePowerOnWhenCachedOff(t *testing.T) {
 	controller := &fakeLifxController{}
 	device := Device{
 		Serial:     "d073d501a2c3",
@@ -733,14 +733,41 @@ func TestLifxTransportSetDeviceStatePowersOnBeforeBrightnessWhenCachedOff(t *tes
 	if len(controller.sends) != 2 {
 		t.Fatalf("sent %d messages, want 2", len(controller.sends))
 	}
-	if _, ok := controller.sends[0].msg.Payload.(*packets.DeviceSetPower); !ok {
-		t.Fatalf("first payload = %T, want *packets.DeviceSetPower", controller.sends[0].msg.Payload)
-	}
-	payload, ok := controller.sends[1].msg.Payload.(*packets.LightSetWaveformOptional)
+	payload, ok := controller.sends[0].msg.Payload.(*packets.LightSetWaveformOptional)
 	if !ok {
-		t.Fatalf("second payload = %T, want *packets.LightSetWaveformOptional", controller.sends[1].msg.Payload)
+		t.Fatalf("first payload = %T, want *packets.LightSetWaveformOptional", controller.sends[0].msg.Payload)
 	}
 	assertBrightnessOnlyPayload(t, payload, 25)
+	if _, ok := controller.sends[1].msg.Payload.(*packets.DeviceSetPower); !ok {
+		t.Fatalf("second payload = %T, want *packets.DeviceSetPower", controller.sends[1].msg.Payload)
+	}
+}
+
+func TestLifxTransportSetDeviceStateSendsColorBeforePowerOnWhenCachedOff(t *testing.T) {
+	controller := &fakeLifxController{}
+	device := Device{
+		Serial:     "d073d501a2c3",
+		Kind:       DeviceKindSingle,
+		On:         true,
+		Brightness: 0.4,
+		Color:      &HSLColor{H: 210, S: 0.8, L: 0.4},
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+	}
+	transport := NewLifxTransportWithController(controller)
+	transport.storeCachedDevice(Device{Serial: device.Serial, On: false})
+
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device, Intent: DeviceCommandColor}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	if len(controller.sends) != 2 {
+		t.Fatalf("sent %d messages, want 2", len(controller.sends))
+	}
+	if _, ok := controller.sends[0].msg.Payload.(*packets.LightSetWaveformOptional); !ok {
+		t.Fatalf("first payload = %T, want *packets.LightSetWaveformOptional", controller.sends[0].msg.Payload)
+	}
+	if _, ok := controller.sends[1].msg.Payload.(*packets.DeviceSetPower); !ok {
+		t.Fatalf("second payload = %T, want *packets.DeviceSetPower", controller.sends[1].msg.Payload)
+	}
 }
 
 func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
@@ -942,7 +969,7 @@ func TestLifxTransportSetDeviceStateSendsDirectMatrixBrightnessOnly(t *testing.T
 func TestLifxTransportStartDeviceEffectSendsMultizoneMove(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
-	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMultizone}
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMultizone, On: true}
 
 	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectMove, SpeedMS: 1200, Direction: "reverse"})
 	if err != nil {
@@ -972,7 +999,7 @@ func TestLifxTransportStartDeviceEffectSendsMultizoneMove(t *testing.T) {
 func TestLifxTransportStartDeviceEffectDefaultsMultizoneMove(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
-	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMultizone}
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMultizone, On: true}
 
 	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device})
 	if err != nil {
@@ -993,7 +1020,7 @@ func TestLifxTransportStartDeviceEffectDefaultsMultizoneMove(t *testing.T) {
 func TestLifxTransportStartDeviceEffectSendsMatrixFlame(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
-	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix}
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix, On: true}
 
 	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectFlame, SpeedMS: 900})
 	if err != nil {
@@ -1017,12 +1044,36 @@ func TestLifxTransportStartDeviceEffectSendsMatrixFlame(t *testing.T) {
 	}
 }
 
+func TestLifxTransportStartFirmwareEffectPowersOnOffMatrix(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix, On: false}
+
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectFlame, SpeedMS: 900})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	if status.Effect != string(DeviceEffectFlame) || !status.Running {
+		t.Fatalf("status = %#v, want running flame", status)
+	}
+	if len(controller.sends) != 2 {
+		t.Fatalf("sent %d messages, want effect and power-on", len(controller.sends))
+	}
+	if _, ok := controller.sends[0].msg.Payload.(*packets.TileSetEffect); !ok {
+		t.Fatalf("first payload = %T, want *packets.TileSetEffect", controller.sends[0].msg.Payload)
+	}
+	if _, ok := controller.sends[1].msg.Payload.(*packets.DeviceSetPower); !ok {
+		t.Fatalf("second payload = %T, want *packets.DeviceSetPower", controller.sends[1].msg.Payload)
+	}
+}
+
 func TestLifxTransportStartDeviceEffectSendsMatrixMorph(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
 	device := Device{
 		Serial:     "d073d501a2c3",
 		Kind:       DeviceKindMatrix,
+		On:         true,
 		Firmware:   "4.8",
 		Brightness: 0.5,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
@@ -1059,6 +1110,7 @@ func TestLifxTransportStartDeviceEffectMorphUsesVisibleMatrixPalette(t *testing.
 	device := Device{
 		Serial:     "d073d501a2c3",
 		Kind:       DeviceKindMatrix,
+		On:         true,
 		Brightness: 0.5,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
 		Color:      &HSLColor{H: 120, S: 1, L: 0.5},
@@ -1094,6 +1146,7 @@ func TestLifxTransportStartDeviceEffectMorphUsesRepresentativeMatrixPalette(t *t
 	device := Device{
 		Serial:     "d073d501a2c3",
 		Kind:       DeviceKindMatrix,
+		On:         true,
 		Brightness: 0.7,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
 		Chain: []Matrix{{
@@ -1122,6 +1175,7 @@ func TestLifxTransportStartDeviceEffectMorphFallsBackWhenVisibleMatrixIsDark(t *
 	device := Device{
 		Serial:     "d073d501a2c3",
 		Kind:       DeviceKindMatrix,
+		On:         true,
 		Brightness: 0.5,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
 		Color:      &HSLColor{H: 120, S: 1, L: 0.5},
@@ -1148,6 +1202,7 @@ func TestLifxTransportStartDeviceEffectMorphUsesFullPaletteBrightness(t *testing
 	device := Device{
 		Serial:     "d073d501a2c3",
 		Kind:       DeviceKindMatrix,
+		On:         true,
 		Brightness: 0.07,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
 		Color:      &HSLColor{H: 240, S: 1, L: 0.07},
@@ -1171,6 +1226,7 @@ func TestLifxTransportStartDeviceEffectMorphOnlySendsEffect(t *testing.T) {
 	device := Device{
 		Serial:     "d073d501a2c3",
 		Kind:       DeviceKindMatrix,
+		On:         true,
 		Brightness: 0.07,
 		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
 		Color:      &HSLColor{H: 240, S: 1, L: 0.07},
@@ -1194,7 +1250,7 @@ func TestLifxTransportStartDeviceEffectMorphOnlySendsEffect(t *testing.T) {
 func TestLifxTransportStartDeviceEffectAllowsMorphBeforeFirmware48(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
-	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix, Firmware: "4.7"}
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix, On: true, Firmware: "4.7"}
 
 	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectMorph})
 	if err != nil {
@@ -1211,7 +1267,7 @@ func TestLifxTransportStartDeviceEffectAllowsMorphBeforeFirmware48(t *testing.T)
 func TestLifxTransportStartDeviceEffectSendsMatrixClouds(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
-	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix, Firmware: "4.9"}
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix, On: true, Firmware: "4.9"}
 
 	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectClouds, SpeedMS: 2200})
 	if err != nil {
@@ -1313,9 +1369,73 @@ func TestLifxTransportSnakeSpeedControlsRunnerStep(t *testing.T) {
 	lifx.MatrixProperties.ChainLength = 1
 
 	got := appEffectStep(StartDeviceEffectRequest{Device: mapLifxDevice(lifx, "desk"), Effect: DeviceEffectSnake, SpeedMS: 12000}, lifx)
-	want := 12000 * time.Millisecond / 68
+	want := 12000 * time.Millisecond / 69
 	if got != want {
 		t.Fatalf("snake step = %s, want %s", got, want)
+	}
+}
+
+func TestLifxTransportStartDeviceEffectPowersOnOffMatrix(t *testing.T) {
+	lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
+	lifx.PoweredOn = false
+	lifx.SetProductInfo(55)
+	lifx.MatrixProperties.Width = 8
+	lifx.MatrixProperties.Height = 8
+	lifx.MatrixProperties.NZones = 64
+	lifx.MatrixProperties.ChainLength = 1
+	lifx.MatrixProperties.ChainZones = [][]packets.LightHsbk{make([]packets.LightHsbk, 64)}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}, sent: make(chan sentMessage, 4)}
+	transport := NewLifxTransportWithController(controller)
+	device := mapLifxDevice(lifx, "desk")
+
+	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectSnake}); err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	if len(controller.sends) == 0 {
+		t.Fatal("sent no messages, want effect frame before power-on")
+	}
+	if _, ok := controller.sends[0].msg.Payload.(*packets.TileSet64); !ok {
+		t.Fatalf("first payload = %T, want *packets.TileSet64", controller.sends[0].msg.Payload)
+	}
+	if _, ok := controller.sends[1].msg.Payload.(*packets.DeviceSetPower); !ok {
+		t.Fatalf("second payload = %T, want *packets.DeviceSetPower", controller.sends[1].msg.Payload)
+	}
+	waitForTileSet64(t, controller.sent)
+}
+
+func TestLifxTransportStartDeviceEffectRunsHikariMatrixEffects(t *testing.T) {
+	effects := []DeviceEffect{
+		DeviceEffectWorm,
+		DeviceEffectFrames,
+		DeviceEffectWaterfall,
+		DeviceEffectRockets,
+	}
+	for _, effect := range effects {
+		t.Run(string(effect), func(t *testing.T) {
+			lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
+			lifx.SetProductInfo(55)
+			lifx.MatrixProperties.Width = 8
+			lifx.MatrixProperties.Height = 8
+			lifx.MatrixProperties.NZones = 64
+			lifx.MatrixProperties.ChainLength = 1
+			lifx.MatrixProperties.ChainZones = [][]packets.LightHsbk{{testHSBK(20)}}
+			controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}, sent: make(chan sentMessage, 4)}
+			transport := NewLifxTransportWithController(controller)
+			device := mapLifxDevice(lifx, "desk")
+
+			status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: effect, SpeedMS: 10000})
+			if err != nil {
+				t.Fatalf("StartDeviceEffect returned error: %v", err)
+			}
+			if status.Effect != string(effect) || !status.Running {
+				t.Fatalf("status = %#v, want running %s", status, effect)
+			}
+			payload := waitForTileSet64(t, controller.sent)
+			if payload.TileIndex != 0 || payload.Length != 1 {
+				t.Fatalf("tile metadata = index %d length %d, want 0/1", payload.TileIndex, payload.Length)
+			}
+			transport.stopAllAppEffects()
+		})
 	}
 }
 
@@ -1350,6 +1470,156 @@ func TestLifxTransportStopDeviceEffectRestoresCachedMatrixAfterSnake(t *testing.
 		if _, ok := sent.msg.Payload.(*packets.TileSetEffect); ok {
 			t.Fatalf("stop sent firmware effect-off during app restore: %#v", sent.msg.Payload)
 		}
+	}
+	payload, ok := controller.sends[len(controller.sends)-1].msg.Payload.(*packets.TileSet64)
+	if !ok {
+		t.Fatalf("last payload = %T, want *packets.TileSet64", controller.sends[len(controller.sends)-1].msg.Payload)
+	}
+	restored := lifxdevice.NewColor(payload.Colors[0])
+	if restored.Hue != 20 {
+		t.Fatalf("restored hue = %v, want cached hue 20", restored.Hue)
+	}
+}
+
+func TestLifxTransportStopFirmwareEffectDoesNotRestoreMatrixState(t *testing.T) {
+	lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
+	lifx.SetProductInfo(55)
+	lifx.MatrixProperties.Width = 2
+	lifx.MatrixProperties.Height = 1
+	lifx.MatrixProperties.NZones = 2
+	lifx.MatrixProperties.ChainLength = 1
+	lifx.MatrixProperties.ChainZones = [][]packets.LightHsbk{{testHSBK(20), testHSBK(120)}}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}}
+	transport := NewLifxTransportWithController(controller)
+	device := mapLifxDevice(lifx, "desk")
+	device.On = true
+	device.Chain[0].Pixels[0] = HSLColor{H: 20, S: 0.5, L: 0.5}
+	device.Chain[0].Pixels[1] = HSLColor{H: 120, S: 0.5, L: 0.5}
+	transport.storeCachedDevice(device)
+
+	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectFlame}); err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	controller.sends = nil
+
+	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: device}); err != nil {
+		t.Fatalf("StopDeviceEffect returned error: %v", err)
+	}
+	if len(controller.sends) != 1 {
+		t.Fatalf("sent %d messages, want effect-off only", len(controller.sends))
+	}
+	if _, ok := controller.sends[0].msg.Payload.(*packets.TileSetEffect); !ok {
+		t.Fatalf("first payload = %T, want *packets.TileSetEffect", controller.sends[0].msg.Payload)
+	}
+}
+
+func TestLifxTransportStopFirmwareEffectRestoresPowerOffOnly(t *testing.T) {
+	lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
+	lifx.SetProductInfo(55)
+	lifx.MatrixProperties.Width = 2
+	lifx.MatrixProperties.Height = 1
+	lifx.MatrixProperties.NZones = 2
+	lifx.MatrixProperties.ChainLength = 1
+	lifx.MatrixProperties.ChainZones = [][]packets.LightHsbk{{testHSBK(20), testHSBK(120)}}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}}
+	transport := NewLifxTransportWithController(controller)
+	device := mapLifxDevice(lifx, "desk")
+	device.On = false
+	device.Chain[0].Pixels[0] = HSLColor{H: 20, S: 0.5, L: 0.5}
+	device.Chain[0].Pixels[1] = HSLColor{H: 120, S: 0.5, L: 0.5}
+	transport.storeCachedDevice(device)
+
+	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectFlame}); err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	controller.sends = nil
+
+	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: device}); err != nil {
+		t.Fatalf("StopDeviceEffect returned error: %v", err)
+	}
+	if len(controller.sends) != 2 {
+		t.Fatalf("sent %d messages, want power-off and effect-off", len(controller.sends))
+	}
+	if _, ok := controller.sends[0].msg.Payload.(*packets.DeviceSetPower); !ok {
+		t.Fatalf("first payload = %T, want *packets.DeviceSetPower", controller.sends[0].msg.Payload)
+	}
+	if _, ok := controller.sends[1].msg.Payload.(*packets.TileSetEffect); !ok {
+		t.Fatalf("second payload = %T, want *packets.TileSetEffect", controller.sends[1].msg.Payload)
+	}
+	if gap := controller.sends[1].at.Sub(controller.sends[0].at); gap < effectPowerOffSettleDelay {
+		t.Fatalf("effect-off sent after %s, want at least %s after power-off", gap, effectPowerOffSettleDelay)
+	}
+}
+
+func TestLifxTransportStopDeviceEffectRestoresOffMatrixAfterAppEffect(t *testing.T) {
+	lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
+	lifx.SetProductInfo(55)
+	lifx.MatrixProperties.Width = 2
+	lifx.MatrixProperties.Height = 1
+	lifx.MatrixProperties.NZones = 2
+	lifx.MatrixProperties.ChainLength = 1
+	lifx.MatrixProperties.ChainZones = [][]packets.LightHsbk{{testHSBK(20), testHSBK(120)}}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}}
+	transport := NewLifxTransportWithController(controller)
+	device := mapLifxDevice(lifx, "desk")
+	device.On = false
+	device.Chain[0].Pixels[0] = HSLColor{H: 20, S: 0.5, L: 0.5}
+	device.Chain[0].Pixels[1] = HSLColor{H: 120, S: 0.5, L: 0.5}
+	transport.storeCachedDevice(device)
+
+	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectSnake}); err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	controller.sends = nil
+
+	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: device}); err != nil {
+		t.Fatalf("StopDeviceEffect returned error: %v", err)
+	}
+	if len(controller.sends) < 2 {
+		t.Fatalf("sent %d messages, want power-off and restore colors", len(controller.sends))
+	}
+	if _, ok := controller.sends[0].msg.Payload.(*packets.DeviceSetPower); !ok {
+		t.Fatalf("first payload = %T, want *packets.DeviceSetPower", controller.sends[0].msg.Payload)
+	}
+	payload, ok := controller.sends[len(controller.sends)-1].msg.Payload.(*packets.TileSet64)
+	if !ok {
+		t.Fatalf("last payload = %T, want *packets.TileSet64", controller.sends[len(controller.sends)-1].msg.Payload)
+	}
+	restored := lifxdevice.NewColor(payload.Colors[0])
+	if restored.Hue != 20 {
+		t.Fatalf("restored hue = %v, want cached hue 20", restored.Hue)
+	}
+}
+
+func TestLifxTransportCloseRestoresRunningAppEffect(t *testing.T) {
+	lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
+	lifx.SetProductInfo(55)
+	lifx.MatrixProperties.Width = 2
+	lifx.MatrixProperties.Height = 1
+	lifx.MatrixProperties.NZones = 2
+	lifx.MatrixProperties.ChainLength = 1
+	lifx.MatrixProperties.ChainZones = [][]packets.LightHsbk{{testHSBK(20), testHSBK(120)}}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}, sent: make(chan sentMessage, 4)}
+	transport := NewLifxTransportWithController(controller)
+	device := mapLifxDevice(lifx, "desk")
+	device.Chain[0].Pixels[0] = HSLColor{H: 20, S: 0.5, L: 0.5}
+	device.Chain[0].Pixels[1] = HSLColor{H: 120, S: 0.5, L: 0.5}
+	transport.storeCachedDevice(device)
+
+	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectSnake}); err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	waitForTileSet64(t, controller.sent)
+	controller.sends = nil
+
+	if err := transport.Close(context.Background()); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+	if !controller.closed {
+		t.Fatal("controller was not closed")
+	}
+	if len(controller.sends) == 0 {
+		t.Fatal("close did not send restore messages")
 	}
 	payload, ok := controller.sends[len(controller.sends)-1].msg.Payload.(*packets.TileSet64)
 	if !ok {
@@ -1423,6 +1693,7 @@ type fakeLifxController struct {
 	sends   []sentMessage
 	sent    chan sentMessage
 	closed  bool
+	now     func() time.Time
 }
 
 func (f *fakeLifxController) Close() error {
@@ -1435,7 +1706,13 @@ func (f *fakeLifxController) GetDevices() []lifxdevice.Device {
 }
 
 func (f *fakeLifxController) Send(serial lifxdevice.Serial, msg *protocol.Message) error {
-	sent := sentMessage{serial: serial, msg: msg}
+	var at time.Time
+	if f.now != nil {
+		at = f.now()
+	} else {
+		at = time.Now()
+	}
+	sent := sentMessage{serial: serial, msg: msg, at: at}
 	f.sends = append(f.sends, sent)
 	if f.sent != nil {
 		select {
@@ -1449,6 +1726,7 @@ func (f *fakeLifxController) Send(serial lifxdevice.Serial, msg *protocol.Messag
 type sentMessage struct {
 	serial lifxdevice.Serial
 	msg    *protocol.Message
+	at     time.Time
 }
 
 func testHSBK(hue float64) packets.LightHsbk {
