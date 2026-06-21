@@ -1,6 +1,6 @@
 import { DeviceKind, type Device } from './lifx.js';
 
-export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds';
+export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake';
 
 export interface FirmwareEffectDefinition {
   id: DeviceEffect;
@@ -46,6 +46,13 @@ export const firmwareEffects: FirmwareEffectDefinition[] = [
     deviceKinds: [DeviceKind.Matrix],
     minFirmware: '4.8',
     speed: { minMs: 1000, maxMs: 100000, defaultMs: 100000 },
+  },
+  {
+    id: 'snake',
+    label: 'Snake',
+    description: 'App-rendered matrix trail',
+    deviceKinds: [DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 25000, defaultMs: 3000 },
   },
 ];
 

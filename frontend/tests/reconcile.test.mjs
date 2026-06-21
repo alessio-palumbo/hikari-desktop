@@ -321,8 +321,8 @@ test('firmware effect catalogue filters by device kind and firmware', () => {
   const newMatrix = { ...matrixDevice(), firmware: '4.8' };
 
   assert.deepEqual(supportedFirmwareEffects(multizone).map((effect) => effect.id), ['move']);
-  assert.deepEqual(supportedFirmwareEffects(oldMatrix).map((effect) => effect.id), ['flame', 'morph']);
-  assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds']);
+  assert.deepEqual(supportedFirmwareEffects(oldMatrix).map((effect) => effect.id), ['flame', 'morph', 'snake']);
+  assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds', 'snake']);
 });
 
 test('firmware effect speed helpers expose defaults and ranges', () => {

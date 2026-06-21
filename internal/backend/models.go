@@ -97,6 +97,7 @@ const (
 	DeviceEffectFlame  DeviceEffect = "flame"
 	DeviceEffectMorph  DeviceEffect = "morph"
 	DeviceEffectClouds DeviceEffect = "clouds"
+	DeviceEffectSnake  DeviceEffect = "snake"
 )
 
 func emptyDeviceSnapshot() DeviceSnapshot {

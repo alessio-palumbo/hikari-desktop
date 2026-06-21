@@ -225,6 +225,13 @@
   background-size: 180% 180%;
 }
 
+.effect-swatch[data-effect="snake"] {
+  background:
+    linear-gradient(90deg, transparent 0 24%, oklch(0.78 0.15 145) 24% 38%, transparent 38% 100%),
+    linear-gradient(180deg, oklch(0.22 0.02 245), oklch(0.13 0.015 245));
+  background-size: 180% 100%, 100% 100%;
+}
+
 .effect-option[data-active="true"] .effect-swatch[data-effect="move"] {
   animation: fx-move 1.6s linear infinite;
 }
@@ -236,6 +243,10 @@
 .effect-option[data-active="true"] .effect-swatch[data-effect="morph"],
 .effect-option[data-active="true"] .effect-swatch[data-effect="clouds"] {
   animation: fx-morph 2.4s ease-in-out infinite alternate;
+}
+
+.effect-option[data-active="true"] .effect-swatch[data-effect="snake"] {
+  animation: fx-snake 1s linear infinite;
 }
 
 .effect-action {
@@ -303,6 +314,15 @@
   }
   to {
     background-position: 100% 50%;
+  }
+}
+
+@keyframes fx-snake {
+  from {
+    background-position: 0% 0, 0 0;
+  }
+  to {
+    background-position: -180% 0, 0 0;
   }
 }
 
