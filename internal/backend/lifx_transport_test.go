@@ -1284,7 +1284,7 @@ func TestLifxTransportStartDeviceEffectRunsSnakeAcrossMatrixChain(t *testing.T) 
 	transport := NewLifxTransportWithController(controller)
 	device := mapLifxDevice(lifx, "desk")
 
-	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectSnake})
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectSnake, SpeedMS: 12000})
 	if err != nil {
 		t.Fatalf("StartDeviceEffect returned error: %v", err)
 	}
@@ -1301,6 +1301,21 @@ func TestLifxTransportStartDeviceEffectRunsSnakeAcrossMatrixChain(t *testing.T) 
 	secondPayload := waitForTileSet64(t, controller.sent)
 	if secondPayload.TileIndex != 1 || secondPayload.Length != 1 {
 		t.Fatalf("second tile metadata = index %d length %d, want 1/1", secondPayload.TileIndex, secondPayload.Length)
+	}
+}
+
+func TestLifxTransportSnakeSpeedControlsRunnerStep(t *testing.T) {
+	lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
+	lifx.SetProductInfo(55)
+	lifx.MatrixProperties.Width = 8
+	lifx.MatrixProperties.Height = 8
+	lifx.MatrixProperties.NZones = 64
+	lifx.MatrixProperties.ChainLength = 1
+
+	got := appEffectStep(StartDeviceEffectRequest{Device: mapLifxDevice(lifx, "desk"), Effect: DeviceEffectSnake, SpeedMS: 12000}, lifx)
+	want := 12000 * time.Millisecond / 68
+	if got != want {
+		t.Fatalf("snake step = %s, want %s", got, want)
 	}
 }
 

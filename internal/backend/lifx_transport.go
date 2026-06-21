@@ -24,6 +24,8 @@ const (
 	defaultColorTransitionDuration  = 300 * time.Millisecond
 	defaultFirmwareEffectSpeed      = 5 * time.Second
 	defaultAppEffectStep            = 180 * time.Millisecond
+	minAppEffectStep                = 80 * time.Millisecond
+	maxAppEffectStep                = 500 * time.Millisecond
 	defaultAppEffectStopTimeout     = 750 * time.Millisecond
 	matrixEffectPaletteMaxColors    = 16
 	matrixEffectPaletteHueBuckets   = 16
@@ -276,7 +278,7 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	})
 	t.storeCachedDevice(captured)
 	t.storeAppEffect(req.Device.Serial, runningAppEffect{effect: req.Effect, cancel: cancel, done: done, previous: captured})
-	go t.runAppDeviceEffect(runCtx, req.Device.Serial, req.Effect, lifxeffects.NewRunner(effect, renderer, defaultAppEffectStep), done)
+	go t.runAppDeviceEffect(runCtx, req.Device.Serial, req.Effect, lifxeffects.NewRunner(effect, renderer, appEffectStep(req, lifxDevice)), done)
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(req.Effect)}, nil
 }
 
@@ -322,6 +324,31 @@ func appEffectCapabilities(device lifxdevice.Device) lifxeffects.Capabilities {
 func appEffectSnakeSize(device lifxdevice.Device) int {
 	width := appEffectCapabilities(device).Width
 	return min(max(width/2, 4), 16)
+}
+
+func appEffectStep(req StartDeviceEffectRequest, device lifxdevice.Device) time.Duration {
+	if req.SpeedMS <= 0 {
+		return defaultAppEffectStep
+	}
+	switch req.Effect {
+	case DeviceEffectSnake:
+		caps := appEffectCapabilities(device)
+		snakeSize := min(max(max(caps.Width, 1)/2, 4), 16)
+		steps := max(caps.Width, 1)*max(caps.Height, 1) + snakeSize
+		return clampDuration(time.Duration(req.SpeedMS)*time.Millisecond/time.Duration(max(steps, 1)), minAppEffectStep, maxAppEffectStep)
+	default:
+		return defaultAppEffectStep
+	}
+}
+
+func clampDuration(value, minValue, maxValue time.Duration) time.Duration {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
 }
 
 func appEffectPrimaryColor(device Device) lifxeffects.Color {

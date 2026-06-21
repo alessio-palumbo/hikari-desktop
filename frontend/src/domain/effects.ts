@@ -2,10 +2,13 @@ import { DeviceKind, type Device } from './lifx.js';
 
 export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake';
 
-export interface FirmwareEffectDefinition {
+export type DeviceEffectSource = 'firmware' | 'app';
+
+export interface DeviceEffectDefinition {
   id: DeviceEffect;
   label: string;
   description: string;
+  source: DeviceEffectSource;
   deviceKinds: Device['kind'][];
   minFirmware?: string;
   speed: EffectSpeedDefinition;
@@ -17,11 +20,12 @@ export interface EffectSpeedDefinition {
   defaultMs: number;
 }
 
-export const firmwareEffects: FirmwareEffectDefinition[] = [
+export const deviceEffects: DeviceEffectDefinition[] = [
   {
     id: 'move',
     label: 'Move',
     description: 'Animated zone sweep',
+    source: 'firmware',
     deviceKinds: [DeviceKind.Multizone],
     speed: { minMs: 1000, maxMs: 60000, defaultMs: 20000 },
   },
@@ -29,6 +33,7 @@ export const firmwareEffects: FirmwareEffectDefinition[] = [
     id: 'flame',
     label: 'Flame',
     description: 'Warm flickering motion',
+    source: 'firmware',
     deviceKinds: [DeviceKind.Matrix],
     speed: { minMs: 1000, maxMs: 25000, defaultMs: 3000 },
   },
@@ -36,6 +41,7 @@ export const firmwareEffects: FirmwareEffectDefinition[] = [
     id: 'morph',
     label: 'Morph',
     description: 'Smooth palette drift',
+    source: 'firmware',
     deviceKinds: [DeviceKind.Matrix],
     speed: { minMs: 1000, maxMs: 25000, defaultMs: 3000 },
   },
@@ -43,6 +49,7 @@ export const firmwareEffects: FirmwareEffectDefinition[] = [
     id: 'clouds',
     label: 'Clouds',
     description: 'Soft sky movement',
+    source: 'firmware',
     deviceKinds: [DeviceKind.Matrix],
     minFirmware: '4.8',
     speed: { minMs: 1000, maxMs: 100000, defaultMs: 100000 },
@@ -50,17 +57,22 @@ export const firmwareEffects: FirmwareEffectDefinition[] = [
   {
     id: 'snake',
     label: 'Snake',
-    description: 'App-rendered matrix trail',
+    description: 'Hikari-rendered matrix trail',
+    source: 'app',
     deviceKinds: [DeviceKind.Matrix],
-    speed: { minMs: 1000, maxMs: 25000, defaultMs: 3000 },
+    speed: { minMs: 5000, maxMs: 30000, defaultMs: 12000 },
   },
 ];
 
-export function supportedFirmwareEffects(device: Device): FirmwareEffectDefinition[] {
-  return firmwareEffects.filter((effect) => effect.deviceKinds.includes(device.kind) && firmwareSupported(device.firmware, effect.minFirmware));
+export function supportedDeviceEffects(device: Device): DeviceEffectDefinition[] {
+  return deviceEffects.filter((effect) => effect.deviceKinds.includes(device.kind) && firmwareSupported(device.firmware, effect.minFirmware));
 }
 
-export function defaultEffectSpeedMs(effects: FirmwareEffectDefinition[]): number {
+export function supportedFirmwareEffects(device: Device): DeviceEffectDefinition[] {
+  return supportedDeviceEffects(device);
+}
+
+export function defaultEffectSpeedMs(effects: DeviceEffectDefinition[]): number {
   return effects[0]?.speed.defaultMs ?? 5000;
 }
 

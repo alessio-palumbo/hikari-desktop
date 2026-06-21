@@ -5,9 +5,9 @@ import {
   defaultEffectSpeedMs,
   formatEffectSpeed,
   speedToUnit,
-  supportedFirmwareEffects,
+  supportedDeviceEffects,
+  type DeviceEffectDefinition,
   type DeviceEffect,
-  type FirmwareEffectDefinition,
   unitToSpeedMs,
 } from '../domain/effects';
 import { DeviceKind, hsl, previewLightness, previewOpacity, type Device, type HslColor } from '../domain/lifx';
@@ -266,7 +266,7 @@ function EffectControls({
   onStart: (effect: DeviceEffect, speedMs: number) => void;
   onStop: () => void;
 }) {
-  const effects = supportedFirmwareEffects(device);
+  const effects = supportedDeviceEffects(device);
   const running = status?.running ?? false;
   const loading = status?.loading ?? false;
   const [selectedEffect, setSelectedEffect] = useState<DeviceEffect | undefined>();
@@ -279,39 +279,47 @@ function EffectControls({
 
   return (
     <section className="effect-section">
-      <div className="effect-header">
-        <span>effect</span>
-        {running ? <span>running</span> : null}
-      </div>
-      {effects.map((effect) => {
-        const effectRunning = running && status?.effect === effect.id;
-        const active = effectRunning || (!running && selectedEffect === effect.id);
-        const speedMs = effectSpeeds[effect.id] ?? effect.speed.defaultMs;
+      {(['firmware', 'app'] as const).map((source) => {
+        const sourceEffects = effects.filter((effect) => effect.source === source);
+        if (!sourceEffects.length) return null;
         return (
-          <EffectOption
-            key={effect.id}
-            effect={effect}
-            active={active}
-            running={effectRunning}
-            loading={loading}
-            speedMs={speedMs}
-            onSpeedChange={(nextSpeedMs) => setEffectSpeeds((current) => ({ ...current, [effect.id]: nextSpeedMs }))}
-            onSelect={() => setSelectedEffect(effect.id)}
-            onStart={onStart}
-            onStop={() => {
-              setSelectedEffect(undefined);
-              onStop();
-            }}
-          />
+          <div className="effect-group" key={source}>
+            <div className="effect-group-label">{source === 'firmware' ? 'device effects' : 'hikari effects'}</div>
+            {sourceEffects.map((effect) => {
+              const effectRunning = running && status?.effect === effect.id;
+              const active = effectRunning || (!running && selectedEffect === effect.id);
+              const speedMs = effectSpeeds[effect.id] ?? effect.speed.defaultMs;
+              return (
+                <EffectOption
+                  key={effect.id}
+                  effect={effect}
+                  active={active}
+                  running={effectRunning}
+                  loading={loading}
+                  speedMs={speedMs}
+                  onSpeedChange={(nextSpeedMs) => setEffectSpeeds((current) => ({ ...current, [effect.id]: nextSpeedMs }))}
+                  onSpeedCommit={(nextSpeedMs) => {
+                    if (effectRunning) onStart(effect.id, nextSpeedMs);
+                  }}
+                  onSelect={() => setSelectedEffect(effect.id)}
+                  onStart={onStart}
+                  onStop={() => {
+                    setSelectedEffect(undefined);
+                    onStop();
+                  }}
+                />
+              );
+            })}
+          </div>
         );
       })}
-      {!effects.length ? <div className="effect-empty">no compatible firmware effects</div> : null}
+      {!effects.length ? <div className="effect-empty">no compatible effects</div> : null}
       {status?.error ? <div className="inspector-error">{status.error}</div> : null}
     </section>
   );
 }
 
-function defaultEffectSpeeds(effects: FirmwareEffectDefinition[]): Record<DeviceEffect, number> {
+function defaultEffectSpeeds(effects: DeviceEffectDefinition[]): Record<DeviceEffect, number> {
   return effects.reduce(
     (speeds, effect) => ({ ...speeds, [effect.id]: effect.speed.defaultMs }),
     {} as Record<DeviceEffect, number>,
@@ -325,21 +333,30 @@ function EffectOption({
   loading,
   speedMs,
   onSpeedChange,
+  onSpeedCommit,
   onSelect,
   onStart,
   onStop,
 }: {
-  effect: FirmwareEffectDefinition;
+  effect: DeviceEffectDefinition;
   active: boolean;
   running: boolean;
   loading: boolean;
   speedMs: number;
   onSpeedChange: (speedMs: number) => void;
+  onSpeedCommit: (speedMs: number) => void;
   onSelect: () => void;
   onStart: (effect: DeviceEffect, speedMs: number) => void;
   onStop: () => void;
 }) {
   const actionLabel = running ? `Stop ${effect.label}` : `Start ${effect.label}`;
+  const committedSpeed = useRef(speedMs);
+  const commitSpeed = (nextSpeedMs: number) => {
+    if (committedSpeed.current === nextSpeedMs) return;
+    committedSpeed.current = nextSpeedMs;
+    onSpeedCommit(nextSpeedMs);
+  };
+
   return (
     <div className="effect-option" data-active={active ? 'true' : 'false'} data-running={running ? 'true' : 'false'} onClick={onSelect}>
       <button
@@ -370,20 +387,44 @@ function EffectOption({
           label={formatEffectSpeed(speedMs)}
           disabled={loading}
           onChange={(value) => onSpeedChange(unitToSpeedMs(value, effect.speed))}
+          onCommit={(value) => commitSpeed(unitToSpeedMs(value, effect.speed))}
         />
       ) : null}
     </div>
   );
 }
 
-function EffectSpeedControl({ value, label, disabled, onChange }: { value: number; label: string; disabled: boolean; onChange: (value: number) => void }) {
+function EffectSpeedControl({
+  value,
+  label,
+  disabled,
+  onChange,
+  onCommit,
+}: {
+  value: number;
+  label: string;
+  disabled: boolean;
+  onChange: (value: number) => void;
+  onCommit: (value: number) => void;
+}) {
   return (
     <label className="effect-speed">
       <span className="effect-speed-label">
         <span>speed</span>
         <span className="mono">{label}</span>
       </span>
-      <input aria-label="Effect speed" type="range" min={0} max={100} value={Math.round(value * 100)} disabled={disabled} onChange={(event) => onChange(Number(event.target.value) / 100)} />
+      <input
+        aria-label="Effect speed"
+        type="range"
+        min={0}
+        max={100}
+        value={Math.round(value * 100)}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value) / 100)}
+        onPointerUp={(event) => onCommit(Number(event.currentTarget.value) / 100)}
+        onKeyUp={(event) => onCommit(Number(event.currentTarget.value) / 100)}
+        onBlur={(event) => onCommit(Number(event.currentTarget.value) / 100)}
+      />
     </label>
   );
 }

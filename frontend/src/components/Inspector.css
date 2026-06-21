@@ -141,6 +141,20 @@
   font-size: 11px;
 }
 
+.effect-group {
+  display: grid;
+  gap: 8px;
+}
+
+.effect-group + .effect-group {
+  margin-top: 2px;
+}
+
+.effect-group-label {
+  color: var(--fg-2);
+  font-size: 11px;
+}
+
 .effect-option {
   display: grid;
   gap: 8px;

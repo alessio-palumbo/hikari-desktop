@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { commandIntent, draftIntent, prepareDeviceCommand } from '../dist-test/domain/commands.js';
 import { activateEditedDevice } from '../dist-test/domain/editor.js';
-import { defaultEffectSpeedMs, formatEffectSpeed, speedToUnit, supportedFirmwareEffects, unitToSpeedMs } from '../dist-test/domain/effects.js';
+import { defaultEffectSpeedMs, formatEffectSpeed, speedToUnit, supportedDeviceEffects, supportedFirmwareEffects, unitToSpeedMs } from '../dist-test/domain/effects.js';
 import { DeviceKind, previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, paintMatrixBrush, paintMatrixFill, paintMatrixGradient, paintMultizoneBrush, paintMultizoneFill } from '../dist-test/domain/paint.js';
 import { createPendingState, isPendingConfirmed, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
@@ -325,16 +325,25 @@ test('firmware effect catalogue filters by device kind and firmware', () => {
   assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds', 'snake']);
 });
 
+test('effect catalogue separates firmware and hikari-rendered effects', () => {
+  const effects = supportedDeviceEffects({ ...matrixDevice(), firmware: '4.8' });
+
+  assert.deepEqual(effects.filter((effect) => effect.source === 'firmware').map((effect) => effect.id), ['flame', 'morph', 'clouds']);
+  assert.deepEqual(effects.filter((effect) => effect.source === 'app').map((effect) => effect.id), ['snake']);
+});
+
 test('firmware effect speed helpers expose defaults and ranges', () => {
   const effects = supportedFirmwareEffects({ ...matrixDevice(), firmware: '4.8' });
   const flame = effects.find((effect) => effect.id === 'flame').speed;
   const morph = effects.find((effect) => effect.id === 'morph').speed;
   const clouds = effects.find((effect) => effect.id === 'clouds').speed;
+  const snake = effects.find((effect) => effect.id === 'snake').speed;
 
   assert.equal(defaultEffectSpeedMs(effects), 3000);
   assert.deepEqual(flame, { minMs: 1000, maxMs: 25000, defaultMs: 3000 });
   assert.deepEqual(morph, { minMs: 1000, maxMs: 25000, defaultMs: 3000 });
   assert.deepEqual(clouds, { minMs: 1000, maxMs: 100000, defaultMs: 100000 });
+  assert.deepEqual(snake, { minMs: 5000, maxMs: 30000, defaultMs: 12000 });
   assert.equal(unitToSpeedMs(0.5, morph), 13000);
   assert.equal(speedToUnit(13000, morph), 0.5);
   assert.equal(formatEffectSpeed(3000), '3s');
