@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, Info, LogOut, Pipette, Play, RotateCcw, Square, Undo2, Wand2, X } from 'lucide-react';
 import type { DeviceEffectStatus } from '../backend/api';
 import {
@@ -145,7 +145,7 @@ export function Inspector(props: InspectorProps) {
       editRequestedRef.current = true;
       props.onEnterEditMode();
     }
-    if (next === 'gradient' && tool !== 'gradient') setGradientStops({});
+    if (next === 'gradient' && tool !== 'gradient') setGradientStops({ start: activePaintColor });
     setTool(next);
   };
 
@@ -153,7 +153,12 @@ export function Inspector(props: InspectorProps) {
     if (!props.editing || tool !== 'gradient') return;
     setGradientStops((current) => {
       if (!current.start) return { start: color };
-      return { start: current.end ?? current.start, end: color };
+      if (!current.end) {
+        if (sameGradientColor(current.start, color)) return current;
+        return { start: current.start, end: color };
+      }
+      if (sameGradientColor(current.end, color)) return current;
+      return { start: current.end, end: color };
     });
   };
 
@@ -502,12 +507,13 @@ function GradientControls({
           { id: 'n', label: 'Up', icon: ArrowUp },
           { id: 'ne', label: 'Up right', icon: ArrowUpRight },
         ];
+  const stopStyle = (color: HslColor | undefined): CSSProperties | undefined => (color ? { backgroundColor: gradientStopColor(color) } : undefined);
   return (
     <div className="gradient-controls">
       <div className="gradient-stops" aria-label="Gradient colors">
-        <span className="gradient-stop" data-empty={!stops.start ? 'true' : 'false'} style={{ background: stops.start ? hsl(stops.start) : undefined }} />
+        <span className="gradient-stop" data-empty={!stops.start ? 'true' : 'false'} data-selected={stops.start ? 'true' : 'false'} style={stopStyle(stops.start)} />
         <span className="gradient-arrow" />
-        <span className="gradient-stop" data-empty={!stops.end ? 'true' : 'false'} style={{ background: stops.end ? hsl(stops.end) : undefined }} />
+        <span className="gradient-stop" data-empty={!stops.end ? 'true' : 'false'} data-selected={stops.end ? 'true' : 'false'} style={stopStyle(stops.end)} />
       </div>
       <div className="gradient-directions" data-kind={deviceKind} aria-label="Gradient direction">
         {directions.map((item) => {
@@ -521,6 +527,14 @@ function GradientControls({
       </div>
     </div>
   );
+}
+
+function gradientStopColor(color: HslColor): string {
+  return hsl(color, previewLightness(color, color.l || 0.65, true));
+}
+
+function sameGradientColor(a: HslColor, b: HslColor): boolean {
+  return Math.abs(a.h - b.h) < 0.5 && Math.abs(a.s - b.s) < 0.005 && Math.abs(a.l - b.l) < 0.005 && (a.kelvin ?? 0) === (b.kelvin ?? 0);
 }
 
 export function ModeToggle({

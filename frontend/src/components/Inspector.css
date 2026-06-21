@@ -442,6 +442,10 @@
   background: oklch(1 0 0 / 0.035);
 }
 
+.gradient-stop[data-selected="true"] {
+  border-color: var(--line-strong);
+}
+
 .gradient-stop[data-empty="true"] {
   background:
     linear-gradient(135deg, transparent 47%, var(--fg-4) 48%, var(--fg-4) 52%, transparent 53%),
