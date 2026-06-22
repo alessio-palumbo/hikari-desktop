@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { commandIntent, draftIntent, prepareDeviceCommand } from '../dist-test/domain/commands.js';
 import { activateEditedDevice } from '../dist-test/domain/editor.js';
 import { defaultEffectSpeedMs, formatEffectSpeed, speedToUnit, supportedDeviceEffects, supportedFirmwareEffects, unitToSpeedMs } from '../dist-test/domain/effects.js';
-import { DeviceKind, previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
+import { DeviceKind, kelvinCss, previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl, paintMatrixBrush, paintMatrixFill, paintMatrixGradient, paintMultizoneBrush, paintMultizoneFill, paintMultizoneGradient } from '../dist-test/domain/paint.js';
 import { createPendingState, isPendingConfirmed, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
 
@@ -151,6 +151,18 @@ test('preview lightness keeps maximum kelvin whites below washout range', () => 
   const color = { h: 0, s: 0, l: 0, kelvin: 6500 };
 
   assert.ok(previewLightness(color, 1, true) < 0.8);
+});
+
+test('kelvin css uses softened rgb temperature colors', () => {
+  const warm = rgbChannels(kelvinCss(2000));
+  const neutral = rgbChannels(kelvinCss(4500));
+  const cool = rgbChannels(kelvinCss(9000));
+
+  assert.ok(warm.r > warm.g);
+  assert.ok(warm.g > warm.b);
+  assert.ok(Math.abs(neutral.r - neutral.b) < 55);
+  assert.ok(cool.b > cool.g);
+  assert.ok(cool.g >= cool.r);
 });
 
 test('preview opacity only dims off devices', () => {
@@ -389,4 +401,10 @@ function matrixDevice() {
       { id: 1, x: 2, y: 0, w: 2, h: 1, rows: [{ cols: 2, offset: 0 }], pixels: [{ h: 210, s: 0.8, l: 0.5 }, { h: 220, s: 0.8, l: 0.5 }] },
     ],
   };
+}
+
+function rgbChannels(css) {
+  const match = css.match(/^rgb\((\d+) (\d+) (\d+)\)$/);
+  assert.ok(match, `expected rgb() color, got ${css}`);
+  return { r: Number(match[1]), g: Number(match[2]), b: Number(match[3]) };
 }

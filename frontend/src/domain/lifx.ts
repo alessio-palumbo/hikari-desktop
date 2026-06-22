@@ -84,10 +84,38 @@ export function hsl(color: HslColor, lightness?: number): string {
 }
 
 export function kelvinCss(kelvin: number, lightness = 0.72): string {
-  const t = Math.max(0, Math.min(1, (kelvin - 1500) / 7500));
-  const hue = 28 + (210 - 28) * t;
-  const saturation = 0.72 - 0.38 * t;
-  return `hsl(${hue} ${Math.round(saturation * 100)}% ${Math.round(lightness * 100)}%)`;
+  const [red, green, blue] = kelvinRgb(kelvin);
+  const displayLightness = Math.max(0, Math.min(1, lightness));
+  const scale = 0.42 + displayLightness * 0.82;
+  return `rgb(${clampRgb(red * scale)} ${clampRgb(green * scale)} ${clampRgb(blue * scale)})`;
+}
+
+function kelvinRgb(kelvin: number): [number, number, number] {
+  const temperature = Math.max(10, Math.min(400, kelvin / 100));
+  let red: number;
+  let green: number;
+  let blue: number;
+
+  if (temperature <= 66) {
+    red = 255;
+    green = 99.4708025861 * Math.log(temperature) - 161.1195681661;
+    blue = temperature <= 19 ? 0 : 138.5177312231 * Math.log(temperature - 10) - 305.0447927307;
+  } else {
+    red = 329.698727446 * Math.pow(temperature - 60, -0.1332047592);
+    green = 288.1221695283 * Math.pow(temperature - 60, -0.0755148492);
+    blue = 255;
+  }
+
+  // LIFX white rendering should read as warm/cool white, not saturated orange/blue.
+  return [softenWhite(red), softenWhite(green), softenWhite(blue)];
+}
+
+function softenWhite(channel: number): number {
+  return clampRgb(channel * 0.62 + 255 * 0.38);
+}
+
+function clampRgb(value: number): number {
+  return Math.round(Math.max(0, Math.min(255, value)));
 }
 
 export function previewLightness(color: HslColor, brightness: number, on = true): number {
