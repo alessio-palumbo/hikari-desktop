@@ -60,12 +60,14 @@ export function RowChevron() {
 interface ColorWheelProps {
   color: HslColor;
   onChange: (color: HslColor) => void;
+  onCommit?: (color: HslColor) => void;
   size?: number;
 }
 
-export function ColorWheel({ color, onChange, size = 200 }: ColorWheelProps) {
+export function ColorWheel({ color, onChange, onCommit, size = 200 }: ColorWheelProps) {
   const ref = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const pickedColorRef = useRef<HslColor | null>(null);
   const [dragging, setDragging] = useState(false);
   const radius = size / 2 - 14;
   const radians = ((color.h - 90) * Math.PI) / 180;
@@ -82,7 +84,9 @@ export function ColorWheel({ color, onChange, size = 200 }: ColorWheelProps) {
       const dy = clientY - centerY;
       const hue = (Math.atan2(dy, dx) * 180) / Math.PI + 450;
       const saturation = Math.min(1, Math.sqrt(dx * dx + dy * dy) / radius);
-      onChange({ h: hue % 360, s: saturation, l: 0.55 });
+      const next = { h: hue % 360, s: saturation, l: 0.55 };
+      pickedColorRef.current = next;
+      onChange(next);
     },
     [onChange, radius],
   );
@@ -106,10 +110,13 @@ export function ColorWheel({ color, onChange, size = 200 }: ColorWheelProps) {
         draggingRef.current = false;
         setDragging(false);
         event.currentTarget.releasePointerCapture(event.pointerId);
+        if (pickedColorRef.current) onCommit?.(pickedColorRef.current);
+        pickedColorRef.current = null;
       }}
       onPointerCancel={() => {
         draggingRef.current = false;
         setDragging(false);
+        pickedColorRef.current = null;
       }}
       role="slider"
       aria-label="Color"

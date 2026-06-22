@@ -4,7 +4,7 @@ import { commandIntent, draftIntent, prepareDeviceCommand } from '../dist-test/d
 import { activateEditedDevice } from '../dist-test/domain/editor.js';
 import { defaultEffectSpeedMs, formatEffectSpeed, speedToUnit, supportedDeviceEffects, supportedFirmwareEffects, unitToSpeedMs } from '../dist-test/domain/effects.js';
 import { DeviceKind, previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
-import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, paintMatrixBrush, paintMatrixFill, paintMatrixGradient, paintMultizoneBrush, paintMultizoneFill } from '../dist-test/domain/paint.js';
+import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl, paintMatrixBrush, paintMatrixFill, paintMatrixGradient, paintMultizoneBrush, paintMultizoneFill, paintMultizoneGradient } from '../dist-test/domain/paint.js';
 import { createPendingState, isPendingConfirmed, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
 
 const base = {
@@ -303,6 +303,30 @@ test('matrix gradient is deterministic and only targets one chain entry', () => 
   assert.deepEqual(first, second);
   assert.deepEqual(first.chain[0].pixels, device.chain[0].pixels);
   assert.deepEqual(first.chain[1].pixels, [stops.start, stops.end]);
+});
+
+test('matrix gradient preserves kelvin colors for white stops', () => {
+  const device = matrixDevice();
+  const stops = { start: kelvinToHsl(2200), end: kelvinToHsl(6500) };
+
+  const painted = paintMatrixGradient(device, 1, stops, 'e');
+
+  assert.equal(painted.chain[1].pixels[0].kelvin, 2200);
+  assert.equal(painted.chain[1].pixels[0].s, 0);
+  assert.equal(painted.chain[1].pixels[1].kelvin, 6500);
+  assert.equal(painted.chain[1].pixels[1].s, 0);
+});
+
+test('multizone gradient interpolates kelvin colors for white stops', () => {
+  const device = { ...base.devices[0], zones: [{ h: 0, s: 0, l: 0.72 }, { h: 0, s: 0, l: 0.72 }, { h: 0, s: 0, l: 0.72 }] };
+  const stops = { start: kelvinToHsl(2000), end: kelvinToHsl(6000) };
+
+  const painted = paintMultizoneGradient(device, stops, 'e');
+
+  assert.equal(painted.zones[0].kelvin, 2000);
+  assert.equal(painted.zones[1].kelvin, 4000);
+  assert.equal(painted.zones[2].kelvin, 6000);
+  assert.deepEqual(painted.zones.map((zone) => zone.s), [0, 0, 0]);
 });
 
 test('initial paint color uses matrix pixels instead of top-level color', () => {

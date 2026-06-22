@@ -148,9 +148,19 @@ function gradientAmount(x: number, y: number, width: number, height: number, dir
 
 function interpolateHsl(from: HslColor, to: HslColor, amount: number): HslColor {
   const t = Math.max(0, Math.min(1, amount));
+  if (isKelvinColor(from) && isKelvinColor(to)) {
+    const kelvin = Math.round((from.kelvin ?? 3500) + ((to.kelvin ?? 3500) - (from.kelvin ?? 3500)) * t);
+    return { ...kelvinToHsl(kelvin), l: from.l + (to.l - from.l) * t };
+  }
+  if (t <= 0 && isKelvinColor(from)) return from;
+  if (t >= 1 && isKelvinColor(to)) return to;
   return {
     h: from.h + (to.h - from.h) * t,
     s: from.s + (to.s - from.s) * t,
     l: from.l + (to.l - from.l) * t,
   };
+}
+
+function isKelvinColor(color: HslColor): boolean {
+  return color.s === 0 && color.kelvin != null;
 }

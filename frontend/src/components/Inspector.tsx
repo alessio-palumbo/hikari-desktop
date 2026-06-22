@@ -107,8 +107,11 @@ export function Inspector(props: InspectorProps) {
   const setColor = (color: HslColor) => {
     const next = { ...color, l: brightnessValue };
     setPaintColor(next);
-    recordGradientColor(next);
     if (!props.editing && !editRequestedRef.current && hasColor) props.onChange(applyDeviceColor(device, next));
+  };
+
+  const commitColor = (color: HslColor) => {
+    recordGradientColor({ ...color, l: brightnessValue });
   };
 
   const setKelvin = (value: number) => {
@@ -116,8 +119,12 @@ export function Inspector(props: InspectorProps) {
     const color = { ...kelvinToHsl(nextKelvin), l: brightnessValue };
     setWhiteKelvin(nextKelvin);
     setWhiteColor(color);
-    recordGradientColor(color);
     if (!props.editing && !editRequestedRef.current) props.onChange(applyDeviceColor(device, color));
+  };
+
+  const commitKelvin = (value: number) => {
+    const nextKelvin = Math.round(kelvinMin + value * (kelvinMax - kelvinMin));
+    recordGradientColor({ ...kelvinToHsl(nextKelvin), l: brightnessValue });
   };
 
   const setBrightness = (value: number) => {
@@ -188,13 +195,13 @@ export function Inspector(props: InspectorProps) {
       {mode === 'color' ? (
         <section className="control-section">
           <div className="color-wheel-wrap">
-            <ColorWheel color={paintColor} onChange={setColor} />
+            <ColorWheel color={paintColor} onChange={setColor} onCommit={commitColor} />
           </div>
         </section>
       ) : null}
 
       {mode === 'white' ? (
-        <WhiteScale value={whiteValue} kelvinMin={kelvinMin} kelvinMax={kelvinMax} onChange={setKelvin} />
+        <WhiteScale value={whiteValue} kelvinMin={kelvinMin} kelvinMax={kelvinMax} onChange={setKelvin} onCommit={commitKelvin} />
       ) : null}
 
       {mode !== 'effects' ? <Slider label={props.editing ? 'paint brightness' : 'brightness'} value={brightnessValue} onChange={setBrightness} /> : null}
@@ -530,7 +537,15 @@ function GradientControls({
 }
 
 function gradientStopColor(color: HslColor): string {
-  return hsl(color, previewLightness(color, color.l || 0.65, true));
+  if (color.kelvin && color.s === 0) return kelvinStopColor(color.kelvin);
+  return hsl(color, Math.max(0.58, previewLightness(color, 0.85, true)));
+}
+
+function kelvinStopColor(kelvin: number): string {
+  const t = Math.max(0, Math.min(1, (kelvin - 1500) / 7500));
+  const hue = 38 + (210 - 38) * t;
+  const saturation = 24 - 10 * t;
+  return `hsl(${hue} ${Math.round(saturation)}% 82%)`;
 }
 
 function sameGradientColor(a: HslColor, b: HslColor): boolean {
@@ -581,7 +596,20 @@ function ToolToggle({ value, onChange }: { value: PaintTool | null; onChange: (v
   );
 }
 
-export function WhiteScale({ value, kelvinMin, kelvinMax, onChange }: { value: number; kelvinMin: number; kelvinMax: number; onChange: (value: number) => void }) {
+export function WhiteScale({
+  value,
+  kelvinMin,
+  kelvinMax,
+  onChange,
+  onCommit,
+}: {
+  value: number;
+  kelvinMin: number;
+  kelvinMax: number;
+  onChange: (value: number) => void;
+  onCommit?: (value: number) => void;
+}) {
+  const commit = (raw: string) => onCommit?.(Number(raw) / 1000);
   return (
     <section className="control-section">
       <div className="temperature-label">
@@ -595,6 +623,9 @@ export function WhiteScale({ value, kelvinMin, kelvinMax, onChange }: { value: n
         max={1000}
         value={Math.round(value * 1000)}
         onChange={(event) => onChange(Number(event.target.value) / 1000)}
+        onPointerUp={(event) => commit(event.currentTarget.value)}
+        onKeyUp={(event) => commit(event.currentTarget.value)}
+        onBlur={(event) => commit(event.currentTarget.value)}
         aria-label="Temperature"
       />
     </section>
