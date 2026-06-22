@@ -373,6 +373,12 @@ func newAppEffect(effect DeviceEffect, lifxDevice lifxdevice.Device, previous De
 			Capabilities: caps,
 			Colors:       appEffectPalette(previous),
 		}), nil
+	case DeviceEffectWave:
+		return lifxeffects.NewWave(lifxeffects.WaveConfig{
+			Capabilities: caps,
+			Palette:      appEffectWavePalette(previous),
+			Waves:        2,
+		}), nil
 	default:
 		return nil, fmt.Errorf("effect %q is not supported as an app effect", effect)
 	}
@@ -413,7 +419,7 @@ func appEffectStep(req StartDeviceEffectRequest, device lifxdevice.Device) time.
 		caps := appEffectCapabilities(device)
 		steps := max(caps.Width, 1) * max(caps.Height, 1)
 		return clampDuration(time.Duration(req.SpeedMS)*time.Millisecond/time.Duration(max(steps, 1)), minAppEffectStep, maxAppEffectStep)
-	case DeviceEffectWaterfall:
+	case DeviceEffectWaterfall, DeviceEffectWave:
 		caps := appEffectCapabilities(device)
 		return clampDuration(time.Duration(req.SpeedMS)*time.Millisecond/time.Duration(max(caps.Height, 1)), minAppEffectStep, maxAppEffectStep)
 	case DeviceEffectFrames:
@@ -457,6 +463,23 @@ func appEffectPalette(device Device) []lifxeffects.Color {
 	palette := make([]lifxeffects.Color, 0, len(colors))
 	for _, color := range colors {
 		palette = append(palette, hslColorToEffectColor(color, device.Brightness, device.Kelvin, device.Capability))
+	}
+	return palette
+}
+
+func appEffectWavePalette(device Device) lifxeffects.Palette {
+	colors := appEffectPalette(device)
+	if len(colors) == 0 {
+		return lifxeffects.Palette{}
+	}
+	midpoint := max(1, len(colors)/2)
+	palette := lifxeffects.Palette{
+		Name:        "hikari-device",
+		Base:        append([]lifxeffects.Color(nil), colors[:midpoint]...),
+		Backgrounds: []lifxeffects.Color{colors[0]},
+	}
+	if midpoint < len(colors) {
+		palette.Accents = append([]lifxeffects.Color(nil), colors[midpoint:]...)
 	}
 	return palette
 }
@@ -539,7 +562,7 @@ func lifxDeviceBySerial(devices []lifxdevice.Device, serial lifxdevice.Serial) (
 
 func isAppEffect(effect DeviceEffect) bool {
 	switch effect {
-	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets:
+	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave:
 		return true
 	default:
 		return false

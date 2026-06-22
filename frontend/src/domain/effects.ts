@@ -1,6 +1,6 @@
 import { DeviceKind, type Device } from './lifx.js';
 
-export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets';
+export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets' | 'wave';
 
 export type DeviceEffectSource = 'firmware' | 'app';
 
@@ -90,6 +90,14 @@ export const deviceEffects: DeviceEffectDefinition[] = [
     id: 'rockets',
     label: 'Rockets',
     description: 'Fast pixel launch path',
+    source: 'app',
+    deviceKinds: [DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 1000 },
+  },
+  {
+    id: 'wave',
+    label: 'Wave',
+    description: 'Rolling matrix wave',
     source: 'app',
     deviceKinds: [DeviceKind.Matrix],
     speed: { minMs: 1000, maxMs: 30000, defaultMs: 1000 },

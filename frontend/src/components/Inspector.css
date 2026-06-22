@@ -333,6 +333,20 @@
   transform-origin: top;
 }
 
+.effect-swatch[data-effect="wave"] {
+  background:
+    linear-gradient(180deg, oklch(0.18 0.02 245), oklch(0.12 0.015 245));
+}
+
+.effect-swatch[data-effect="wave"]::before {
+  inset: 7px 5px;
+  background:
+    radial-gradient(ellipse at 50% 82%, transparent 0 40%, oklch(0.72 0.13 210) 42% 52%, transparent 54%),
+    radial-gradient(ellipse at 50% 58%, transparent 0 40%, oklch(0.78 0.12 180) 42% 52%, transparent 54%),
+    radial-gradient(ellipse at 50% 34%, transparent 0 40%, oklch(0.82 0.11 145) 42% 52%, transparent 54%);
+  background-size: 100% 100%;
+}
+
 .effect-option[data-active="true"] .effect-swatch[data-effect="move"] {
   animation: fx-move 1.6s linear infinite;
 }
@@ -365,6 +379,10 @@
 .effect-option[data-active="true"] .effect-swatch[data-effect="rockets"]::before,
 .effect-option[data-active="true"] .effect-swatch[data-effect="rockets"]::after {
   animation: fx-rockets 0.75s ease-in infinite;
+}
+
+.effect-option[data-active="true"] .effect-swatch[data-effect="wave"]::before {
+  animation: fx-wave 1s ease-in-out infinite alternate;
 }
 
 .effect-action {
@@ -482,6 +500,15 @@
   to {
     opacity: 1;
     transform: translate(7px, -7px) rotate(45deg);
+  }
+}
+
+@keyframes fx-wave {
+  from {
+    transform: translateY(3px);
+  }
+  to {
+    transform: translateY(-3px);
   }
 }
 

@@ -102,6 +102,7 @@ const (
 	DeviceEffectFrames    DeviceEffect = "concentric_frames"
 	DeviceEffectWaterfall DeviceEffect = "waterfall"
 	DeviceEffectRockets   DeviceEffect = "rockets"
+	DeviceEffectWave      DeviceEffect = "wave"
 )
 
 func emptyDeviceSnapshot() DeviceSnapshot {
