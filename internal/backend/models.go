@@ -98,6 +98,7 @@ const (
 	DeviceKindSingle    DeviceKind = "single"
 	DeviceKindMultizone DeviceKind = "multizone"
 	DeviceKindMatrix    DeviceKind = "matrix"
+	DeviceKindSwitch    DeviceKind = "switch"
 )
 
 type DeviceCommandIntent string

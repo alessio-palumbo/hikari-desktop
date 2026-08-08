@@ -1,5 +1,5 @@
 import type { DeviceEffectStatus } from '../backend/api';
-import type { Device, Group } from '../domain/lifx';
+import { isLightDevice, type Device, type Group } from '../domain/lifx';
 import { DevicePreview } from './DevicePreview';
 import { PowerDot, RowChevron, Slider } from './primitives';
 import './DeviceList.css';
@@ -37,8 +37,9 @@ export function DeviceList({
   onDeviceChange,
   onMasterChange,
 }: DeviceListProps) {
-  const onCount = devices.filter((device) => device.on).length;
-  const avgBrightness = devices.length ? devices.reduce((sum, device) => sum + device.brightness, 0) / devices.length : 0;
+  const lightDevices = devices.filter(isLightDevice);
+  const onCount = lightDevices.filter((device) => device.on).length;
+  const avgBrightness = lightDevices.length ? lightDevices.reduce((sum, device) => sum + device.brightness, 0) / lightDevices.length : 0;
   const searchSections = groups
     .map((entry) => ({ group: entry, devices: devices.filter((device) => device.groupId === entry.id) }))
     .filter((section) => section.devices.length > 0);
@@ -59,8 +60,8 @@ export function DeviceList({
               <h1>{group?.name.toLowerCase() ?? 'no group'}</h1>
             </div>
             <div className="group-controls">
-              <PowerDot on={onCount > 0} onChange={(next) => onMasterChange(next)} />
-              <Slider value={avgBrightness} onChange={(value) => onMasterChange(value > 0, value)} />
+              <PowerDot disabled={!lightDevices.length} on={onCount > 0} onChange={(next) => onMasterChange(next)} />
+              <Slider disabled={!lightDevices.length} value={avgBrightness} onChange={(value) => onMasterChange(value > 0, value)} />
               <button className="group-inspector-button" type="button" aria-label="Group controls" disabled={!group || !devices.length} data-active={groupInspecting} onClick={onGroupInspect}>
                 <RowChevron />
               </button>
@@ -90,7 +91,7 @@ export function DeviceList({
                 </div>
               </div>
             ))}
-            {!devices.length ? <div className="empty-list">no lights matched</div> : null}
+            {!devices.length ? <div className="empty-list">no devices matched</div> : null}
           </section>
         ) : (
           <section className="device-list">
@@ -105,7 +106,7 @@ export function DeviceList({
                 onChange={onDeviceChange}
               />
             ))}
-            {!devices.length ? <div className="empty-list">{refreshing ? 'discovering LAN devices' : group ? 'no LAN lights in this group' : 'no LAN devices found'}</div> : null}
+            {!devices.length ? <div className="empty-list">{refreshing ? 'discovering LAN devices' : group ? 'no LAN devices in this group' : 'no LAN devices found'}</div> : null}
           </section>
         )}
       </div>
@@ -128,10 +129,11 @@ function DeviceRow({
   onSelect: (serial: string) => void;
   onChange: (device: Device) => void;
 }) {
+  const isLight = isLightDevice(device);
   const disabled = status?.loading || !device.online;
   return (
     <div className="device-row" data-selected={selected} data-offline={!device.online ? 'true' : 'false'} onClick={() => onSelect(device.serial)}>
-      <PowerDot on={device.on} disabled={disabled} onChange={(next) => onChange({ ...device, on: next })} />
+      {isLight ? <PowerDot on={device.on} disabled={disabled} onChange={(next) => onChange({ ...device, on: next })} /> : <span className="switch-row-icon" aria-hidden="true" />}
       <div className="device-name">
         <strong>{device.name}</strong>
         {effectStatus?.running ? <EffectRunning effect={effectStatus.effect ?? 'effect'} /> : <span>{status?.error ? status.error : !device.online ? 'offline' : device.model}</span>}
@@ -140,14 +142,20 @@ function DeviceRow({
         <DevicePreview device={device} />
       </div>
       <div className="row-slider" onClick={(event) => event.stopPropagation()}>
-        <Slider disabled={disabled} value={device.brightness} onChange={(value) => onChange({ ...device, brightness: value, on: value > 0 })} />
+        {isLight ? <Slider disabled={disabled} value={device.brightness} onChange={(value) => onChange({ ...device, brightness: value, on: value > 0 })} /> : null}
       </div>
-      <span className="device-brightness mono">{status?.loading ? '...' : device.on ? `${Math.round(device.brightness * 100)}%` : 'off'}</span>
+      <span className="device-brightness mono">{deviceRowStatus(device, isLight, status)}</span>
       <span className="row-chevron">
         <RowChevron />
       </span>
     </div>
   );
+}
+
+function deviceRowStatus(device: Device, isLight: boolean, status?: { loading?: boolean; error?: string }): string {
+  if (status?.loading) return "...";
+  if (!isLight) return "switch";
+  return device.on ? Math.round(device.brightness * 100) + "%" : "off";
 }
 
 function EffectRunning({ effect }: { effect: string }) {

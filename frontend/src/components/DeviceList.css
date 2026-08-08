@@ -136,6 +136,26 @@
   opacity: 0.58;
 }
 
+.switch-row-icon {
+  display: block;
+  width: 15px;
+  height: 22px;
+  justify-self: center;
+  border: 1px solid oklch(1 0 0 / 0.12);
+  border-radius: 4px;
+  background: oklch(1 0 0 / 0.035);
+}
+
+.switch-row-icon::after {
+  content: "";
+  display: block;
+  width: 4px;
+  height: 4px;
+  margin: 4px auto 0;
+  border-radius: 999px;
+  background: var(--fg-4);
+}
+
 .device-name {
   min-width: 0;
   display: grid;

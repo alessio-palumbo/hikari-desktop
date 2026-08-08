@@ -2,6 +2,10 @@ import { DeviceKind, deviceColor, hsl, previewLightness, previewOpacity, type De
 import './DevicePreview.css';
 
 export function DevicePreview({ device }: { device: Device }) {
+  if (device.kind === DeviceKind.Switch) {
+    return <span className="preview-switch" aria-hidden="true"><i /><i /></span>;
+  }
+
   if (device.kind === DeviceKind.Single) {
     const color = deviceColor(device);
     return <span className="preview-single" style={{ background: hsl(color, previewLightness(color, device.brightness, device.on)), opacity: previewOpacity(device.on) }} />;

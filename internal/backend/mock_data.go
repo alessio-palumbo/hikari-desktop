@@ -51,6 +51,11 @@ func MockDeviceSnapshot() DeviceSnapshot {
 				Capability: colorCapability(), Color: &HSLColor{H: 38, S: 0.2, L: 0.85}, Kelvin: 4500,
 			},
 			{
+				GroupID: "kitchen", Serial: serial(0x02b120), Name: "Wall Switch",
+				Model: "LIFX Switch", Kind: DeviceKindSwitch, Online: true, On: false, Brightness: 0,
+				Capability: DeviceCapability{HasColor: false},
+			},
+			{
 				GroupID: "kitchen", Serial: serial(0x02b110), Name: "Under-counter",
 				Model: "Z 24", Kind: DeviceKindMultizone, Online: true, On: false, Brightness: 0.55,
 				ZoneCount:  24,

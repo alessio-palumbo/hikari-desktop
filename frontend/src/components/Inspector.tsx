@@ -10,7 +10,7 @@ import {
   type DeviceEffect,
   unitToSpeedMs,
 } from '../domain/effects';
-import { DeviceKind, hsl, previewLightness, previewOpacity, type Device, type HslColor } from '../domain/lifx';
+import { DeviceKind, hsl, isLightDevice, previewLightness, previewOpacity, type Device, type HslColor } from '../domain/lifx';
 import {
   applyDeviceBrightness,
   applyDeviceColor,
@@ -67,8 +67,9 @@ export function Inspector(props: InspectorProps) {
   const [gradientDirection, setGradientDirection] = useState<GradientDirection>('e');
   const [showInfo, setShowInfo] = useState(false);
   const editRequestedRef = useRef(false);
-  const hasColor = device.capability?.hasColor ?? true;
-  const hasEffects = device.kind !== DeviceKind.Single;
+  const isLight = isLightDevice(device);
+  const hasColor = isLight && (device.capability?.hasColor ?? true);
+  const hasEffects = isLight && device.kind !== DeviceKind.Single;
 
   useEffect(() => {
     editRequestedRef.current = false;
@@ -190,9 +191,11 @@ export function Inspector(props: InspectorProps) {
 
       {showInfo ? <DeviceInfo device={device} /> : null}
 
-      <ModeToggle value={mode} hasColor={hasColor} hasEffects={hasEffects} onChange={setInspectorMode} />
+      {!isLight ? <SwitchDetails device={device} /> : null}
 
-      {mode === 'color' ? (
+      {isLight ? <ModeToggle value={mode} hasColor={hasColor} hasEffects={hasEffects} onChange={setInspectorMode} /> : null}
+
+      {isLight && mode === 'color' ? (
         <section className="control-section">
           <div className="color-wheel-wrap">
             <ColorWheel color={paintColor} onChange={setColor} onCommit={commitColor} />
@@ -200,18 +203,18 @@ export function Inspector(props: InspectorProps) {
         </section>
       ) : null}
 
-      {mode === 'white' ? (
+      {isLight && mode === 'white' ? (
         <WhiteScale value={whiteValue} kelvinMin={kelvinMin} kelvinMax={kelvinMax} onChange={setKelvin} onCommit={commitKelvin} />
       ) : null}
 
-      {mode !== 'effects' ? <Slider label={props.editing ? 'paint brightness' : 'brightness'} value={brightnessValue} onChange={setBrightness} /> : null}
+      {isLight && mode !== 'effects' ? <Slider label={props.editing ? 'paint brightness' : 'brightness'} value={brightnessValue} onChange={setBrightness} /> : null}
       {props.error && mode !== 'effects' ? <div className="inspector-error">{props.error}</div> : null}
 
       {mode === 'effects' && hasEffects ? (
         <EffectControls device={device} status={props.effectStatus} onStart={props.onStartEffect} onStop={props.onStopEffect} />
       ) : null}
 
-      {mode !== 'effects' && device.kind !== DeviceKind.Single ? (
+      {isLight && mode !== 'effects' && device.kind !== DeviceKind.Single ? (
         <section className="edit-tools-section" data-editing={props.editing ? 'true' : 'false'}>
           <div className="edit-tools-header">
             <span>{props.editing ? 'editing layout' : 'layout tools'}</span>
@@ -441,6 +444,21 @@ function EffectSpeedControl({
   );
 }
 
+function SwitchDetails({ device }: { device: Device }) {
+  return (
+    <section className="switch-details">
+      <div className="switch-preview-large" aria-hidden="true">
+        <i />
+        <i />
+      </div>
+      <div>
+        <h3>switch controls</h3>
+        <p>{device.model} relay and button backlight controls will appear here once switch state is available from lifxlan-go.</p>
+      </div>
+    </section>
+  );
+}
+
 function DeviceInfo({ device }: { device: Device }) {
   const rows = [
     ['type', deviceKindLabel(device)],
@@ -478,6 +496,7 @@ function deviceShapeRows(device: Device): string[][] {
 
 function deviceKindLabel(device: Device): string {
   if (device.kind === DeviceKind.Single) return 'single zone';
+  if (device.kind === DeviceKind.Switch) return 'switch';
   return device.kind;
 }
 

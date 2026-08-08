@@ -28,3 +28,30 @@
   position: absolute;
   border-radius: 1px;
 }
+
+.preview-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 18px);
+  gap: 6px;
+  align-items: center;
+}
+
+.preview-switch i {
+  display: block;
+  width: 18px;
+  height: 30px;
+  border: 1px solid oklch(1 0 0 / 0.12);
+  border-radius: 5px;
+  background: oklch(1 0 0 / 0.035);
+  box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.18);
+}
+
+.preview-switch i::after {
+  content: "";
+  display: block;
+  width: 5px;
+  height: 5px;
+  margin: 5px auto 0;
+  border-radius: 999px;
+  background: var(--fg-4);
+}

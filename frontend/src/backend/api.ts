@@ -154,6 +154,17 @@ function mockSnapshot(): DeviceSnapshot {
       single('kitchen', 'Pendant', 'A19 color', 'd0:73:d5:02:b1:01', 0.9, { h: 38, s: 0.2, l: 0.85 }, 4500),
       {
         groupId: 'kitchen',
+        serial: 'd0:73:d5:02:b1:20',
+        name: 'Wall Switch',
+        model: 'LIFX Switch',
+        kind: DeviceKind.Switch,
+        online: true,
+        on: false,
+        brightness: 0,
+        capability: { hasColor: false, kelvinMin: 0, kelvinMax: 0 },
+      },
+      {
+        groupId: 'kitchen',
         serial: 'd0:73:d5:02:b1:10',
         name: 'Under-counter',
         model: 'Z 24',

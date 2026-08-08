@@ -1327,7 +1327,7 @@ func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {
 	groupIDs := make(map[string]bool)
 
 	for _, d := range devices {
-		if !isSupportedLightDevice(d) {
+		if !isSupportedDevice(d) {
 			log.Printf("hikari: skipping unsupported lifx device %s type %q", d.Serial.String(), d.Type.String())
 			continue
 		}
@@ -1347,9 +1347,9 @@ func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {
 	return sortDeviceSnapshot(snapshot)
 }
 
-func isSupportedLightDevice(d lifxdevice.Device) bool {
+func isSupportedDevice(d lifxdevice.Device) bool {
 	switch d.Type.String() {
-	case "", "light", "hybrid":
+	case "", "light", "hybrid", "switch":
 		return true
 	default:
 		return false
@@ -1368,7 +1368,7 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 		Serial:     d.Serial.String(),
 		Name:       nameOrUnknown(d.Label, d.Serial.String()),
 		Model:      nameOrUnknown(d.RegistryName, "LIFX"),
-		Kind:       mapLightKind(d.LightType.String()),
+		Kind:       mapDeviceKind(d),
 		IPAddress:  deviceIPAddress(d),
 		ProductID:  d.ProductID,
 		Firmware:   d.FirmwareVersion,
@@ -1906,8 +1906,11 @@ func clamp(value, minValue, maxValue float64) float64 {
 	return value
 }
 
-func mapLightKind(lightType string) DeviceKind {
-	switch lightType {
+func mapDeviceKind(d lifxdevice.Device) DeviceKind {
+	if d.Type == lifxdevice.DeviceTypeSwitch {
+		return DeviceKindSwitch
+	}
+	switch d.LightType.String() {
 	case "multi_zone":
 		return DeviceKindMultizone
 	case "matrix":

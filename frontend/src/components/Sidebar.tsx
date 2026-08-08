@@ -35,7 +35,7 @@ export function Sidebar(props: SidebarProps) {
   const statusText = props.refreshError
     ? props.refreshError
     : props.devices.length
-      ? `${props.devices.length} LAN lights${props.refreshing ? ' · refreshing' : ''}`
+      ? `${props.devices.length} LAN devices${props.refreshing ? ' · refreshing' : ''}`
       : props.refreshing
         ? 'discovering LAN devices'
         : 'no LAN devices found';

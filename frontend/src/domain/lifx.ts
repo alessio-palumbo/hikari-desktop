@@ -2,6 +2,7 @@ export const DeviceKind = {
   Single: 'single',
   Multizone: 'multizone',
   Matrix: 'matrix',
+  Switch: 'switch',
 } as const;
 
 export type DeviceKind = (typeof DeviceKind)[keyof typeof DeviceKind];
@@ -136,6 +137,10 @@ function previewBaseLightness(color: HslColor): number {
   return 0.58;
 }
 
+export function isLightDevice(device: Device): boolean {
+  return device.kind !== DeviceKind.Switch;
+}
+
 export function deviceColor(device: Device): HslColor {
   if (device.kind === DeviceKind.Single && device.color) return device.color;
   if (device.kind === DeviceKind.Multizone && device.zones?.length) return device.zones[Math.floor(device.zones.length / 2)];
@@ -151,8 +156,9 @@ export function deviceColor(device: Device): HslColor {
 }
 
 export function deviceTypeLabel(device: Device): string {
-  if (device.kind === DeviceKind.Single) return 'single zone';
-  if (device.kind === DeviceKind.Multizone) return `multizone · ${device.zones?.length ?? 0} zones`;
+  if (device.kind === DeviceKind.Single) return "single zone";
+  if (device.kind === DeviceKind.Multizone) return "multizone · " + (device.zones?.length ?? 0) + " zones";
+  if (device.kind === DeviceKind.Switch) return "switch";
   const pixels = device.chain?.reduce((sum, matrix) => sum + matrix.pixels.length, 0) ?? 0;
-  return `matrix chain · ${device.chain?.length ?? 0} matrices · ${pixels}px`;
+  return "matrix chain · " + (device.chain?.length ?? 0) + " matrices · " + pixels + "px";
 }

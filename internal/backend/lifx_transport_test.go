@@ -129,7 +129,7 @@ func TestLifxTransportSnapshotSortsLocationsGroupsAndDevices(t *testing.T) {
 	assertNames(t, "devices", deviceNames(snapshot.Devices), []string{"Desk Lamp", "Pendant", "Alpha Strip", "Zulu Strip"})
 }
 
-func TestLifxTransportSnapshotFiltersSwitchDevices(t *testing.T) {
+func TestLifxTransportSnapshotIncludesSwitchAndMapsHybridAsLight(t *testing.T) {
 	switchSerial, err := lifxdevice.SerialFromHex("d073d501a2c4")
 	if err != nil {
 		t.Fatalf("SerialFromHex returned error: %v", err)
@@ -157,14 +157,18 @@ func TestLifxTransportSnapshotFiltersSwitchDevices(t *testing.T) {
 	hybridDevice.SetProductInfo(207)
 
 	snapshot := mapLifxDevices([]lifxdevice.Device{switchDevice, hybridDevice})
-	if len(snapshot.Devices) != 1 {
-		t.Fatalf("devices = %#v, want only hybrid light", snapshot.Devices)
+	if len(snapshot.Devices) != 2 {
+		t.Fatalf("devices = %#v, want switch and hybrid light", snapshot.Devices)
 	}
-	if snapshot.Devices[0].Serial != "d073d501a2c5" {
-		t.Fatalf("device serial = %s, want hybrid serial", snapshot.Devices[0].Serial)
+	bySerial := make(map[string]Device, len(snapshot.Devices))
+	for _, device := range snapshot.Devices {
+		bySerial[device.Serial] = device
 	}
-	if snapshot.Devices[0].Kind != "multizone" {
-		t.Fatalf("device kind = %s, want multizone", snapshot.Devices[0].Kind)
+	if bySerial["d073d501a2c4"].Kind != DeviceKindSwitch {
+		t.Fatalf("switch kind = %s, want switch", bySerial["d073d501a2c4"].Kind)
+	}
+	if bySerial["d073d501a2c5"].Kind != DeviceKindMultizone {
+		t.Fatalf("hybrid kind = %s, want multizone", bySerial["d073d501a2c5"].Kind)
 	}
 }
 
