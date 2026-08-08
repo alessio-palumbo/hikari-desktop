@@ -3,11 +3,13 @@ package backend
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net"
 	"testing"
 	"time"
 
+	lifxclient "github.com/alessio-palumbo/lifxlan-go/pkg/client"
 	lifxdevice "github.com/alessio-palumbo/lifxlan-go/pkg/device"
 	"github.com/alessio-palumbo/lifxlan-go/pkg/protocol"
 	"github.com/alessio-palumbo/lifxprotocol-go/gen/protocol/enums"
@@ -445,6 +447,145 @@ func TestLifxTransportRequiresStart(t *testing.T) {
 	}
 	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: Device{Serial: "d073d501a2c3", Kind: DeviceKindSingle}}); err == nil {
 		t.Fatal("SetDeviceState returned nil error, want not started error")
+	}
+}
+
+func TestLifxTransportStartAutomaticOmitsClientConfig(t *testing.T) {
+	controller := &fakeLifxController{}
+	var gotConfig *lifxclient.Config
+	transport := newLifxTransport(func(cfg *lifxclient.Config) (lifxController, error) {
+		gotConfig = cfg
+		return controller, nil
+	}, func() ([]lifxclient.BroadcastInterface, error) {
+		return []lifxclient.BroadcastInterface{testBroadcastInterface("en0", "192.168.1.42", "192.168.1.255")}, nil
+	}, &memoryNetworkSettingsStore{})
+
+	if err := transport.Start(context.Background()); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	if gotConfig != nil {
+		t.Fatalf("config = %#v, want nil automatic config", gotConfig)
+	}
+}
+
+func TestLifxTransportStartSelectedInterfacePassesClientConfig(t *testing.T) {
+	var gotConfig *lifxclient.Config
+	store := &memoryNetworkSettingsStore{interfaceName: "en0"}
+	transport := newLifxTransport(func(cfg *lifxclient.Config) (lifxController, error) {
+		gotConfig = cfg
+		return &fakeLifxController{}, nil
+	}, func() ([]lifxclient.BroadcastInterface, error) {
+		return []lifxclient.BroadcastInterface{testBroadcastInterface("en0", "192.168.1.42", "192.168.1.255")}, nil
+	}, store)
+
+	if err := transport.Start(context.Background()); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	if gotConfig == nil || gotConfig.BroadcastInterfaceName != "en0" {
+		t.Fatalf("config = %#v, want selected interface name", gotConfig)
+	}
+}
+
+func TestLifxTransportStartMissingSavedInterfaceStaysPinned(t *testing.T) {
+	var gotConfig *lifxclient.Config
+	store := &memoryNetworkSettingsStore{interfaceName: "en9"}
+	transport := newLifxTransport(func(cfg *lifxclient.Config) (lifxController, error) {
+		gotConfig = cfg
+		return &fakeLifxController{}, nil
+	}, func() ([]lifxclient.BroadcastInterface, error) {
+		return []lifxclient.BroadcastInterface{testBroadcastInterface("en0", "192.168.1.42", "192.168.1.255")}, nil
+	}, store)
+
+	if err := transport.Start(context.Background()); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	if gotConfig == nil || gotConfig.BroadcastInterfaceName != "en9" {
+		t.Fatalf("config = %#v, want saved interface to remain pinned", gotConfig)
+	}
+	settings, err := transport.NetworkSettings(context.Background())
+	if err != nil {
+		t.Fatalf("NetworkSettings returned error: %v", err)
+	}
+	if settings.SelectedInterfaceName != "en9" || settings.Warning == "" || store.interfaceName != "en9" {
+		t.Fatalf("settings = %#v store = %q, want warning with pinned missing interface", settings, store.interfaceName)
+	}
+}
+
+func TestLifxTransportSetNetworkInterfaceRestartsController(t *testing.T) {
+	first := &fakeLifxController{devices: []lifxdevice.Device{testLifxDevice(t, "d073d501a2c3", "Desk Lamp", "Home", "Desk")}}
+	second := &fakeLifxController{devices: []lifxdevice.Device{testLifxDevice(t, "d073d501a2c4", "Pendant", "Home", "Kitchen")}}
+	controllers := []lifxController{first, second}
+	configs := []*lifxclient.Config{}
+	transport := newLifxTransport(func(cfg *lifxclient.Config) (lifxController, error) {
+		configs = append(configs, cfg)
+		ctrl := controllers[0]
+		controllers = controllers[1:]
+		return ctrl, nil
+	}, func() ([]lifxclient.BroadcastInterface, error) {
+		return []lifxclient.BroadcastInterface{testBroadcastInterface("en0", "192.168.1.42", "192.168.1.255")}, nil
+	}, &memoryNetworkSettingsStore{})
+
+	if err := transport.Start(context.Background()); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	if _, err := transport.Snapshot(context.Background()); err != nil {
+		t.Fatalf("Snapshot returned error: %v", err)
+	}
+	if transport.cachedDevice("d073d501a2c3") == nil {
+		t.Fatal("first snapshot did not populate cache")
+	}
+
+	settings, err := transport.SetNetworkInterface(context.Background(), SetNetworkInterfaceRequest{InterfaceName: "en0"})
+	if err != nil {
+		t.Fatalf("SetNetworkInterface returned error: %v", err)
+	}
+	if settings.SelectedInterfaceName != "en0" {
+		t.Fatalf("settings = %#v, want en0 selected", settings)
+	}
+	if !first.closed {
+		t.Fatal("old controller was not closed")
+	}
+	if len(configs) != 2 || configs[0] != nil || configs[1] == nil || configs[1].BroadcastInterfaceName != "en0" {
+		t.Fatalf("configs = %#v, want automatic then en0", configs)
+	}
+	if transport.cachedDevice("d073d501a2c3") != nil {
+		t.Fatal("old cache was not cleared on restart")
+	}
+	snapshot, err := transport.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("second Snapshot returned error: %v", err)
+	}
+	if len(snapshot.Devices) != 1 || snapshot.Devices[0].Name != "Pendant" {
+		t.Fatalf("snapshot = %#v, want new controller devices", snapshot)
+	}
+}
+
+func TestLifxTransportSnapshotRejectsMissingNetworkInterfaces(t *testing.T) {
+	transport := newLifxTransport(func(cfg *lifxclient.Config) (lifxController, error) {
+		return &fakeLifxController{devices: []lifxdevice.Device{testLifxDevice(t, "d073d501a2c3", "Desk Lamp", "Home", "Desk")}}, nil
+	}, func() ([]lifxclient.BroadcastInterface, error) {
+		return nil, nil
+	}, &memoryNetworkSettingsStore{})
+
+	if err := transport.Start(context.Background()); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	if _, err := transport.Snapshot(context.Background()); err == nil {
+		t.Fatal("Snapshot returned nil error, want missing network interface error")
+	}
+}
+
+func TestLifxTransportSnapshotRejectsMissingSelectedNetworkInterface(t *testing.T) {
+	transport := newLifxTransport(func(cfg *lifxclient.Config) (lifxController, error) {
+		return &fakeLifxController{devices: []lifxdevice.Device{testLifxDevice(t, "d073d501a2c3", "Desk Lamp", "Home", "Desk")}}, nil
+	}, func() ([]lifxclient.BroadcastInterface, error) {
+		return []lifxclient.BroadcastInterface{testBroadcastInterface("en1", "10.0.0.2", "10.0.0.255")}, nil
+	}, &memoryNetworkSettingsStore{interfaceName: "en0"})
+
+	transport.selectedInterfaceName = "en0"
+	transport.controller = &fakeLifxController{devices: []lifxdevice.Device{testLifxDevice(t, "d073d501a2c3", "Desk Lamp", "Home", "Desk")}}
+	if _, err := transport.Snapshot(context.Background()); err == nil {
+		t.Fatal("Snapshot returned nil error, want selected network interface error")
 	}
 }
 
@@ -1730,6 +1871,10 @@ type sentMessage struct {
 	at     time.Time
 }
 
+func testBroadcastInterface(name string, ip string, broadcast string) lifxclient.BroadcastInterface {
+	return lifxclient.BroadcastInterface{Name: name, IP: net.ParseIP(ip), Broadcast: net.ParseIP(broadcast)}
+}
+
 func testHSBK(hue float64) packets.LightHsbk {
 	return packets.LightHsbk{
 		Hue:        lifxdevice.ConvertExternalToDeviceValue(hue, 360),
@@ -1869,5 +2014,12 @@ func assertPayloadBrightness(t *testing.T, colors []packets.LightHsbk, want floa
 		if math.Abs(got.Brightness-want) > 0.05 {
 			t.Fatalf("color %d brightness = %v, want close to %v", i, got.Brightness, want)
 		}
+	}
+}
+
+func TestUserFriendlyNetworkErrorMapsConnectionLoss(t *testing.T) {
+	message := userFriendlyNetworkError(fmt.Errorf("check network interfaces: no network connection available"))
+	if message != "Connection lost. Refresh discovery to reconnect." {
+		t.Fatalf("message = %q", message)
 	}
 }

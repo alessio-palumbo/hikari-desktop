@@ -72,6 +72,26 @@ type DeviceSnapshot struct {
 	Devices   []Device   `json:"devices"`
 }
 
+type NetworkInterface struct {
+	Name       string `json:"name"`
+	Address    string `json:"address"`
+	Broadcast  string `json:"broadcast"`
+	Label      string `json:"label"`
+	ShortLabel string `json:"shortLabel"`
+}
+
+type NetworkSettings struct {
+	SelectedInterfaceName string             `json:"selectedInterfaceName"`
+	Interfaces            []NetworkInterface `json:"interfaces"`
+	Warning               string             `json:"warning,omitempty"`
+}
+
+type SetNetworkInterfaceRequest struct {
+	InterfaceName string `json:"interfaceName"`
+}
+
+type RestartDeviceDiscoveryRequest struct{}
+
 type DeviceKind string
 
 const (

@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	lifxclient "github.com/alessio-palumbo/lifxlan-go/pkg/client"
 	lifxcontroller "github.com/alessio-palumbo/lifxlan-go/pkg/controller"
 	lifxdevice "github.com/alessio-palumbo/lifxlan-go/pkg/device"
 	lifxeffects "github.com/alessio-palumbo/lifxlan-go/pkg/effects"
@@ -44,6 +47,9 @@ type lifxController interface {
 	Send(lifxdevice.Serial, *protocol.Message) error
 }
 
+type lifxControllerFactory func(*lifxclient.Config) (lifxController, error)
+type broadcastInterfaceLister func() ([]lifxclient.BroadcastInterface, error)
+
 // LifxTransport adapts lifxlan-go behind DeviceTransport.
 //
 // Snapshot maps controller.GetDevices() into the frontend DTO. SetDeviceState
@@ -54,12 +60,17 @@ type lifxController interface {
 // Start creates the controller and begins lifxlan-go discovery. Tests can inject
 // a fake controller directly with NewLifxTransportWithController.
 type LifxTransport struct {
-	controller lifxController
-	mu         sync.RWMutex
-	cache      map[string]Device
-	effects    map[string]runningAppEffect
-	firmware   map[string]runningFirmwareEffect
-	restores   map[string]effectRestore
+	controller            lifxController
+	controllerFactory     lifxControllerFactory
+	interfaceLister       broadcastInterfaceLister
+	settingsStore         networkSettingsStore
+	mu                    sync.RWMutex
+	cache                 map[string]Device
+	effects               map[string]runningAppEffect
+	firmware              map[string]runningFirmwareEffect
+	restores              map[string]effectRestore
+	selectedInterfaceName string
+	networkWarning        string
 }
 
 type runningAppEffect struct {
@@ -80,48 +91,163 @@ type effectRestore struct {
 }
 
 func NewLifxTransport() *LifxTransport {
-	return &LifxTransport{cache: make(map[string]Device), effects: make(map[string]runningAppEffect), firmware: make(map[string]runningFirmwareEffect), restores: make(map[string]effectRestore)}
+	return newLifxTransport(nil, nil, defaultNetworkSettingsStore())
 }
 
 func NewLifxTransportWithController(controller lifxController) *LifxTransport {
-	return &LifxTransport{controller: controller, cache: make(map[string]Device), effects: make(map[string]runningAppEffect), firmware: make(map[string]runningFirmwareEffect), restores: make(map[string]effectRestore)}
+	transport := newLifxTransport(nil, injectedControllerInterfaceLister, &memoryNetworkSettingsStore{})
+	transport.controller = controller
+	return transport
+}
+
+func newLifxTransport(factory lifxControllerFactory, lister broadcastInterfaceLister, store networkSettingsStore) *LifxTransport {
+	if factory == nil {
+		factory = defaultLifxControllerFactory
+	}
+	if lister == nil {
+		lister = lifxclient.BroadcastInterfaces
+	}
+	if store == nil {
+		store = &memoryNetworkSettingsStore{}
+	}
+	return &LifxTransport{
+		controllerFactory: factory,
+		interfaceLister:   lister,
+		settingsStore:     store,
+		cache:             make(map[string]Device),
+		effects:           make(map[string]runningAppEffect),
+		firmware:          make(map[string]runningFirmwareEffect),
+		restores:          make(map[string]effectRestore),
+	}
+}
+
+func injectedControllerInterfaceLister() ([]lifxclient.BroadcastInterface, error) {
+	return []lifxclient.BroadcastInterface{{Name: "test", IP: net.IPv4(127, 0, 0, 1), Broadcast: net.IPv4(127, 255, 255, 255)}}, nil
+}
+
+func defaultLifxControllerFactory(cfg *lifxclient.Config) (lifxController, error) {
+	options := []lifxcontroller.Option{
+		lifxcontroller.WithHFStateRefreshPeriod(2 * time.Second),
+		lifxcontroller.WithLFStateRefreshPeriod(time.Minute),
+		lifxcontroller.WithPreflightHandshakeTimeout(10 * time.Second),
+	}
+	if cfg != nil {
+		options = append(options, lifxcontroller.WithClientConfig(cfg))
+	}
+	return lifxcontroller.New(options...)
 }
 
 func (t *LifxTransport) Start(ctx context.Context) error {
-	if t.controller != nil {
+	t.mu.RLock()
+	started := t.controller != nil
+	t.mu.RUnlock()
+	if started {
 		return nil
 	}
-	ctrl, err := lifxcontroller.New(
-		lifxcontroller.WithHFStateRefreshPeriod(2*time.Second),
-		lifxcontroller.WithLFStateRefreshPeriod(time.Minute),
-		lifxcontroller.WithPreflightHandshakeTimeout(10*time.Second),
-	)
+
+	selectedName, warning, err := t.loadValidatedInterfaceName()
 	if err != nil {
-		return fmt.Errorf("create lifx controller: %w", err)
+		return err
 	}
-	log.Print("hikari: lifx controller created")
+	ctrl, err := t.createController(selectedName)
+	if err != nil {
+		return err
+	}
+
+	t.mu.Lock()
 	t.controller = ctrl
+	t.selectedInterfaceName = selectedName
+	t.networkWarning = warning
+	t.mu.Unlock()
+	log.Print("hikari: lifx controller created")
 	return nil
 }
 
 func (t *LifxTransport) Close(ctx context.Context) error {
-	if t.controller == nil {
+	ctrl := t.currentController()
+	if ctrl == nil {
 		return nil
 	}
-	if err := t.restoreAllAppEffects(ctx, t.controller); err != nil {
+	if err := t.restoreAllAppEffects(ctx, ctrl); err != nil {
 		log.Printf("hikari: restore app effects on close failed: %v", err)
 	}
-	if err := t.controller.Close(); err != nil {
+	if err := ctrl.Close(); err != nil {
 		return fmt.Errorf("close lifx controller: %w", err)
 	}
-	t.controller = nil
+	t.mu.Lock()
+	if t.controller == ctrl {
+		t.controller = nil
+	}
+	t.clearRuntimeStateLocked()
+	t.mu.Unlock()
 	log.Print("hikari: lifx controller closed")
 	return nil
+}
+
+func (t *LifxTransport) NetworkSettings(ctx context.Context) (NetworkSettings, error) {
+	return t.networkSettings()
+}
+
+func (t *LifxTransport) SetNetworkInterface(ctx context.Context, req SetNetworkInterfaceRequest) (NetworkSettings, error) {
+	name := strings.TrimSpace(req.InterfaceName)
+	settings, err := t.networkSettingsForSelection(name)
+	if err != nil {
+		return settings, err
+	}
+
+	t.mu.RLock()
+	currentName := t.selectedInterfaceName
+	wasStarted := t.controller != nil
+	t.mu.RUnlock()
+	if currentName == "" && !wasStarted {
+		loadedName, loadErr := t.settingsStore.LoadNetworkInterfaceName()
+		if loadErr != nil {
+			return settings, loadErr
+		}
+		currentName = loadedName
+	}
+
+	if currentName == name {
+		return settings, nil
+	}
+	if err := t.settingsStore.SaveNetworkInterfaceName(name); err != nil {
+		return settings, err
+	}
+	if !wasStarted {
+		t.mu.Lock()
+		t.selectedInterfaceName = name
+		t.networkWarning = settings.Warning
+		t.mu.Unlock()
+		return settings, nil
+	}
+	if err := t.restartController(ctx, name, settings.Warning); err != nil {
+		return settings, err
+	}
+	return settings, nil
+}
+
+func (t *LifxTransport) RestartDeviceDiscovery(ctx context.Context) (NetworkSettings, error) {
+	selectedName, warning, err := t.loadValidatedInterfaceName()
+	if err != nil {
+		return NetworkSettings{SelectedInterfaceName: "", Interfaces: []NetworkInterface{}, Warning: userFriendlyNetworkError(err)}, err
+	}
+	if err := t.restartController(ctx, selectedName, warning); err != nil {
+		settings, settingsErr := t.networkSettings()
+		if settingsErr != nil {
+			return NetworkSettings{SelectedInterfaceName: selectedName, Interfaces: []NetworkInterface{}, Warning: userFriendlyNetworkError(err)}, err
+		}
+		settings.Warning = userFriendlyNetworkError(err)
+		return settings, err
+	}
+	return t.networkSettings()
 }
 
 func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	ctrl, err := t.requireController()
 	if err != nil {
+		return DeviceSnapshot{}, err
+	}
+	if err := t.ensureNetworkInterfaceAvailable(); err != nil {
 		return DeviceSnapshot{}, err
 	}
 	devices := ctrl.GetDevices()
@@ -781,6 +907,23 @@ func effectSpeed(speedMS int) time.Duration {
 	return time.Duration(speedMS) * time.Millisecond
 }
 
+func userFriendlyNetworkError(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "network interface") && strings.Contains(message, "not available") {
+		return "Selected network interface unavailable. Choose another interface or Automatic."
+	}
+	if strings.Contains(message, "no suitable broadcast interface") || strings.Contains(message, "broadcast interface") {
+		return "No network interfaces found."
+	}
+	if strings.Contains(message, "transport has not been started") || strings.Contains(message, "network connection") || strings.Contains(message, "connection lost") {
+		return "Connection lost. Refresh discovery to reconnect."
+	}
+	return err.Error()
+}
+
 func stopDeviceEffectMessages(device Device) []*protocol.Message {
 	switch device.Kind {
 	case DeviceKindMultizone:
@@ -792,9 +935,184 @@ func stopDeviceEffectMessages(device Device) []*protocol.Message {
 	}
 }
 
+func (t *LifxTransport) createController(interfaceName string) (lifxController, error) {
+	var cfg *lifxclient.Config
+	if interfaceName != "" {
+		cfg = &lifxclient.Config{BroadcastInterfaceName: interfaceName}
+	}
+	ctrl, err := t.controllerFactory(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create lifx controller: %w", err)
+	}
+	return ctrl, nil
+}
+
+func (t *LifxTransport) restartController(ctx context.Context, interfaceName string, warning string) error {
+	old := t.currentController()
+	if old != nil {
+		if err := t.restoreAllAppEffects(ctx, old); err != nil {
+			log.Printf("hikari: restore app effects before network switch failed: %v", err)
+		}
+		t.mu.Lock()
+		if t.controller == old {
+			t.controller = nil
+		}
+		t.clearRuntimeStateLocked()
+		t.mu.Unlock()
+		if err := old.Close(); err != nil {
+			return fmt.Errorf("close lifx controller before network switch: %w", err)
+		}
+	}
+
+	ctrl, err := t.createController(interfaceName)
+	if err != nil {
+		return err
+	}
+
+	t.mu.Lock()
+	t.controller = ctrl
+	t.selectedInterfaceName = interfaceName
+	t.networkWarning = warning
+	t.mu.Unlock()
+	log.Printf("hikari: lifx controller restarted with network interface %q", interfaceName)
+	return nil
+}
+
+func (t *LifxTransport) currentController() lifxController {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.controller
+}
+
+func (t *LifxTransport) clearRuntimeStateLocked() {
+	t.cache = make(map[string]Device)
+	t.effects = make(map[string]runningAppEffect)
+	t.firmware = make(map[string]runningFirmwareEffect)
+	t.restores = make(map[string]effectRestore)
+}
+
+func (t *LifxTransport) loadValidatedInterfaceName() (string, string, error) {
+	name, err := t.settingsStore.LoadNetworkInterfaceName()
+	if err != nil {
+		return "", "", err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", "", nil
+	}
+	settings, err := t.networkSettingsForSelection(name)
+	if err == nil {
+		return settings.SelectedInterfaceName, settings.Warning, nil
+	}
+	return name, fmt.Sprintf("Selected network interface %q is unavailable.", name), nil
+}
+
+func (t *LifxTransport) networkSettings() (NetworkSettings, error) {
+	interfaces, err := t.listNetworkInterfaces()
+	if err != nil {
+		return NetworkSettings{SelectedInterfaceName: t.configuredInterfaceName(), Interfaces: []NetworkInterface{}, Warning: err.Error()}, nil
+	}
+	return NetworkSettings{SelectedInterfaceName: t.configuredInterfaceName(), Interfaces: interfaces, Warning: t.currentNetworkWarning()}, nil
+}
+
+func (t *LifxTransport) networkSettingsForSelection(name string) (NetworkSettings, error) {
+	interfaces, err := t.listNetworkInterfaces()
+	if err != nil {
+		return NetworkSettings{SelectedInterfaceName: "", Interfaces: []NetworkInterface{}, Warning: err.Error()}, err
+	}
+	if name == "" {
+		return NetworkSettings{SelectedInterfaceName: "", Interfaces: interfaces}, nil
+	}
+	for _, entry := range interfaces {
+		if entry.Name == name {
+			return NetworkSettings{SelectedInterfaceName: name, Interfaces: interfaces}, nil
+		}
+	}
+	settings := NetworkSettings{SelectedInterfaceName: "", Interfaces: interfaces, Warning: fmt.Sprintf("Network interface %q is no longer available; using Automatic.", name)}
+	return settings, fmt.Errorf("network interface %q is not available", name)
+}
+
+func (t *LifxTransport) ensureNetworkInterfaceAvailable() error {
+	interfaces, err := t.interfaceLister()
+	if err != nil {
+		return fmt.Errorf("check network interfaces: %w", err)
+	}
+	if len(interfaces) == 0 {
+		return fmt.Errorf("no suitable broadcast interface found")
+	}
+	selected := t.currentInterfaceName()
+	if selected == "" {
+		return nil
+	}
+	for _, entry := range interfaces {
+		if entry.Name == selected {
+			return nil
+		}
+	}
+	return fmt.Errorf("network interface %q is not available", selected)
+}
+
+func shortNetworkInterfaceLabel(entry lifxclient.BroadcastInterface) string {
+	broadcast := entry.Broadcast.String()
+	lastDot := strings.LastIndexByte(broadcast, '.')
+	if lastDot >= 0 && lastDot+1 < len(broadcast) {
+		broadcast = broadcast[lastDot+1:]
+	}
+	return fmt.Sprintf("%s - %s/%s", entry.Name, entry.IP.String(), broadcast)
+}
+
+func (t *LifxTransport) listNetworkInterfaces() ([]NetworkInterface, error) {
+	interfaces, err := t.interfaceLister()
+	if err != nil {
+		return nil, fmt.Errorf("list network interfaces: %w", err)
+	}
+	mapped := make([]NetworkInterface, 0, len(interfaces))
+	for _, entry := range interfaces {
+		mapped = append(mapped, NetworkInterface{
+			Name:       entry.Name,
+			Address:    entry.IP.String(),
+			Broadcast:  entry.Broadcast.String(),
+			Label:      fmt.Sprintf("%s - %s -> %s", entry.Name, entry.IP.String(), entry.Broadcast.String()),
+			ShortLabel: shortNetworkInterfaceLabel(entry),
+		})
+	}
+	sort.SliceStable(mapped, func(i, j int) bool {
+		if mapped[i].Name == mapped[j].Name {
+			return mapped[i].Address < mapped[j].Address
+		}
+		return mapped[i].Name < mapped[j].Name
+	})
+	return mapped, nil
+}
+
+func (t *LifxTransport) configuredInterfaceName() string {
+	name := t.currentInterfaceName()
+	if name != "" {
+		return name
+	}
+	name, err := t.settingsStore.LoadNetworkInterfaceName()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(name)
+}
+
+func (t *LifxTransport) currentInterfaceName() string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.selectedInterfaceName
+}
+
+func (t *LifxTransport) currentNetworkWarning() string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.networkWarning
+}
+
 func (t *LifxTransport) requireController() (lifxController, error) {
-	if t.controller != nil {
-		return t.controller, nil
+	ctrl := t.currentController()
+	if ctrl != nil {
+		return ctrl, nil
 	}
 	return nil, fmt.Errorf("lifx transport has not been started")
 }

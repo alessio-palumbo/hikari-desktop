@@ -162,6 +162,17 @@ button {
   letter-spacing: 0;
 }
 
+.discovery-settings {
+  display: flex;
+  justify-content: center;
+  width: min(360px, calc(100vw - 48px));
+  margin-top: 22px;
+}
+
+.discovery-settings .network-settings {
+  width: min(300px, 100%);
+}
+
 .discovery-copy span {
   display: inline-flex;
   align-items: baseline;

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { ChevronDown, Network, RefreshCw, Search, X } from 'lucide-react';
+import type { NetworkSettings } from '../backend/api';
 import type { Device, Group, Location } from '../domain/lifx';
 import { PowerDot } from './primitives';
 import './Sidebar.css';
@@ -13,10 +14,14 @@ interface SidebarProps {
   query: string;
   refreshing: boolean;
   refreshError?: string;
+  networkSettings: NetworkSettings;
+  networkChanging: boolean;
   onQueryChange: (query: string) => void;
   onLocationChange: (id: string) => void;
   onGroupChange: (id: string) => void;
   onLocationPower: (locationId: string, on: boolean) => void;
+  onNetworkInterfaceChange: (name: string) => void;
+  onRefreshDiscovery: () => void;
   onGroupPower: (groupId: string, on: boolean) => void;
 }
 
@@ -110,10 +115,68 @@ export function Sidebar(props: SidebarProps) {
         })}
       </nav>
 
-      <div className="lan-status" data-error={props.refreshError ? 'true' : 'false'}>
-        <span />
-        <span>{statusText}</span>
+      <div className="lan-footer">
+        <div className="lan-status" data-error={props.refreshError ? 'true' : 'false'}>
+          <span />
+          <span>{statusText}</span>
+        </div>
+        <NetworkInterfaceControl settings={props.networkSettings} changing={props.networkChanging} onChange={props.onNetworkInterfaceChange} onRefresh={props.onRefreshDiscovery} compact />
       </div>
     </aside>
+  );
+}
+
+interface NetworkInterfaceControlProps {
+  settings: NetworkSettings;
+  changing: boolean;
+  onChange: (name: string) => void;
+  onRefresh?: () => void;
+  compact?: boolean;
+}
+
+function selectedNetworkLabel(settings: NetworkSettings): string {
+  if (!settings.selectedInterfaceName) return 'Automatic';
+  const selected = settings.interfaces.find((entry) => entry.name === settings.selectedInterfaceName);
+  return selected?.shortLabel ?? selected?.label ?? settings.selectedInterfaceName + ' - unavailable';
+}
+
+function selectedNetworkUnavailable(settings: NetworkSettings): boolean {
+  return !!settings.selectedInterfaceName && !settings.interfaces.some((entry) => entry.name === settings.selectedInterfaceName);
+}
+
+export function NetworkInterfaceControl(props: NetworkInterfaceControlProps) {
+  const selectedLabel = selectedNetworkLabel(props.settings);
+  const unavailable = selectedNetworkUnavailable(props.settings);
+  return (
+    <div className="network-settings" data-compact={props.compact ? 'true' : 'false'} data-unavailable={unavailable ? 'true' : 'false'}>
+      <div className="network-select-wrap">
+        <Network className="network-select-icon" size={13} aria-hidden="true" />
+        <span className="network-select-value" aria-hidden="true">{selectedLabel}</span>
+        <select
+          id="network-interface"
+          className="network-select"
+          aria-label="Network interface"
+          title={`Network interface: ${selectedLabel}`}
+          value={props.settings.selectedInterfaceName}
+          disabled={props.changing}
+          onChange={(event) => props.onChange(event.target.value)}
+        >
+          {unavailable ? <option value={props.settings.selectedInterfaceName}>{props.settings.selectedInterfaceName} - unavailable</option> : null}
+          <option value="">Automatic</option>
+          {props.settings.interfaces.map((entry) => (
+            <option key={entry.name} value={entry.name}>
+              {entry.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown size={13} aria-hidden="true" />
+      </div>
+      {props.onRefresh ? (
+        <button className="network-refresh" type="button" aria-label="Refresh discovery" title="Refresh discovery" disabled={props.changing} onClick={props.onRefresh}>
+          <RefreshCw size={13} />
+        </button>
+      ) : null}
+      {props.settings.warning ? <small>{props.settings.warning}</small> : null}
+    </div>
   );
 }

@@ -22,6 +22,18 @@ func (t *MockTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	return t.snapshot, nil
 }
 
+func (t *MockTransport) NetworkSettings(ctx context.Context) (NetworkSettings, error) {
+	return NetworkSettings{SelectedInterfaceName: "", Interfaces: []NetworkInterface{}}, nil
+}
+
+func (t *MockTransport) SetNetworkInterface(ctx context.Context, req SetNetworkInterfaceRequest) (NetworkSettings, error) {
+	return NetworkSettings{SelectedInterfaceName: req.InterfaceName, Interfaces: []NetworkInterface{}}, nil
+}
+
+func (t *MockTransport) RestartDeviceDiscovery(ctx context.Context) (NetworkSettings, error) {
+	return NetworkSettings{SelectedInterfaceName: "", Interfaces: []NetworkInterface{}}, nil
+}
+
 func (t *MockTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error) {
 	// Keep mock transport intentionally simple: the frontend remains the source
 	// of truth for optimistic state until the real lifxlan-go transport exists.

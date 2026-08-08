@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getDeviceSnapshot, setDeviceState, startDeviceEffect, stopDeviceEffect, type DeviceEffectStatus } from './backend/api';
+import type { ReactNode } from 'react';
+import { getDeviceSnapshot, getNetworkSettings, restartDeviceDiscovery, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, type DeviceEffectStatus, type NetworkSettings } from './backend/api';
 import { DeviceList } from './components/DeviceList';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
-import { Sidebar } from './components/Sidebar';
+import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
@@ -23,7 +24,7 @@ type PendingDeviceStates = Record<string, PendingDeviceState>;
 
 export function App() {
   const [snapshot, setSnapshot] = useState<DeviceSnapshot>({ locations: [], groups: [], devices: [] });
-  const [startupStartedAt] = useState(() => Date.now());
+  const [discoveryStartedAt, setDiscoveryStartedAt] = useState(() => Date.now());
   const [locationId, setLocationId] = useState(() => loadPreference(LOCATION_KEY));
   const [groupId, setGroupId] = useState(() => loadPreference(GROUP_KEY));
   const [selectedSerial, setSelectedSerial] = useState<string | undefined>();
@@ -35,11 +36,14 @@ export function App() {
   const [startupReady, setStartupReady] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [refreshError, setRefreshError] = useState<string | undefined>();
+  const [networkSettings, setNetworkSettings] = useState<NetworkSettings>({ selectedInterfaceName: '', interfaces: [] });
+  const [networkChanging, setNetworkChanging] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
   const [deviceEffectStatus, setDeviceEffectStatus] = useState<DeviceEffectStates>({});
   const [pendingState, setPendingState] = useState<PendingDeviceStates>({});
   const draftRef = useRef<DeviceDraft | undefined>(undefined);
   const pendingStateRef = useRef<PendingDeviceStates>({});
+  const networkRecoveryRef = useRef(false);
 
   useEffect(() => {
     draftRef.current = draft;
@@ -49,18 +53,35 @@ export function App() {
     pendingStateRef.current = pendingState;
   }, [pendingState]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void getNetworkSettings()
+      .then((settings) => {
+        if (!cancelled) setNetworkSettings(settings);
+      })
+      .catch((error) => {
+        if (!cancelled) setNetworkSettings((prev) => ({ ...prev, warning: errorMessage(error) }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const refreshSnapshot = useCallback(async () => {
     setRefreshing(true);
     try {
-      const next = await getDeviceSnapshot();
+      const next = await readSnapshotWithRecovery(networkRecoveryRef);
       const currentDraft = draftRef.current;
       const draftSerials = currentDraft?.dirty ? new Set([currentDraft.draft.serial]) : undefined;
       const pending = pendingStateRef.current;
       setSnapshot((prev) => reconcileSnapshot(prev, next, { draftSerials, pending }));
       clearSettledPending(next, pending);
       setRefreshError(undefined);
+      void getNetworkSettings()
+        .then((settings) => setNetworkSettings({ ...settings, warning: undefined }))
+        .catch(() => setNetworkSettings((prev) => (prev.warning ? { ...prev, warning: undefined } : prev)));
     } catch (error) {
-      setRefreshError(errorMessage(error));
+      handleSnapshotRefreshError(error);
     } finally {
       setRefreshing(false);
     }
@@ -211,6 +232,44 @@ export function App() {
     setDeviceEffectStatus((prev) => ({ ...prev, [serial]: { ...(prev[serial] ?? { serial, running: false }), loading, error } }));
   };
 
+  const handleSnapshotRefreshError = (error: unknown) => {
+    const message = networkErrorMessage(error);
+    setSelectedSerial(undefined);
+    setSelectedGroupInspectorId(undefined);
+    setDraft(undefined);
+    setDeviceStatus({});
+    setDeviceEffectStatus({});
+    setPendingState({});
+    setSnapshot({ locations: [], groups: [], devices: [] });
+    setNetworkSettings((prev) => ({ ...prev, interfaces: [], warning: undefined }));
+    setRefreshError(message);
+    setDiscoveryStartedAt(Date.now());
+    setNow(Date.now());
+    void getNetworkSettings()
+      .then((settings) => setNetworkSettings({ ...settings, warning: undefined }))
+      .catch(() => undefined);
+  };
+
+  const handleRecoverableNetworkError = (error: unknown): boolean => {
+    if (!isRecoverableNetworkError(error)) return false;
+    const message = networkErrorMessage(error);
+    setSelectedSerial(undefined);
+    setSelectedGroupInspectorId(undefined);
+    setDraft(undefined);
+    setDeviceStatus({});
+    setDeviceEffectStatus({});
+    setPendingState({});
+    setSnapshot({ locations: [], groups: [], devices: [] });
+    setNetworkSettings((prev) => ({ ...prev, interfaces: [], warning: undefined }));
+    setRefreshError(message);
+    setDiscoveryStartedAt(Date.now());
+    setNow(Date.now());
+    void getNetworkSettings()
+      .then((settings) => setNetworkSettings({ ...settings, warning: undefined }))
+      .catch(() => undefined);
+    return true;
+  };
+
   const updateListDevice = async (next: Device) => {
     const previous = snapshot.devices.find((device) => device.serial === next.serial);
     const intent = commandIntent(next, previous);
@@ -224,6 +283,7 @@ export function App() {
       setDeviceLoading(command.serial, false);
     } catch (error) {
       clearPendingState(command.serial);
+      if (handleRecoverableNetworkError(error)) return;
       if (previous) replaceDevice(previous);
       setDeviceLoading(command.serial, false, errorMessage(error));
     }
@@ -254,6 +314,7 @@ export function App() {
       setDeviceLoading(draft.draft.serial, false);
     } catch (error) {
       clearPendingState(draft.draft.serial);
+      if (handleRecoverableNetworkError(error)) return;
       setDeviceLoading(draft.draft.serial, false, errorMessage(error));
     } finally {
       setSaving(false);
@@ -266,6 +327,7 @@ export function App() {
       const status = await startDeviceEffect(device, { effect, speedMs });
       setDeviceEffectStatus((prev) => ({ ...prev, [device.serial]: { ...status, loading: false } }));
     } catch (error) {
+      if (handleRecoverableNetworkError(error)) return;
       setDeviceEffectLoading(device.serial, false, errorMessage(error));
     }
   };
@@ -276,7 +338,57 @@ export function App() {
       const status = await stopDeviceEffect(device);
       setDeviceEffectStatus((prev) => ({ ...prev, [device.serial]: { ...status, loading: false } }));
     } catch (error) {
+      if (handleRecoverableNetworkError(error)) return;
       setDeviceEffectLoading(device.serial, false, errorMessage(error));
+    }
+  };
+
+  const resetDiscoveryState = () => {
+    setSelectedSerial(undefined);
+    setSelectedGroupInspectorId(undefined);
+    setDraft(undefined);
+    setDeviceStatus({});
+    setDeviceEffectStatus({});
+    setPendingState({});
+    setSnapshot({ locations: [], groups: [], devices: [] });
+    setDiscoveryStartedAt(Date.now());
+    setLocationId('');
+    setGroupId('');
+    setNow(Date.now());
+  };
+
+  const changeNetworkInterface = async (interfaceName: string) => {
+    setNetworkChanging(true);
+    setRefreshError(undefined);
+    resetDiscoveryState();
+    try {
+      const settings = await setNetworkInterface(interfaceName);
+      setNetworkSettings({ ...settings, warning: undefined });
+      await refreshSnapshot();
+    } catch (error) {
+      const message = networkErrorMessage(error);
+      setNetworkSettings((prev) => ({ ...prev, warning: isRecoverableNetworkError(error) ? undefined : message }));
+      setRefreshError(message);
+    } finally {
+      setNetworkChanging(false);
+    }
+  };
+
+  const refreshDiscovery = async () => {
+    setNetworkChanging(true);
+    setRefreshError(undefined);
+    resetDiscoveryState();
+    try {
+      const settings = await restartDeviceDiscovery();
+      setNetworkSettings({ ...settings, warning: undefined });
+      await delay(INITIAL_DISCOVERY_DELAY_MS);
+      await refreshSnapshot();
+    } catch (error) {
+      const message = networkErrorMessage(error);
+      setNetworkSettings((prev) => ({ ...prev, warning: isRecoverableNetworkError(error) ? undefined : message }));
+      setRefreshError(message);
+    } finally {
+      setNetworkChanging(false);
     }
   };
 
@@ -284,14 +396,22 @@ export function App() {
     return <DiscoveryStatus title="ひかり" message="discovering LAN devices" />;
   }
 
-  const showingInitialDiscovery = !snapshot.devices.length && now - startupStartedAt < DISCOVERY_GRACE_MS;
+  const showingInitialDiscovery = !snapshot.devices.length && now - discoveryStartedAt < DISCOVERY_GRACE_MS;
 
   if (showingInitialDiscovery) {
-    return <DiscoveryStatus title="ひかり" message="discovering LAN devices" />;
+    return (
+      <DiscoveryStatus title="ひかり" message={refreshError ?? 'discovering LAN devices'}>
+        {refreshError ? <DiscoveryActions networkSettings={networkSettings} networkChanging={networkChanging} onNetworkChange={changeNetworkInterface} onRefresh={refreshDiscovery} /> : null}
+      </DiscoveryStatus>
+    );
   }
 
   if (!snapshot.devices.length) {
-    return <DiscoveryStatus title="No devices found." message="Discovering" />;
+    return (
+      <DiscoveryStatus title={refreshError ? 'ひかり' : 'No devices found.'} message={refreshError ?? 'Discovering'}>
+        <DiscoveryActions networkSettings={networkSettings} networkChanging={networkChanging} onNetworkChange={changeNetworkInterface} onRefresh={refreshDiscovery} />
+      </DiscoveryStatus>
+    );
   }
 
   return (
@@ -305,6 +425,8 @@ export function App() {
         query={query}
         refreshing={refreshing}
         refreshError={refreshError}
+        networkSettings={networkSettings}
+        networkChanging={networkChanging}
         onQueryChange={setQuery}
         onLocationChange={(id) => {
           setLocationId(id);
@@ -327,6 +449,8 @@ export function App() {
               .map((device) => updateListDevice({ ...device, on })),
           )
         }
+        onNetworkInterfaceChange={(name) => void changeNetworkInterface(name)}
+        onRefreshDiscovery={() => void refreshDiscovery()}
         onGroupPower={(id, on) =>
           void Promise.all(snapshot.devices.filter((device) => device.groupId === id).map((device) => updateListDevice({ ...device, on })))
         }
@@ -386,7 +510,31 @@ export function App() {
   );
 }
 
-function DiscoveryStatus(props: { title: string; message: string }) {
+async function readSnapshotWithRecovery(recoveryRef: { current: boolean }): Promise<DeviceSnapshot> {
+  try {
+    return await getDeviceSnapshot();
+  } catch (error) {
+    if (!isRecoverableNetworkError(error) || recoveryRef.current) throw error;
+    recoveryRef.current = true;
+    try {
+      await restartDeviceDiscovery();
+      await delay(INITIAL_DISCOVERY_DELAY_MS);
+      return await getDeviceSnapshot();
+    } finally {
+      recoveryRef.current = false;
+    }
+  }
+}
+
+function DiscoveryActions(props: { networkSettings: NetworkSettings; networkChanging: boolean; onNetworkChange: (name: string) => void; onRefresh: () => void }) {
+  return (
+    <div className="discovery-settings">
+      <NetworkInterfaceControl settings={props.networkSettings} changing={props.networkChanging} onChange={(name) => void props.onNetworkChange(name)} onRefresh={props.onRefresh} />
+    </div>
+  );
+}
+
+function DiscoveryStatus(props: { title: string; message: string; children?: ReactNode }) {
   return (
     <div className="discovery-status">
       <div className="discovery-copy">
@@ -396,6 +544,7 @@ function DiscoveryStatus(props: { title: string; message: string }) {
           <i aria-hidden="true" />
         </span>
       </div>
+      {props.children}
     </div>
   );
 }
@@ -421,6 +570,41 @@ function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   return 'device command failed';
+}
+
+function isRecoverableNetworkError(error: unknown): boolean {
+  const lower = errorMessage(error).toLowerCase();
+  return (
+    lower.includes('lifx transport has not been started') ||
+    lower.includes('no suitable broadcast interface') ||
+    lower.includes('network interface') ||
+    lower.includes('network interfaces') ||
+    lower.includes('network connection') ||
+    lower.includes('connection lost') ||
+    lower.includes('failed to send message to device') ||
+    lower.includes('send message to device')
+  );
+}
+
+function networkErrorMessage(error: unknown): string {
+  const message = errorMessage(error);
+  const lower = message.toLowerCase();
+  if ((lower.includes('network interface') || lower.includes('network interfaces')) && (lower.includes('not available') || lower.includes('unavailable'))) {
+    return 'Selected network interface unavailable. Choose another interface or Automatic.';
+  }
+  if (lower.includes('no suitable broadcast interface') || lower.includes('broadcast interface') || lower.includes('network interfaces')) {
+    return 'No network interfaces found.';
+  }
+  if (
+    lower.includes('lifx transport has not been started') ||
+    lower.includes('network connection') ||
+    lower.includes('connection lost') ||
+    lower.includes('failed to send message to device') ||
+    lower.includes('send message to device')
+  ) {
+    return 'Connection lost. Refresh discovery to reconnect.';
+  }
+  return message;
 }
 
 function delay(ms: number) {

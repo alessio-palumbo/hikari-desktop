@@ -4,9 +4,30 @@ import type { DeviceEffect } from '../domain/effects';
 
 interface WailsApp {
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
+  NetworkSettings?: () => Promise<NetworkSettings>;
+  SetNetworkInterface?: (request: SetNetworkInterfaceRequest) => Promise<NetworkSettings>;
+  RestartDeviceDiscovery?: () => Promise<NetworkSettings>;
   SetDeviceState?: (request: SetDeviceStateRequest) => Promise<Device>;
   StartDeviceEffect?: (request: StartDeviceEffectRequest) => Promise<DeviceEffectStatus>;
   StopDeviceEffect?: (request: StopDeviceEffectRequest) => Promise<DeviceEffectStatus>;
+}
+
+export interface NetworkInterfaceOption {
+  name: string;
+  address: string;
+  broadcast: string;
+  label: string;
+  shortLabel?: string;
+}
+
+export interface NetworkSettings {
+  selectedInterfaceName: string;
+  interfaces: NetworkInterfaceOption[];
+  warning?: string;
+}
+
+interface SetNetworkInterfaceRequest {
+  interfaceName: string;
 }
 
 interface SetDeviceStateRequest {
@@ -50,6 +71,24 @@ export async function getDeviceSnapshot(): Promise<DeviceSnapshot> {
   const app = window.go?.main?.App;
   if (app?.GetDeviceSnapshot) return normalizeSnapshot(await app.GetDeviceSnapshot());
   return mockSnapshot();
+}
+
+export async function getNetworkSettings(): Promise<NetworkSettings> {
+  const app = window.go?.main?.App;
+  if (app?.NetworkSettings) return normalizeNetworkSettings(await app.NetworkSettings());
+  return { selectedInterfaceName: '', interfaces: [] };
+}
+
+export async function restartDeviceDiscovery(): Promise<NetworkSettings> {
+  const app = window.go?.main?.App;
+  if (app?.RestartDeviceDiscovery) return normalizeNetworkSettings(await app.RestartDeviceDiscovery());
+  return getNetworkSettings();
+}
+
+export async function setNetworkInterface(interfaceName: string): Promise<NetworkSettings> {
+  const app = window.go?.main?.App;
+  if (app?.SetNetworkInterface) return normalizeNetworkSettings(await app.SetNetworkInterface({ interfaceName }));
+  return { selectedInterfaceName: interfaceName, interfaces: [] };
 }
 
 export async function setDeviceState(device: Device, preview = false, intent: DeviceCommandIntent = 'color'): Promise<Device> {
@@ -148,6 +187,15 @@ function normalizeSnapshot(snapshot: DeviceSnapshot | null | undefined): DeviceS
     devices: Array.isArray(snapshot?.devices) ? snapshot.devices : [],
   };
 }
+
+function normalizeNetworkSettings(settings: NetworkSettings | null | undefined): NetworkSettings {
+  return {
+    selectedInterfaceName: settings?.selectedInterfaceName ?? '',
+    interfaces: Array.isArray(settings?.interfaces) ? settings.interfaces : [],
+    warning: settings?.warning,
+  };
+}
+
 
 function single(groupId: string, name: string, model: string, serial: string, brightness: number, color: HslColor, kelvin: number): Device {
   return { groupId, serial, name, model, kind: DeviceKind.Single, online: true, on: brightness > 0, brightness, capability: colorCapability(), color, kelvin };

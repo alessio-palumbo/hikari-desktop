@@ -54,6 +54,18 @@ func (a *App) GetDeviceSnapshot() (backend.DeviceSnapshot, error) {
 	return a.transport.Snapshot(a.context())
 }
 
+func (a *App) NetworkSettings() (backend.NetworkSettings, error) {
+	return a.transport.NetworkSettings(a.context())
+}
+
+func (a *App) SetNetworkInterface(req backend.SetNetworkInterfaceRequest) (backend.NetworkSettings, error) {
+	return a.transport.SetNetworkInterface(a.context(), req)
+}
+
+func (a *App) RestartDeviceDiscovery() (backend.NetworkSettings, error) {
+	return a.transport.RestartDeviceDiscovery(a.context())
+}
+
 func (a *App) SetDeviceState(req backend.SetDeviceStateRequest) (backend.Device, error) {
 	return a.transport.SetDeviceState(a.context(), req)
 }

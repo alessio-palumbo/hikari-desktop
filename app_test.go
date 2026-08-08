@@ -77,6 +77,39 @@ func TestAppUsesTransport(t *testing.T) {
 		t.Fatalf("StopDeviceEffect returned %#v", status)
 	}
 
+	settings, err := app.NetworkSettings()
+	if err != nil {
+		t.Fatalf("NetworkSettings returned error: %v", err)
+	}
+	if !transport.settingsCalled {
+		t.Fatal("expected NetworkSettings to be called")
+	}
+	if settings.SelectedInterfaceName != "" {
+		t.Fatalf("NetworkSettings returned %#v", settings)
+	}
+
+	restartSettings, err := app.RestartDeviceDiscovery()
+	if err != nil {
+		t.Fatalf("RestartDeviceDiscovery returned error: %v", err)
+	}
+	if !transport.restartCalled {
+		t.Fatal("expected RestartDeviceDiscovery to be called")
+	}
+	if restartSettings.SelectedInterfaceName != "" {
+		t.Fatalf("RestartDeviceDiscovery returned %#v", restartSettings)
+	}
+
+	networkSettings, err := app.SetNetworkInterface(backend.SetNetworkInterfaceRequest{InterfaceName: "en0"})
+	if err != nil {
+		t.Fatalf("SetNetworkInterface returned error: %v", err)
+	}
+	if !transport.setNetworkCalled {
+		t.Fatal("expected SetNetworkInterface to be called")
+	}
+	if transport.lastNetworkReq.InterfaceName != "en0" || networkSettings.SelectedInterfaceName != "en0" {
+		t.Fatalf("expected network request to be forwarded, req=%#v settings=%#v", transport.lastNetworkReq, networkSettings)
+	}
+
 	app.shutdown(context.Background())
 	if !transport.closeCalled {
 		t.Fatal("expected Close to be called")
@@ -93,6 +126,15 @@ func TestAppReturnsTransportError(t *testing.T) {
 	}
 	if _, err := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device}); err == nil {
 		t.Fatal("SetDeviceState returned nil error, want transport error")
+	}
+	if _, err := app.NetworkSettings(); err == nil {
+		t.Fatal("NetworkSettings returned nil error, want transport error")
+	}
+	if _, err := app.SetNetworkInterface(backend.SetNetworkInterfaceRequest{InterfaceName: "en0"}); err == nil {
+		t.Fatal("SetNetworkInterface returned nil error, want transport error")
+	}
+	if _, err := app.RestartDeviceDiscovery(); err == nil {
+		t.Fatal("RestartDeviceDiscovery returned nil error, want transport error")
 	}
 	if _, err := app.StartDeviceEffect(backend.StartDeviceEffectRequest{Device: device}); err == nil {
 		t.Fatal("StartDeviceEffect returned nil error, want transport error")
@@ -112,9 +154,13 @@ type recordingTransport struct {
 	setCalled          bool
 	startEffectCalled  bool
 	stopEffectCalled   bool
+	settingsCalled     bool
+	setNetworkCalled   bool
+	restartCalled      bool
 	lastReq            backend.SetDeviceStateRequest
 	lastStartEffectReq backend.StartDeviceEffectRequest
 	lastEffectReq      backend.StopDeviceEffectRequest
+	lastNetworkReq     backend.SetNetworkInterfaceRequest
 }
 
 func (t *recordingTransport) Start(ctx context.Context) error {
@@ -130,6 +176,22 @@ func (t *recordingTransport) Close(ctx context.Context) error {
 func (t *recordingTransport) Snapshot(ctx context.Context) (backend.DeviceSnapshot, error) {
 	t.snapshotCalled = true
 	return t.snapshot, t.err
+}
+
+func (t *recordingTransport) NetworkSettings(ctx context.Context) (backend.NetworkSettings, error) {
+	t.settingsCalled = true
+	return backend.NetworkSettings{SelectedInterfaceName: "", Interfaces: []backend.NetworkInterface{}}, t.err
+}
+
+func (t *recordingTransport) SetNetworkInterface(ctx context.Context, req backend.SetNetworkInterfaceRequest) (backend.NetworkSettings, error) {
+	t.setNetworkCalled = true
+	t.lastNetworkReq = req
+	return backend.NetworkSettings{SelectedInterfaceName: req.InterfaceName, Interfaces: []backend.NetworkInterface{}}, t.err
+}
+
+func (t *recordingTransport) RestartDeviceDiscovery(ctx context.Context) (backend.NetworkSettings, error) {
+	t.restartCalled = true
+	return backend.NetworkSettings{SelectedInterfaceName: "", Interfaces: []backend.NetworkInterface{}}, t.err
 }
 
 func (t *recordingTransport) SetDeviceState(ctx context.Context, req backend.SetDeviceStateRequest) (backend.Device, error) {
