@@ -1,13 +1,19 @@
 import { DeviceKind, type Device, type HslColor } from './lifx.js';
 
-export type DeviceCommandIntent = 'power' | 'brightness' | 'color' | 'zones' | 'matrix';
+export type DeviceCommandIntent = 'power' | 'brightness' | 'color' | 'zones' | 'matrix' | 'relay-power' | 'button-config';
 
 export function prepareDeviceCommand(next: Device, previous?: Device): Device {
+  if (next.kind === DeviceKind.Switch) return next;
   if (!previous || near(previous.brightness, next.brightness) || next.kind === DeviceKind.Single) return next;
   return applyBrightnessToZones(next, next.brightness);
 }
 
 export function commandIntent(next: Device, previous?: Device): DeviceCommandIntent {
+  if (next.kind === DeviceKind.Switch) {
+    if (!previous || !sameValue(next.relays, previous.relays)) return "relay-power";
+    if (!sameValue(next.buttonConfig, previous.buttonConfig)) return "button-config";
+    return "relay-power";
+  }
   if (previous && next.on !== previous.on && near(next.brightness, previous.brightness) && sameStatePayload(next, previous)) return 'power';
   if (previous && !near(next.brightness, previous.brightness) && sameStatePayload(next, previous)) return 'brightness';
   return 'color';

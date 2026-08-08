@@ -1,9 +1,16 @@
-import { DeviceKind, deviceColor, hsl, previewLightness, previewOpacity, type Device, type Matrix } from '../domain/lifx';
+import { DeviceKind, deviceColor, hsl, previewLightness, previewOpacity, type Device, type HslColor, type Matrix } from '../domain/lifx';
 import './DevicePreview.css';
 
 export function DevicePreview({ device }: { device: Device }) {
   if (device.kind === DeviceKind.Switch) {
-    return <span className="preview-switch" aria-hidden="true"><i /><i /></span>;
+    const onColor = device.buttonConfig?.backlightOnColor;
+    const offColor = device.buttonConfig?.backlightOffColor;
+    return (
+      <span className="preview-switch" aria-hidden="true">
+        <SwitchBacklight color={onColor} fallback="on" />
+        <SwitchBacklight color={offColor} fallback="off" />
+      </span>
+    );
   }
 
   if (device.kind === DeviceKind.Single) {
@@ -20,6 +27,10 @@ export function DevicePreview({ device }: { device: Device }) {
   }
 
   return <MatrixPreview chain={device.chain ?? []} on={device.on} brightness={device.brightness} />;
+}
+
+function SwitchBacklight({ color, fallback }: { color?: HslColor; fallback: 'on' | 'off' }) {
+  return <i data-empty={color ? 'false' : 'true'} data-fallback={fallback} style={color ? { background: hsl(color, previewLightness(color, color.l, true)) } : undefined} />;
 }
 
 function MatrixPreview({ chain, on, brightness }: { chain: Matrix[]; on: boolean; brightness: number }) {

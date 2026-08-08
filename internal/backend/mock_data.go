@@ -52,8 +52,14 @@ func MockDeviceSnapshot() DeviceSnapshot {
 			},
 			{
 				GroupID: "kitchen", Serial: serial(0x02b120), Name: "Wall Switch",
-				Model: "LIFX Switch", Kind: DeviceKindSwitch, Online: true, On: false, Brightness: 0,
+				Model: "LIFX Switch", Kind: DeviceKindSwitch, Online: true, On: true, Brightness: 0,
 				Capability: DeviceCapability{HasColor: false},
+				Relays:     []Relay{{Index: 0, On: false}, {Index: 1, On: true}},
+				ButtonConfig: &ButtonConfig{
+					Known: true, HapticDurationMS: 180,
+					BacklightOnColor:  HSLColor{H: 185, S: 0.8, L: 0.65, Kelvin: 3500},
+					BacklightOffColor: HSLColor{H: 38, S: 0.15, L: 0.2, Kelvin: 2700},
+				},
 			},
 			{
 				GroupID: "kitchen", Serial: serial(0x02b110), Name: "Under-counter",

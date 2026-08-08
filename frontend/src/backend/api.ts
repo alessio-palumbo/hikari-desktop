@@ -162,6 +162,16 @@ function mockSnapshot(): DeviceSnapshot {
         on: false,
         brightness: 0,
         capability: { hasColor: false, kelvinMin: 0, kelvinMax: 0 },
+        relays: [
+          { index: 0, on: false },
+          { index: 1, on: true },
+        ],
+        buttonConfig: {
+          known: true,
+          hapticDurationMs: 180,
+          backlightOnColor: { h: 185, s: 0.8, l: 0.65, kelvin: 3500 },
+          backlightOffColor: { h: 38, s: 0.15, l: 0.2, kelvin: 2700 },
+        },
       },
       {
         groupId: 'kitchen',

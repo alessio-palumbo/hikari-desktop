@@ -925,6 +925,7 @@ func userFriendlyNetworkError(err error) string {
 }
 
 func stopDeviceEffectMessages(device Device) []*protocol.Message {
+
 	switch device.Kind {
 	case DeviceKindMultizone:
 		return []*protocol.Message{messages.SetMultizoneEffectOff()}
@@ -1380,6 +1381,17 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 		Capability: capability,
 		Color:      &color,
 		Kelvin:     kelvin,
+		Relays:     mapLifxRelays(d.Relays),
+	}
+
+	if device.Kind == DeviceKindSwitch {
+		device.On = relaysPoweredOn(device.Relays)
+		device.Brightness = 0
+		device.Color = nil
+		device.Kelvin = 0
+		device.Capability = DeviceCapability{}
+		device.ButtonConfig = mapLifxButtonConfig(d, DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000})
+		return device
 	}
 
 	switch device.Kind {
@@ -1515,6 +1527,35 @@ func adjustUIGridForOrientation(width, height int, orientation lifxdevice.Orient
 	}
 }
 
+func mapLifxRelays(relays []lifxdevice.Relay) []Relay {
+	mapped := make([]Relay, len(relays))
+	for i, relay := range relays {
+		mapped[i] = Relay{Index: relay.Index, On: relay.PoweredOn}
+	}
+	return mapped
+}
+
+func mapLifxButtonConfig(d lifxdevice.Device, capability DeviceCapability) *ButtonConfig {
+	if !d.ButtonConfigKnown {
+		return nil
+	}
+	return &ButtonConfig{
+		Known:             true,
+		HapticDurationMS:  int(d.ButtonConfig.HapticDurationMs),
+		BacklightOnColor:  mapLifxColor(d.ButtonConfig.BacklightOnColor, capability),
+		BacklightOffColor: mapLifxColor(d.ButtonConfig.BacklightOffColor, capability),
+	}
+}
+
+func relaysPoweredOn(relays []Relay) bool {
+	for _, relay := range relays {
+		if relay.On {
+			return true
+		}
+	}
+	return false
+}
+
 func mapLifxColors(colors []packets.LightHsbk, capability DeviceCapability) []HSLColor {
 	mapped := make([]HSLColor, len(colors))
 	for i, color := range colors {
@@ -1617,6 +1658,10 @@ func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice
 	}
 	logLifxRequest(serial, device, direct, intent, current)
 
+	if device.Kind == DeviceKindSwitch {
+		return sendSwitchDeviceState(ctx, ctrl, serial, device, intent)
+	}
+
 	if intent == DeviceCommandPower {
 		if device.On {
 			msg := messages.SetPowerOn()
@@ -1687,7 +1732,7 @@ func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice
 
 func normalizeDeviceCommandIntent(intent DeviceCommandIntent, device Device) DeviceCommandIntent {
 	switch intent {
-	case DeviceCommandPower, DeviceCommandBrightness, DeviceCommandColor, DeviceCommandZones, DeviceCommandMatrix:
+	case DeviceCommandPower, DeviceCommandBrightness, DeviceCommandColor, DeviceCommandZones, DeviceCommandMatrix, DeviceCommandRelayPower, DeviceCommandButton:
 		return intent
 	}
 	switch device.Kind {
@@ -1700,7 +1745,77 @@ func normalizeDeviceCommandIntent(intent DeviceCommandIntent, device Device) Dev
 	}
 }
 
+func sendSwitchDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device, intent DeviceCommandIntent) error {
+	msgs := switchDeviceMessagesForIntent(device, intent)
+	for index, msg := range msgs {
+		if msg == nil {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		logLifxSend(serial, device, fmt.Sprintf("switch-%d", index+1), msg)
+		if err := ctrl.Send(serial, msg); err != nil {
+			return fmt.Errorf("set switch state: %w", err)
+		}
+	}
+	return nil
+}
+
+func switchDeviceMessagesForIntent(device Device, intent DeviceCommandIntent) []*protocol.Message {
+	switch intent {
+	case DeviceCommandRelayPower:
+		return relayPowerMessages(device.Relays)
+	case DeviceCommandButton:
+		if device.ButtonConfig == nil {
+			return nil
+		}
+		return []*protocol.Message{messages.SetButtonConfig(uint16(clampInt(device.ButtonConfig.HapticDurationMS, 0, 500)), hslToLifxColor(device.ButtonConfig.BacklightOnColor), hslToLifxColor(device.ButtonConfig.BacklightOffColor))}
+	default:
+		return switchDeviceMessages(device)
+	}
+}
+
+func switchDeviceMessages(device Device) []*protocol.Message {
+	msgs := relayPowerMessages(device.Relays)
+	if device.ButtonConfig != nil {
+		msgs = append(msgs, messages.SetButtonConfig(uint16(clampInt(device.ButtonConfig.HapticDurationMS, 0, 500)), hslToLifxColor(device.ButtonConfig.BacklightOnColor), hslToLifxColor(device.ButtonConfig.BacklightOffColor)))
+	}
+	return msgs
+}
+
+func relayPowerMessages(relays []Relay) []*protocol.Message {
+	msgs := make([]*protocol.Message, 0, len(relays))
+	for _, relay := range relays {
+		msgs = append(msgs, messages.SetRelayPower(relay.Index, relay.On))
+	}
+	return msgs
+}
+
+func hslToLifxColor(color HSLColor) lifxdevice.Color {
+	return lifxdevice.Color{
+		Hue:        color.H,
+		Saturation: clamp(color.S, 0, 1) * 100,
+		Brightness: clamp(color.L, 0, 1) * 100,
+		Kelvin:     uint16(clampInt(color.Kelvin, 1500, 9000)),
+	}
+}
+
+func clampInt(value int, minValue int, maxValue int) int {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
+}
+
 func deviceStateMessages(device Device, direct bool) []*protocol.Message {
+	if device.Kind == DeviceKindSwitch {
+		return switchDeviceMessages(device)
+	}
+
 	switch device.Kind {
 	case DeviceKindSingle:
 		return []*protocol.Message{singleZoneColorMessage(device)}

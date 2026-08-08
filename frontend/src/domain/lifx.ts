@@ -43,6 +43,18 @@ export interface Matrix {
   pixels: HslColor[];
 }
 
+export interface Relay {
+  index: number;
+  on: boolean;
+}
+
+export interface ButtonConfig {
+  known: boolean;
+  hapticDurationMs: number;
+  backlightOnColor: HslColor;
+  backlightOffColor: HslColor;
+}
+
 export interface Device {
   groupId: string;
   serial: string;
@@ -65,6 +77,8 @@ export interface Device {
   kelvin?: number;
   zones?: HslColor[];
   chain?: Matrix[];
+  relays?: Relay[];
+  buttonConfig?: ButtonConfig;
 }
 
 export interface DeviceCapability {

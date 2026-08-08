@@ -4,7 +4,7 @@ export const PENDING_STATE_TIMEOUT_MS = 4500;
 
 export interface PendingDeviceState {
   serial: string;
-  expected: Pick<Partial<Device>, 'on' | 'brightness' | 'color' | 'kelvin' | 'zones' | 'chain'>;
+  expected: Pick<Partial<Device>, 'on' | 'brightness' | 'color' | 'kelvin' | 'zones' | 'chain' | 'relays' | 'buttonConfig'>;
   expiresAt: number;
 }
 
@@ -49,6 +49,8 @@ export function createPendingState(device: Device, previous?: Device, now = Date
   if (!previous || previous.kelvin !== device.kelvin) expected.kelvin = device.kelvin;
   if (device.kind === DeviceKind.Multizone && (!previous || !sameValue(previous.zones, device.zones))) expected.zones = clone(device.zones);
   if (device.kind === DeviceKind.Matrix && (!previous || !sameValue(previous.chain, device.chain))) expected.chain = clone(device.chain);
+  if (device.kind === DeviceKind.Switch && (!previous || !sameValue(previous.relays, device.relays))) expected.relays = clone(device.relays);
+  if (device.kind === DeviceKind.Switch && (!previous || !sameValue(previous.buttonConfig, device.buttonConfig))) expected.buttonConfig = clone(device.buttonConfig);
   if (!hasExpectedState(expected)) return undefined;
   return { serial: device.serial, expected, expiresAt: now + PENDING_STATE_TIMEOUT_MS };
 }
@@ -60,6 +62,8 @@ export function isPendingConfirmed(device: Device, pending: PendingDeviceState):
   if (pending.expected.kelvin !== undefined && device.kelvin !== pending.expected.kelvin) return false;
   if (pending.expected.zones !== undefined && !sameValue(device.zones, pending.expected.zones)) return false;
   if (pending.expected.chain !== undefined && !sameValue(device.chain, pending.expected.chain)) return false;
+  if (pending.expected.relays !== undefined && !sameValue(device.relays, pending.expected.relays)) return false;
+  if (pending.expected.buttonConfig !== undefined && !sameValue(device.buttonConfig, pending.expected.buttonConfig)) return false;
   return true;
 }
 

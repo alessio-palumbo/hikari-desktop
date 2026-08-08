@@ -154,7 +154,10 @@ function DeviceRow({
 
 function deviceRowStatus(device: Device, isLight: boolean, status?: { loading?: boolean; error?: string }): string {
   if (status?.loading) return "...";
-  if (!isLight) return "switch";
+  if (!isLight) {
+    if (device.relays?.length) return device.relays.some((relay) => relay.on) ? "on" : "off";
+    return "switch";
+  }
   return device.on ? Math.round(device.brightness * 100) + "%" : "off";
 }
 

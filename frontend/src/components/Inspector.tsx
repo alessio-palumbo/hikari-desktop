@@ -191,7 +191,7 @@ export function Inspector(props: InspectorProps) {
 
       {showInfo ? <DeviceInfo device={device} /> : null}
 
-      {!isLight ? <SwitchDetails device={device} /> : null}
+      {!isLight ? <SwitchDetails device={device} onChange={props.onChange} /> : null}
 
       {isLight ? <ModeToggle value={mode} hasColor={hasColor} hasEffects={hasEffects} onChange={setInspectorMode} /> : null}
 
@@ -444,16 +444,86 @@ function EffectSpeedControl({
   );
 }
 
-function SwitchDetails({ device }: { device: Device }) {
+function SwitchDetails({ device, onChange }: { device: Device; onChange: (device: Device) => void }) {
+  const [target, setTarget] = useState<"on" | "off">("on");
+  const relays = device.relays ?? [];
+  const config = device.buttonConfig;
+  const activeColor = target === "on" ? config?.backlightOnColor : config?.backlightOffColor;
+
+  const updateRelay = (index: number, on: boolean) => {
+    onChange({
+      ...device,
+      relays: relays.map((relay) => (relay.index === index ? { ...relay, on } : relay)),
+      on: relays.some((relay) => (relay.index === index ? on : relay.on)),
+    });
+  };
+
+  const updateBacklightColor = (color: HslColor) => {
+    if (!config || !activeColor) return;
+    const nextColor = { ...color, l: activeColor.l };
+    onChange({
+      ...device,
+      buttonConfig: target === "on" ? { ...config, backlightOnColor: nextColor } : { ...config, backlightOffColor: nextColor },
+    });
+  };
+
+  const updateBacklightBrightness = (value: number) => {
+    if (!config || !activeColor) return;
+    const nextColor = { ...activeColor, l: value };
+    onChange({
+      ...device,
+      buttonConfig: target === "on" ? { ...config, backlightOnColor: nextColor } : { ...config, backlightOffColor: nextColor },
+    });
+  };
+
+  const updateHaptic = (value: number) => {
+    if (!config) return;
+    onChange({ ...device, buttonConfig: { ...config, hapticDurationMs: Math.round(value * 500) } });
+  };
+
   return (
     <section className="switch-details">
-      <div className="switch-preview-large" aria-hidden="true">
-        <i />
-        <i />
+      <div className="switch-control-section">
+        <h3>button backlight</h3>
+        {config?.known && activeColor ? (
+          <>
+            <div className="backlight-targets" role="tablist" aria-label="Button backlight state">
+              <button type="button" data-active={target === "on"} onClick={() => setTarget("on")}>
+                on
+              </button>
+              <button type="button" data-active={target === "off"} onClick={() => setTarget("off")}>
+                off
+              </button>
+            </div>
+            <div className="color-wheel-wrap switch-color-wheel">
+              <ColorWheel color={activeColor} onChange={updateBacklightColor} />
+            </div>
+            <Slider label="backlight brightness" value={activeColor.l} onChange={updateBacklightBrightness} />
+            <Slider label="haptic" value={Math.max(0, Math.min(1, config.hapticDurationMs / 500))} onChange={updateHaptic} />
+          </>
+        ) : (
+          <p>Button backlight config is not available yet.</p>
+        )}
       </div>
-      <div>
-        <h3>switch controls</h3>
-        <p>{device.model} relay and button backlight controls will appear here once switch state is available from lifxlan-go.</p>
+
+      <div className="switch-control-section">
+        <div className="switch-section-title">
+          <h3>relays</h3>
+          <button className="relay-help" type="button" aria-label="Relay power only works when the switch relay is wired to a non-smart device." tabIndex={0}>
+            ?
+          </button>
+        </div>
+        {relays.length ? (
+          <div className="relay-list">
+            {relays.map((relay) => (
+              <button key={relay.index} className="relay-row" type="button" title={"Relay " + (relay.index + 1)} aria-label={(relay.on ? "Turn off relay " : "Turn on relay ") + (relay.index + 1)} onClick={() => updateRelay(relay.index, !relay.on)}>
+                <span className="relay-dot" data-on={relay.on ? "true" : "false"} />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p>Relay state is not available yet.</p>
+        )}
       </div>
     </section>
   );

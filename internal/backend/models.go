@@ -36,28 +36,42 @@ type Matrix struct {
 	Pixels      []HSLColor  `json:"pixels"`
 }
 
+type Relay struct {
+	Index int  `json:"index"`
+	On    bool `json:"on"`
+}
+
+type ButtonConfig struct {
+	Known             bool     `json:"known"`
+	HapticDurationMS  int      `json:"hapticDurationMs"`
+	BacklightOnColor  HSLColor `json:"backlightOnColor"`
+	BacklightOffColor HSLColor `json:"backlightOffColor"`
+}
+
 type Device struct {
-	GroupID    string           `json:"groupId"`
-	Serial     string           `json:"serial"`
-	Name       string           `json:"name"`
-	Model      string           `json:"model"`
-	Kind       DeviceKind       `json:"kind"`
-	IPAddress  string           `json:"ipAddress,omitempty"`
-	ProductID  uint32           `json:"productId,omitempty"`
-	Firmware   string           `json:"firmware,omitempty"`
-	RSSI       int              `json:"rssi,omitempty"`
-	RSSIText   string           `json:"rssiText,omitempty"`
-	ZoneCount  int              `json:"zoneCount,omitempty"`
-	PixelCount int              `json:"pixelCount,omitempty"`
-	ChainLen   int              `json:"chainLength,omitempty"`
-	Online     bool             `json:"online"`
-	On         bool             `json:"on"`
-	Brightness float64          `json:"brightness"`
-	Capability DeviceCapability `json:"capability"`
-	Color      *HSLColor        `json:"color,omitempty"`
-	Kelvin     int              `json:"kelvin,omitempty"`
-	Zones      []HSLColor       `json:"zones,omitempty"`
-	Chain      []Matrix         `json:"chain,omitempty"`
+	GroupID      string           `json:"groupId"`
+	Serial       string           `json:"serial"`
+	Name         string           `json:"name"`
+	Model        string           `json:"model"`
+	Kind         DeviceKind       `json:"kind"`
+	IPAddress    string           `json:"ipAddress,omitempty"`
+	ProductID    uint32           `json:"productId,omitempty"`
+	Firmware     string           `json:"firmware,omitempty"`
+	RSSI         int              `json:"rssi,omitempty"`
+	RSSIText     string           `json:"rssiText,omitempty"`
+	ZoneCount    int              `json:"zoneCount,omitempty"`
+	PixelCount   int              `json:"pixelCount,omitempty"`
+	ChainLen     int              `json:"chainLength,omitempty"`
+	Online       bool             `json:"online"`
+	On           bool             `json:"on"`
+	Brightness   float64          `json:"brightness"`
+	Capability   DeviceCapability `json:"capability"`
+	Color        *HSLColor        `json:"color,omitempty"`
+	Kelvin       int              `json:"kelvin,omitempty"`
+	Zones        []HSLColor       `json:"zones,omitempty"`
+	Chain        []Matrix         `json:"chain,omitempty"`
+	Relays       []Relay          `json:"relays,omitempty"`
+	ButtonConfig *ButtonConfig    `json:"buttonConfig,omitempty"`
 }
 
 type DeviceCapability struct {
@@ -109,6 +123,8 @@ const (
 	DeviceCommandColor      DeviceCommandIntent = "color"
 	DeviceCommandZones      DeviceCommandIntent = "zones"
 	DeviceCommandMatrix     DeviceCommandIntent = "matrix"
+	DeviceCommandRelayPower DeviceCommandIntent = "relay-power"
+	DeviceCommandButton     DeviceCommandIntent = "button-config"
 )
 
 type DeviceEffect string

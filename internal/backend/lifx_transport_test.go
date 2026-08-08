@@ -141,6 +141,13 @@ func TestLifxTransportSnapshotIncludesSwitchAndMapsHybridAsLight(t *testing.T) {
 		Group:    "Desk",
 	}
 	switchDevice.SetProductInfo(70)
+	switchDevice.Relays = []lifxdevice.Relay{{Index: 0, PoweredOn: false}, {Index: 1, PoweredOn: true}}
+	switchDevice.ButtonConfigKnown = true
+	switchDevice.ButtonConfig = lifxdevice.ButtonConfig{
+		HapticDurationMs:  250,
+		BacklightOnColor:  lifxdevice.Color{Hue: 210, Saturation: 70, Brightness: 60, Kelvin: 3500},
+		BacklightOffColor: lifxdevice.Color{Hue: 40, Saturation: 10, Brightness: 20, Kelvin: 2700},
+	}
 
 	hybridSerial, err := lifxdevice.SerialFromHex("d073d501a2c5")
 	if err != nil {
@@ -164,8 +171,15 @@ func TestLifxTransportSnapshotIncludesSwitchAndMapsHybridAsLight(t *testing.T) {
 	for _, device := range snapshot.Devices {
 		bySerial[device.Serial] = device
 	}
-	if bySerial["d073d501a2c4"].Kind != DeviceKindSwitch {
-		t.Fatalf("switch kind = %s, want switch", bySerial["d073d501a2c4"].Kind)
+	switchMapped := bySerial["d073d501a2c4"]
+	if switchMapped.Kind != DeviceKindSwitch {
+		t.Fatalf("switch kind = %s, want switch", switchMapped.Kind)
+	}
+	if !switchMapped.On || len(switchMapped.Relays) != 2 || switchMapped.Relays[1].Index != 1 || !switchMapped.Relays[1].On {
+		t.Fatalf("switch relays = %#v on=%v, want relay state mapped", switchMapped.Relays, switchMapped.On)
+	}
+	if switchMapped.ButtonConfig == nil || !switchMapped.ButtonConfig.Known || switchMapped.ButtonConfig.HapticDurationMS != 250 {
+		t.Fatalf("button config = %#v, want known mapped config", switchMapped.ButtonConfig)
 	}
 	if bySerial["d073d501a2c5"].Kind != DeviceKindMultizone {
 		t.Fatalf("hybrid kind = %s, want multizone", bySerial["d073d501a2c5"].Kind)
@@ -1109,6 +1123,69 @@ func TestLifxTransportSetDeviceStateSendsDirectMatrixBrightnessOnly(t *testing.T
 		t.Fatalf("payload = %T, want *packets.LightSetWaveformOptional", controller.sends[0].msg.Payload)
 	}
 	assertBrightnessOnlyPayload(t, payload, 25)
+}
+
+func TestLifxTransportSetDeviceStateSendsSwitchRelayPower(t *testing.T) {
+	controller := &fakeLifxController{}
+	device := Device{
+		Serial: "d073d501a2c3",
+		Name:   "Wall Switch",
+		Kind:   DeviceKindSwitch,
+		Relays: []Relay{{Index: 0, On: true}, {Index: 1, On: false}},
+	}
+	transport := NewLifxTransportWithController(controller)
+
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device, Intent: DeviceCommandRelayPower}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	if len(controller.sends) != 2 {
+		t.Fatalf("sent %d messages, want 2", len(controller.sends))
+	}
+	first, ok := controller.sends[0].msg.Payload.(*packets.RelaySetPower)
+	if !ok {
+		t.Fatalf("first payload = %T, want *packets.RelaySetPower", controller.sends[0].msg.Payload)
+	}
+	if first.RelayIndex != 0 || first.Level != math.MaxUint16 {
+		t.Fatalf("first relay = %d/%d, want relay 0 on", first.RelayIndex, first.Level)
+	}
+	second := controller.sends[1].msg.Payload.(*packets.RelaySetPower)
+	if second.RelayIndex != 1 || second.Level != 0 {
+		t.Fatalf("second relay = %d/%d, want relay 1 off", second.RelayIndex, second.Level)
+	}
+}
+
+func TestLifxTransportSetDeviceStateSendsSwitchButtonConfig(t *testing.T) {
+	controller := &fakeLifxController{}
+	device := Device{
+		Serial: "d073d501a2c3",
+		Name:   "Wall Switch",
+		Kind:   DeviceKindSwitch,
+		ButtonConfig: &ButtonConfig{
+			Known:             true,
+			HapticDurationMS:  250,
+			BacklightOnColor:  HSLColor{H: 200, S: 0.75, L: 0.6, Kelvin: 3500},
+			BacklightOffColor: HSLColor{H: 40, S: 0.1, L: 0.2, Kelvin: 2700},
+		},
+	}
+	transport := NewLifxTransportWithController(controller)
+
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: device, Intent: DeviceCommandButton}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	if len(controller.sends) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(controller.sends))
+	}
+	payload, ok := controller.sends[0].msg.Payload.(*packets.ButtonSetConfig)
+	if !ok {
+		t.Fatalf("payload = %T, want *packets.ButtonSetConfig", controller.sends[0].msg.Payload)
+	}
+	if payload.HapticDurationMs != 250 {
+		t.Fatalf("haptic = %d, want 250", payload.HapticDurationMs)
+	}
+	on := lifxdevice.NewColor(packets.LightHsbk(payload.BacklightOnColor))
+	if on.Hue != 200 || on.Saturation != 75 || on.Brightness != 60 {
+		t.Fatalf("on color = %#v, want h=200 s=75 b=60", on)
+	}
 }
 
 func TestLifxTransportStartDeviceEffectSendsMultizoneMove(t *testing.T) {
