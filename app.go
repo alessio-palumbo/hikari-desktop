@@ -10,8 +10,9 @@ import (
 )
 
 type App struct {
-	ctx       context.Context
-	transport backend.DeviceTransport
+	ctx           context.Context
+	transport     backend.DeviceTransport
+	commandEngine *backend.CommandEngineService
 }
 
 func NewApp() *App {
@@ -27,7 +28,7 @@ func NewAppWithTransport(transport backend.DeviceTransport) *App {
 	if transport == nil {
 		transport = backend.NewMockTransport()
 	}
-	return &App{transport: transport}
+	return &App{transport: transport, commandEngine: backend.NewCommandEngineService()}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -40,6 +41,11 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(ctx context.Context) {
 	if err := a.transport.Close(ctx); err != nil {
 		log.Printf("hikari: transport shutdown failed: %v", err)
+	}
+	if a.commandEngine != nil {
+		if err := a.commandEngine.Close(ctx); err != nil {
+			log.Printf("hikari: command engine shutdown failed: %v", err)
+		}
 	}
 }
 
@@ -76,4 +82,20 @@ func (a *App) StartDeviceEffect(req backend.StartDeviceEffectRequest) (backend.D
 
 func (a *App) StopDeviceEffect(req backend.StopDeviceEffectRequest) (backend.DeviceEffectStatus, error) {
 	return a.transport.StopDeviceEffect(a.context(), req)
+}
+
+func (a *App) CommandEngineSettings() (backend.CommandEngineSettings, error) {
+	return a.commandEngine.Settings(a.context())
+}
+
+func (a *App) SetCommandEngineSettings(req backend.SetCommandEngineSettingsRequest) (backend.CommandEngineSettings, error) {
+	return a.commandEngine.SetSettings(a.context(), req)
+}
+
+func (a *App) InterpretCommand(req backend.InterpretCommandRequest) (backend.CommandPreview, error) {
+	snapshot, err := a.transport.Snapshot(a.context())
+	if err != nil {
+		return backend.CommandPreview{}, err
+	}
+	return a.commandEngine.Interpret(a.context(), req.Text, snapshot)
 }

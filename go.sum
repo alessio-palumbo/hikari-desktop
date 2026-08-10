@@ -1,5 +1,7 @@
 git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 h1:N3IGoHHp9pb6mj1cbXbuaSXV/UMKwmbKLf53nQmtqMA=
 git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3/go.mod h1:QtOLZGz8olr4qH2vWK0QH0w0O4T9fEIjMuWpKUsH7nc=
+github.com/alessio-palumbo/lifx-command-engine v0.1.0 h1:t0vzgjEl8gLFzWUuoGMlvDPJoQKto+x3DVCfx01C9cA=
+github.com/alessio-palumbo/lifx-command-engine v0.1.0/go.mod h1:iuxLkqgyILNT3rn9Hp16Z0xU/uqZYHKkx2FNIShZYh4=
 github.com/alessio-palumbo/lifxlan-go v0.4.9 h1:ApU8FTn33IUrDPpwFZ4CouDPO3bSTrH0SVR9IZcqi6I=
 github.com/alessio-palumbo/lifxlan-go v0.4.9/go.mod h1:+gH8RmYFwR7uxtD8sur4PTbWpsB4oIydEjJBtQCgmBI=
 github.com/alessio-palumbo/lifxprotocol-go v0.4.0 h1:oTweXfIyw5oC7OXdDezuY3lx1uhDju3p/CZRUE2HUYk=

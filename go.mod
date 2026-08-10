@@ -7,6 +7,8 @@ require (
 	github.com/wailsapp/wails/v2 v2.12.0
 )
 
+require github.com/alessio-palumbo/lifx-command-engine v0.1.0
+
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/alessio-palumbo/lifxlan-go v0.4.9
