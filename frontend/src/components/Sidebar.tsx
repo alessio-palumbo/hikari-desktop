@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ChevronDown, Network, RefreshCw, Search, X } from 'lucide-react';
+import { ChevronDown, MessageSquareText, Network, RefreshCw, Search, X } from 'lucide-react';
 import type { NetworkSettings } from '../backend/api';
 import type { Device, Group, Location } from '../domain/lifx';
 import { PowerDot } from './primitives';
@@ -22,6 +22,7 @@ interface SidebarProps {
   onLocationPower: (locationId: string, on: boolean) => void;
   onNetworkInterfaceChange: (name: string) => void;
   onRefreshDiscovery: () => void;
+  onOpenCommands: () => void;
   onGroupPower: (groupId: string, on: boolean) => void;
 }
 
@@ -81,6 +82,9 @@ export function Sidebar(props: SidebarProps) {
             <X size={12} />
           </button>
         ) : null}
+        <button className="command-open-button" type="button" aria-label="Text command" title="Text command" onClick={props.onOpenCommands}>
+          <MessageSquareText size={12} />
+        </button>
       </div>
 
       <div className="location-control">

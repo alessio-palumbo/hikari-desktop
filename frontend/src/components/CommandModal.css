@@ -1,0 +1,222 @@
+.command-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: oklch(0 0 0 / 0.34);
+}
+
+.command-modal {
+  width: min(520px, calc(100vw - 40px));
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--bg-sink);
+  box-shadow: var(--shadow-lg);
+}
+
+.command-header,
+.command-header div,
+.command-settings-row,
+.command-input-row,
+.command-actions,
+.command-preview-title,
+.command-targets {
+  display: flex;
+  align-items: center;
+}
+
+.command-header {
+  justify-content: space-between;
+}
+
+.command-header div {
+  gap: 8px;
+  color: var(--fg-0);
+}
+
+.command-header strong {
+  font-size: 14px;
+  font-weight: 520;
+}
+
+.command-header button,
+.command-settings-row button,
+.command-input-row button,
+.command-actions button {
+  border: 0;
+  border-radius: 6px;
+  background: oklch(1 0 0 / 0.05);
+  color: var(--fg-1);
+  cursor: pointer;
+}
+
+.command-header button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+}
+
+.command-header button:hover,
+.command-settings-row button:hover,
+.command-input-row button:hover,
+.command-actions button:hover {
+  background: oklch(1 0 0 / 0.08);
+  color: var(--fg-0);
+}
+
+.command-settings-row {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.command-settings-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-1);
+  font-size: 12px;
+}
+
+.command-settings-row input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.command-settings-row button,
+.command-input-row button,
+.command-actions button {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.command-paths {
+  display: grid;
+  gap: 8px;
+}
+
+.command-paths input,
+.command-input-row input {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  outline: 0;
+  background: oklch(1 0 0 / 0.03);
+  color: var(--fg-0);
+  font-size: 12px;
+  padding: 0 10px;
+}
+
+.command-paths input:focus,
+.command-input-row input:focus {
+  border-color: oklch(1 0 0 / 0.16);
+}
+
+.command-input-row {
+  gap: 8px;
+}
+
+.command-input-row input {
+  flex: 1;
+}
+
+.command-warning,
+.command-error,
+.command-preview p,
+.command-preview li {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.command-error {
+  color: var(--danger);
+}
+
+.command-warning {
+  color: var(--warm);
+}
+
+.command-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: oklch(1 0 0 / 0.025);
+}
+
+.command-preview[data-empty="true"] {
+  border-color: oklch(1 0 0 / 0.08);
+}
+
+.command-preview-title {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.command-preview-title strong {
+  min-width: 0;
+  color: var(--fg-0);
+  font-size: 13px;
+  font-weight: 520;
+}
+
+.command-preview-title span {
+  flex: 0 0 auto;
+  color: var(--fg-3);
+  font-size: 11px;
+}
+
+.command-preview ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.command-targets {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.command-targets span {
+  max-width: 150px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: oklch(1 0 0 / 0.05);
+  color: var(--fg-1);
+  font-size: 11px;
+  padding: 3px 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.command-actions .command-confirm {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  background: oklch(0.78 0.13 230 / 0.18);
+  color: var(--fg-0);
+}
+
+.command-header button:disabled,
+.command-settings-row button:disabled,
+.command-input-row button:disabled,
+.command-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}

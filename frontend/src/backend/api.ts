@@ -10,6 +10,9 @@ interface WailsApp {
   SetDeviceState?: (request: SetDeviceStateRequest) => Promise<Device>;
   StartDeviceEffect?: (request: StartDeviceEffectRequest) => Promise<DeviceEffectStatus>;
   StopDeviceEffect?: (request: StopDeviceEffectRequest) => Promise<DeviceEffectStatus>;
+  CommandEngineSettings?: () => Promise<CommandEngineSettings>;
+  SetCommandEngineSettings?: (request: SetCommandEngineSettingsRequest) => Promise<CommandEngineSettings>;
+  InterpretCommand?: (request: InterpretCommandRequest) => Promise<CommandPreview>;
 }
 
 export interface NetworkInterfaceOption {
@@ -55,6 +58,55 @@ export interface DeviceEffectStatus {
   running: boolean;
   effect?: string;
   error?: string;
+}
+
+export interface CommandEngineSettings {
+  enabled: boolean;
+  enginePath?: string;
+  configPath?: string;
+  available: boolean;
+  warning?: string;
+}
+
+interface SetCommandEngineSettingsRequest {
+  enabled: boolean;
+  enginePath?: string;
+  configPath?: string;
+}
+
+interface InterpretCommandRequest {
+  text: string;
+}
+
+export interface CommandPreview {
+  summary: string;
+  confidence: number;
+  confidenceLevel?: string;
+  reasons: string[];
+  needsConfirmation: boolean;
+  empty: boolean;
+  commands: CommandPreviewCommand[];
+}
+
+export interface CommandPreviewCommand {
+  targets: CommandPreviewTarget[];
+  action: CommandPreviewAction;
+}
+
+export interface CommandPreviewTarget {
+  serial: string;
+  label?: string;
+  group?: string;
+  location?: string;
+}
+
+export interface CommandPreviewAction {
+  power?: boolean;
+  hue?: number;
+  saturation?: number;
+  brightness?: number;
+  kelvin?: number;
+  durationMs?: number;
 }
 
 declare global {
@@ -111,6 +163,25 @@ export async function stopDeviceEffect(device: Device): Promise<DeviceEffectStat
   if (app?.StopDeviceEffect) return app.StopDeviceEffect({ device });
   await new Promise((resolve) => window.setTimeout(resolve, 80));
   return { serial: device.serial, running: false };
+}
+
+export async function getCommandEngineSettings(): Promise<CommandEngineSettings> {
+  const app = window.go?.main?.App;
+  if (app?.CommandEngineSettings) return normalizeCommandEngineSettings(await app.CommandEngineSettings());
+  return { enabled: false, available: false };
+}
+
+export async function setCommandEngineSettings(settings: SetCommandEngineSettingsRequest): Promise<CommandEngineSettings> {
+  const app = window.go?.main?.App;
+  if (app?.SetCommandEngineSettings) return normalizeCommandEngineSettings(await app.SetCommandEngineSettings(settings));
+  return { ...settings, available: false };
+}
+
+export async function interpretCommand(text: string): Promise<CommandPreview> {
+  const app = window.go?.main?.App;
+  if (app?.InterpretCommand) return normalizeCommandPreview(await app.InterpretCommand({ text }));
+  await new Promise((resolve) => window.setTimeout(resolve, 120));
+  return { summary: 'No supported command found', confidence: 0, confidenceLevel: 'low', reasons: ['command engine unavailable'], needsConfirmation: false, empty: true, commands: [] };
 }
 
 function mockSnapshot(): DeviceSnapshot {
@@ -214,6 +285,28 @@ function normalizeNetworkSettings(settings: NetworkSettings | null | undefined):
     selectedInterfaceName: settings?.selectedInterfaceName ?? '',
     interfaces: Array.isArray(settings?.interfaces) ? settings.interfaces : [],
     warning: settings?.warning,
+  };
+}
+
+function normalizeCommandEngineSettings(settings: CommandEngineSettings | null | undefined): CommandEngineSettings {
+  return {
+    enabled: Boolean(settings?.enabled),
+    enginePath: settings?.enginePath ?? '',
+    configPath: settings?.configPath ?? '',
+    available: Boolean(settings?.available),
+    warning: settings?.warning,
+  };
+}
+
+function normalizeCommandPreview(preview: CommandPreview | null | undefined): CommandPreview {
+  return {
+    summary: preview?.summary ?? '',
+    confidence: Number(preview?.confidence ?? 0),
+    confidenceLevel: preview?.confidenceLevel ?? '',
+    reasons: Array.isArray(preview?.reasons) ? preview.reasons : [],
+    needsConfirmation: Boolean(preview?.needsConfirmation),
+    empty: Boolean(preview?.empty),
+    commands: Array.isArray(preview?.commands) ? preview.commands : [],
   };
 }
 
