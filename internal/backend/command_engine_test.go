@@ -84,6 +84,61 @@ func TestCommandEngineServiceRejectsUnknownTarget(t *testing.T) {
 	}
 }
 
+func TestCommandEngineServiceSkipsSwitchTargets(t *testing.T) {
+	store := &memoryCommandSettingsStore{}
+	_ = store.SaveCommandEngineSettings(CommandEngineSettings{Enabled: true, EnginePath: "/bin/engine"})
+	service := NewCommandEngineServiceWithStore(store)
+	service.newClient = func(config commandclient.Config) (commandEngineClient, error) {
+		return &fakeCommandEngineClient{
+			capabilities: compatibleCommandCapabilities(),
+			plan: commandclient.CommandPlan{
+				SchemaVersion: "1",
+				Summary:       "Turn Desk off",
+				Commands: []commandclient.CommandIntent{{
+					Targets: []commandclient.TargetRef{{Serial: "d0:73:d5:01:a2:c3"}, {Serial: "d0:73:d5:02:b1:20"}},
+					Action:  commandclient.Action{Power: boolPtr(false)},
+				}},
+			},
+		}, nil
+	}
+	preview, err := service.Interpret(context.Background(), "turn desk off", MockDeviceSnapshot())
+	if err != nil {
+		t.Fatalf("Interpret returned error: %v", err)
+	}
+	if preview.Empty || len(preview.Commands) != 1 || len(preview.Commands[0].Targets) != 1 {
+		t.Fatalf("preview = %#v, want switch skipped and light retained", preview)
+	}
+	if preview.Commands[0].Targets[0].Serial != "d0:73:d5:01:a2:c3" {
+		t.Fatalf("targets = %#v", preview.Commands[0].Targets)
+	}
+}
+
+func TestCommandEngineServiceReturnsEmptyWhenOnlySwitchTargetsRemain(t *testing.T) {
+	store := &memoryCommandSettingsStore{}
+	_ = store.SaveCommandEngineSettings(CommandEngineSettings{Enabled: true, EnginePath: "/bin/engine"})
+	service := NewCommandEngineServiceWithStore(store)
+	service.newClient = func(config commandclient.Config) (commandEngineClient, error) {
+		return &fakeCommandEngineClient{
+			capabilities: compatibleCommandCapabilities(),
+			plan: commandclient.CommandPlan{
+				SchemaVersion: "1",
+				Summary:       "Turn switch off",
+				Commands: []commandclient.CommandIntent{{
+					Targets: []commandclient.TargetRef{{Serial: "d0:73:d5:02:b1:20"}},
+					Action:  commandclient.Action{Power: boolPtr(false)},
+				}},
+			},
+		}, nil
+	}
+	preview, err := service.Interpret(context.Background(), "turn switch off", MockDeviceSnapshot())
+	if err != nil {
+		t.Fatalf("Interpret returned error: %v", err)
+	}
+	if !preview.Empty || len(preview.Commands) != 0 {
+		t.Fatalf("preview = %#v, want empty unsupported command", preview)
+	}
+}
+
 func TestCommandEngineServiceRejectsIncompatibleCapabilities(t *testing.T) {
 	store := &memoryCommandSettingsStore{}
 	_ = store.SaveCommandEngineSettings(CommandEngineSettings{Enabled: true, EnginePath: "/bin/engine"})

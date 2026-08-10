@@ -27,6 +27,9 @@ func CommandSnapshotFromDeviceSnapshot(snapshot DeviceSnapshot) commandclient.De
 	}
 	devices := make([]commandclient.SnapshotDevice, 0, len(snapshot.Devices))
 	for _, device := range snapshot.Devices {
+		if device.Kind == DeviceKindSwitch {
+			continue
+		}
 		group := groupsByID[device.GroupID]
 		location := locationsByID[group.LocationID]
 		mapped := commandclient.SnapshotDevice{
@@ -73,7 +76,7 @@ func commandPreviewFromPlan(plan commandclient.CommandPlan, snapshot DeviceSnaps
 				return CommandPreview{}, fmt.Errorf("command targets unknown device %q", target.Serial)
 			}
 			if device.Kind == DeviceKindSwitch {
-				return CommandPreview{}, fmt.Errorf("text commands currently support lights only")
+				continue
 			}
 			if err := validateCommandAction(command.Action, device); err != nil {
 				return CommandPreview{}, err
@@ -85,10 +88,17 @@ func commandPreviewFromPlan(plan commandclient.CommandPlan, snapshot DeviceSnaps
 				Location: target.Location,
 			})
 		}
+		if len(targets) == 0 {
+			continue
+		}
 		preview.Commands = append(preview.Commands, CommandPreviewCommand{
 			Targets: targets,
 			Action:  commandPreviewAction(command.Action),
 		})
+	}
+	preview.Empty = len(preview.Commands) == 0
+	if preview.Empty && preview.Summary == "" {
+		preview.Summary = "No supported command found"
 	}
 	return preview, nil
 }

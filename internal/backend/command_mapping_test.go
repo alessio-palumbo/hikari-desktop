@@ -42,3 +42,20 @@ func TestCommandSnapshotFromDeviceSnapshotHandlesEmptyInventory(t *testing.T) {
 		t.Fatalf("snapshot = %#v, want empty slices", got)
 	}
 }
+
+func TestCommandSnapshotFromDeviceSnapshotSkipsSwitches(t *testing.T) {
+	snapshot := DeviceSnapshot{
+		Locations: []Location{{ID: "home", Name: "Home"}},
+		Groups:    []Group{{ID: "desk", LocationID: "home", Name: "Desk"}},
+		Devices: []Device{
+			{GroupID: "desk", Serial: "light", Name: "Desk Lamp", Kind: DeviceKindSingle},
+			{GroupID: "desk", Serial: "switch", Name: "Desk Switch", Kind: DeviceKindSwitch},
+		},
+	}
+
+	got := CommandSnapshotFromDeviceSnapshot(snapshot)
+
+	if len(got.Devices) != 1 || got.Devices[0].Serial != "light" {
+		t.Fatalf("devices = %#v, want only light target", got.Devices)
+	}
+}
