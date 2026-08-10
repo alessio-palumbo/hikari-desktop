@@ -12,6 +12,7 @@ The app is in active development, but it is ready to try with real LAN devices. 
 - Multizone and matrix draft editing with brush, fill, picker, and gradient tools.
 - Matrix custom grids and orientation-aware preview/apply behavior.
 - Periodic refresh with pending-state reconciliation to avoid stale device updates fighting recent UI changes.
+- Optional local text commands through the rule-only `lifx-command-engine` sidecar.
 
 ## Download
 
@@ -39,6 +40,20 @@ Run the command from the folder containing `hikari.app`, or replace `hikari.app`
 - `Cmd+F` on macOS or `Ctrl+F` on Windows/Linux: focus and select the search field.
 - `Esc` in search: clear the search text; when search is empty, blur the field.
 - `Esc` with the right panel open: close the active device or group panel.
+
+## Local Text Commands
+
+Local text commands are optional and use the standalone `lifx-command-engine` JSONL sidecar. The sidecar only interprets text into a structured plan; hikari still validates targets, previews the action, asks for confirmation, and sends any LIFX commands itself.
+
+For development, either put `lifx-command-engine` on `PATH` or set an explicit path in the command modal. You can also seed defaults with:
+
+```sh
+HIKARI_COMMANDS_ENABLED=1 \
+HIKARI_COMMAND_ENGINE_PATH=/path/to/lifx-command-engine \
+wails dev
+```
+
+Optional FunctionGemma and whisper.cpp runtime/model paths belong in a `lifx-command-engine` config file, then in hikari set the optional config path. The base hikari app does not download or bundle model weights or speech runtimes.
 
 ## Requirements
 
@@ -119,7 +134,7 @@ Release builds are intended to be produced natively on each platform through Git
 ## Architecture
 
 - `main.go` and `app.go`: Wails entry point and app binding.
-- `internal/backend`: device transport interface, LIFX transport, mock transport, DTOs, and backend tests.
+- `internal/backend`: device transport interface, LIFX transport, optional command-engine sidecar service, mock transport, DTOs, and backend tests.
 - `frontend/src/domain`: typed frontend device models, draft editor state, and refresh reconciliation.
 - `frontend/src/components`: React UI components for the shell, device list, previews, and inspector.
 - `frontend/src/styles`: global styles and design tokens.
@@ -128,6 +143,9 @@ The frontend calls:
 
 - `GetDeviceSnapshot()`
 - `SetDeviceState(req)`
+- `CommandEngineSettings()`
+- `SetCommandEngineSettings(req)`
+- `InterpretCommand(req)`
 
 The backend keeps `lifxlan-go` behind the transport boundary so real device behavior can be hardened without coupling the UI directly to LAN implementation details.
 
