@@ -19,6 +19,7 @@ const DISCOVERY_GRACE_MS = 10000;
 const INITIAL_DISCOVERY_DELAY_MS = 2000;
 const LOCATION_KEY = 'hikari:selectedLocation';
 const GROUP_KEY = 'hikari:selectedGroup';
+const COMMAND_AUTO_EXECUTE_KEY = 'hikari:commandAutoExecute';
 
 type DeviceStatus = Record<string, { loading?: boolean; error?: string }>;
 type DeviceEffectStates = Record<string, DeviceEffectStatus & { loading?: boolean }>;
@@ -46,6 +47,7 @@ export function App() {
   const [commandExecuting, setCommandExecuting] = useState(false);
   const [commandPreview, setCommandPreview] = useState<CommandPreview | undefined>();
   const [commandError, setCommandError] = useState<string | undefined>();
+  const [commandAutoExecute, setCommandAutoExecute] = useState(() => loadBooleanPreference(COMMAND_AUTO_EXECUTE_KEY));
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
   const [deviceEffectStatus, setDeviceEffectStatus] = useState<DeviceEffectStates>({});
   const [pendingState, setPendingState] = useState<PendingDeviceStates>({});
@@ -144,6 +146,7 @@ export function App() {
 
   useEffect(() => savePreference(LOCATION_KEY, locationId), [locationId]);
   useEffect(() => savePreference(GROUP_KEY, groupId), [groupId]);
+  useEffect(() => saveBooleanPreference(COMMAND_AUTO_EXECUTE_KEY, commandAutoExecute), [commandAutoExecute]);
 
   const openCommandModal = useCallback(() => {
     setCommandOpen(true);
@@ -438,6 +441,9 @@ export function App() {
     try {
       const preview = await interpretCommand(text);
       setCommandPreview(preview);
+      if (commandAutoExecute && canAutoExecuteCommand(preview)) {
+        await executeTextCommandPreview(preview);
+      }
     } catch (error) {
       setCommandPreview(undefined);
       setCommandError(errorMessage(error));
@@ -449,10 +455,14 @@ export function App() {
 
   const confirmTextCommand = async () => {
     if (!commandPreview) return;
+    await executeTextCommandPreview(commandPreview);
+  };
+
+  const executeTextCommandPreview = async (preview: CommandPreview) => {
     setCommandExecuting(true);
     setCommandError(undefined);
     try {
-      for (const command of commandPreview.commands) {
+      for (const command of preview.commands) {
         const devices = executableTextCommandTargets([command], snapshot.devices);
         for (const device of devices) {
           await updateListDevice(applyTextCommandAction(device, command.action));
@@ -561,12 +571,14 @@ export function App() {
         open={commandOpen}
         interpreting={commandInterpreting}
         executing={commandExecuting}
+        autoExecute={commandAutoExecute}
         error={commandError}
         warning={commandSettings.warning}
         preview={commandPreview}
         onClose={() => setCommandOpen(false)}
         onInterpret={(text) => void interpretTextCommand(text)}
         onConfirm={() => void confirmTextCommand()}
+        onAutoExecuteChange={setCommandAutoExecute}
         onClear={() => {
           setCommandPreview(undefined);
           setCommandError(undefined);
@@ -666,6 +678,27 @@ function savePreference(key: string, value: string) {
   } catch (error) {
     console.warn(`Unable to save preference ${key}`, error);
   }
+}
+
+function loadBooleanPreference(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === 'true';
+  } catch (error) {
+    console.warn(`Unable to read preference ${key}`, error);
+    return false;
+  }
+}
+
+function saveBooleanPreference(key: string, value: boolean) {
+  try {
+    window.localStorage.setItem(key, value ? 'true' : 'false');
+  } catch (error) {
+    console.warn(`Unable to save preference ${key}`, error);
+  }
+}
+
+function canAutoExecuteCommand(preview: CommandPreview): boolean {
+  return !preview.empty && !preview.needsConfirmation && (preview.confidenceLevel === 'high' || preview.confidence >= 0.85);
 }
 
 function errorMessage(error: unknown): string {

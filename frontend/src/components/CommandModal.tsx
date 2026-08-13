@@ -1,5 +1,5 @@
 import { FormEvent, KeyboardEvent, useEffect, useState } from 'react';
-import { Check, MessageSquareText, X } from 'lucide-react';
+import { Sparkles, X } from 'lucide-react';
 import type { CommandPreview, CommandPreviewAction } from '../backend/api';
 import './CommandModal.css';
 
@@ -7,12 +7,14 @@ interface CommandModalProps {
   open: boolean;
   interpreting: boolean;
   executing: boolean;
+  autoExecute: boolean;
   error?: string;
   warning?: string;
   preview?: CommandPreview;
   onClose: () => void;
   onInterpret: (text: string) => void;
   onConfirm: () => void;
+  onAutoExecuteChange: (enabled: boolean) => void;
   onClear: () => void;
 }
 
@@ -99,8 +101,8 @@ export function CommandModal(props: CommandModalProps) {
       <section className="command-modal" role="dialog" aria-modal="true" aria-label="Text command">
         <header className="command-header">
           <div>
-            <MessageSquareText size={15} />
-            <strong>text command</strong>
+            <Sparkles size={15} />
+            <strong>quick action</strong>
           </div>
           <button type="button" aria-label="Close command modal" onClick={props.onClose}>
             <X size={15} />
@@ -130,6 +132,11 @@ export function CommandModal(props: CommandModalProps) {
             {canConfirm ? 'confirm' : 'interpret'}
           </button>
         </form>
+
+        <label className="command-auto-execute" title="Automatically run high-confidence commands that do not require confirmation.">
+          <input type="checkbox" checked={props.autoExecute} onChange={(event) => props.onAutoExecuteChange(event.target.checked)} />
+          <span>auto-run high confidence</span>
+        </label>
 
         {props.error ? <p className="command-error">{props.error}</p> : null}
 
@@ -172,13 +179,6 @@ export function CommandModal(props: CommandModalProps) {
           </div>
         ) : null}
 
-        <footer className="command-actions">
-          <button type="button" onClick={props.onClose}>cancel</button>
-          <button type="button" className="command-confirm" disabled={!canConfirm} onClick={props.onConfirm}>
-            <Check size={14} />
-            confirm
-          </button>
-        </footer>
       </section>
     </div>
   );

@@ -22,7 +22,7 @@
 .command-header div,
 .command-input-row,
 .command-text-wrap,
-.command-actions,
+.command-auto-execute,
 .command-preview-title,
 .command-command-meta,
 .command-targets {
@@ -45,8 +45,7 @@
 }
 
 .command-header button,
-.command-input-row button,
-.command-actions button {
+.command-input-row button {
   border: 0;
   border-radius: 6px;
   background: oklch(1 0 0 / 0.05);
@@ -64,14 +63,12 @@
 }
 
 .command-header button:hover,
-.command-input-row button:hover,
-.command-actions button:hover {
+.command-input-row button:hover {
   background: oklch(1 0 0 / 0.08);
   color: var(--fg-0);
 }
 
-.command-input-row button,
-.command-actions button {
+.command-input-row button {
   height: 28px;
   padding: 0 10px;
   font-size: 12px;
@@ -135,6 +132,21 @@
 
 .command-warning {
   color: var(--warm);
+}
+
+.command-auto-execute {
+  width: fit-content;
+  gap: 7px;
+  color: var(--fg-2);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.command-auto-execute input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .command-preview {
@@ -223,22 +235,8 @@
   white-space: nowrap;
 }
 
-.command-actions {
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.command-actions .command-confirm {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  background: oklch(0.78 0.13 230 / 0.18);
-  color: var(--fg-0);
-}
-
 .command-header button:disabled,
-.command-input-row button:disabled,
-.command-actions button:disabled {
+.command-input-row button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }

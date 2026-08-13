@@ -48,6 +48,8 @@ Run the command from the folder containing `hikari.app`, or replace `hikari.app`
 
 Local text commands use the standalone `lifx-command-engine` JSONL sidecar. Release builds bundle the lightweight rule-only sidecar and enable local commands automatically. The sidecar only interprets text into a structured plan; hikari still validates targets, previews the action, asks for confirmation, and sends any LIFX commands itself.
 
+The quick action prompt can optionally auto-run high-confidence plans that the engine does not mark as requiring confirmation. Lower-confidence or confirmation-required plans still need explicit confirmation.
+
 For development, run `./scripts/bundle-command-sidecar.sh` after `wails build`, put `lifx-command-engine` on `PATH`, or set an explicit path with environment variables:
 
 ```sh
