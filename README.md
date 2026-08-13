@@ -91,6 +91,8 @@ Run with real LAN discovery:
 wails dev
 ```
 
+`frontend/dist/.gitkeep` is committed so Go embed works before the first production frontend build. If you remove `frontend/dist` entirely, recreate it or run `npm run build` in `frontend` before running direct Go commands such as `go test ./...`.
+
 Run with mock devices:
 
 ```sh
@@ -135,7 +137,7 @@ wails build -clean
 ./scripts/bundle-command-sidecar.sh
 ```
 
-The sidecar script builds the pinned `lifx-command-engine` module from `go.mod` and places it next to the app binary, or in `hikari.app/Contents/Resources` on macOS.
+`wails build` builds `frontend/dist` and the desktop app. The sidecar script only builds the pinned `lifx-command-engine` module from `go.mod` and places it next to the app binary, or in `hikari.app/Contents/Resources` on macOS.
 
 Release builds are intended to be produced natively on each platform through GitHub Actions.
 
