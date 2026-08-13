@@ -1,18 +1,16 @@
 import { FormEvent, KeyboardEvent, useEffect, useState } from 'react';
 import { Check, MessageSquareText, X } from 'lucide-react';
-import type { CommandEngineSettings, CommandPreview, CommandPreviewAction } from '../backend/api';
+import type { CommandPreview, CommandPreviewAction } from '../backend/api';
 import './CommandModal.css';
 
 interface CommandModalProps {
   open: boolean;
-  settings: CommandEngineSettings;
-  loading: boolean;
   interpreting: boolean;
   executing: boolean;
   error?: string;
+  warning?: string;
   preview?: CommandPreview;
   onClose: () => void;
-  onSettingsChange: (settings: { enabled: boolean; enginePath?: string; configPath?: string }) => void;
   onInterpret: (text: string) => void;
   onConfirm: () => void;
   onClear: () => void;
@@ -22,15 +20,6 @@ export function CommandModal(props: CommandModalProps) {
   const [text, setText] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | undefined>();
-  const [enabled, setEnabled] = useState(props.settings.enabled);
-  const [enginePath, setEnginePath] = useState(props.settings.enginePath ?? '');
-  const [configPath, setConfigPath] = useState(props.settings.configPath ?? '');
-
-  useEffect(() => {
-    setEnabled(props.settings.enabled);
-    setEnginePath(props.settings.enginePath ?? '');
-    setConfigPath(props.settings.configPath ?? '');
-  }, [props.settings]);
 
   useEffect(() => {
     if (props.open) return;
@@ -39,7 +28,7 @@ export function CommandModal(props: CommandModalProps) {
     props.onClear();
   }, [props.open]);
 
-  const canInterpret = enabled && text.trim().length > 0 && !props.interpreting && !props.loading;
+  const canInterpret = text.trim().length > 0 && !props.interpreting;
   const canConfirm = !!props.preview && !props.preview.empty && !props.executing && !props.interpreting;
 
   const submit = (event: FormEvent) => {
@@ -118,29 +107,15 @@ export function CommandModal(props: CommandModalProps) {
           </button>
         </header>
 
-        <div className="command-settings-row">
-          <label>
-            <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-            <span>enable local commands</span>
-          </label>
-          <button type="button" disabled={props.loading} onClick={() => props.onSettingsChange({ enabled, enginePath, configPath })}>
-            save
-          </button>
-        </div>
-        <div className="command-paths">
-          <input value={enginePath} onChange={(event) => setEnginePath(event.target.value)} placeholder="lifx-command-engine path or PATH lookup" autoComplete="off" spellCheck={false} />
-          <input value={configPath} onChange={(event) => setConfigPath(event.target.value)} placeholder="optional config path" autoComplete="off" spellCheck={false} />
-        </div>
-        {props.settings.warning ? <p className="command-warning">{props.settings.warning}</p> : null}
+        {props.warning ? <p className="command-warning">{props.warning}</p> : null}
 
         <form className="command-input-row" onSubmit={submit}>
           <div className="command-text-wrap">
             <input
               value={text}
-              disabled={!enabled}
               onChange={(event) => updateText(event.target.value)}
               onKeyDown={handleTextKeyDown}
-              placeholder={enabled ? 'turn desk warm white at 35%' : 'local commands disabled'}
+              placeholder="turn desk warm white at 35%"
               autoComplete="off"
               autoFocus
               spellCheck={false}

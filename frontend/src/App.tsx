@@ -42,7 +42,6 @@ export function App() {
   const [networkChanging, setNetworkChanging] = useState(false);
   const [commandSettings, setCommandSettings] = useState<CommandEngineSettings>({ enabled: false, available: false });
   const [commandOpen, setCommandOpen] = useState(false);
-  const [commandLoading, setCommandLoading] = useState(false);
   const [commandInterpreting, setCommandInterpreting] = useState(false);
   const [commandExecuting, setCommandExecuting] = useState(false);
   const [commandPreview, setCommandPreview] = useState<CommandPreview | undefined>();
@@ -145,6 +144,31 @@ export function App() {
 
   useEffect(() => savePreference(LOCATION_KEY, locationId), [locationId]);
   useEffect(() => savePreference(GROUP_KEY, groupId), [groupId]);
+
+  const openCommandModal = useCallback(() => {
+    setCommandOpen(true);
+    if (commandSettings.enabled) return;
+    setCommandSettings((prev) => ({ ...prev, enabled: true, warning: undefined }));
+    void setCommandEngineSettings({
+      enabled: true,
+      enginePath: commandSettings.enginePath,
+      configPath: commandSettings.configPath,
+    })
+      .then(setCommandSettings)
+      .catch((error) => setCommandSettings((prev) => ({ ...prev, warning: errorMessage(error) })));
+  }, [commandSettings]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (commandOpen || isEditableShortcutTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openCommandModal();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [commandOpen, openCommandModal]);
 
   const selectedDevice = snapshot.devices.find((device) => device.serial === selectedSerial);
   const inspectorGroup = snapshot.groups.find((group) => group.id === selectedGroupInspectorId);
@@ -408,20 +432,6 @@ export function App() {
     }
   };
 
-  const saveCommandSettings = async (settings: { enabled: boolean; enginePath?: string; configPath?: string }) => {
-    setCommandLoading(true);
-    setCommandError(undefined);
-    try {
-      const saved = await setCommandEngineSettings(settings);
-      setCommandSettings(saved);
-      setCommandPreview(undefined);
-    } catch (error) {
-      setCommandError(errorMessage(error));
-    } finally {
-      setCommandLoading(false);
-    }
-  };
-
   const interpretTextCommand = async (text: string) => {
     setCommandInterpreting(true);
     setCommandError(undefined);
@@ -517,7 +527,7 @@ export function App() {
         }
         onNetworkInterfaceChange={(name) => void changeNetworkInterface(name)}
         onRefreshDiscovery={() => void refreshDiscovery()}
-        onOpenCommands={() => setCommandOpen(true)}
+        onOpenCommands={openCommandModal}
         onGroupPower={(id, on) =>
           void Promise.all(snapshot.devices.filter(isLightDevice).filter((device) => device.groupId === id).map((device) => updateListDevice({ ...device, on })))
         }
@@ -549,14 +559,12 @@ export function App() {
 
       <CommandModal
         open={commandOpen}
-        settings={commandSettings}
-        loading={commandLoading}
         interpreting={commandInterpreting}
         executing={commandExecuting}
         error={commandError}
+        warning={commandSettings.warning}
         preview={commandPreview}
         onClose={() => setCommandOpen(false)}
-        onSettingsChange={(settings) => void saveCommandSettings(settings)}
         onInterpret={(text) => void interpretTextCommand(text)}
         onConfirm={() => void confirmTextCommand()}
         onClear={() => {
@@ -594,6 +602,12 @@ export function App() {
       ) : null}
     </div>
   );
+}
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target.isContentEditable;
 }
 
 async function readSnapshotWithRecovery(recoveryRef: { current: boolean }): Promise<DeviceSnapshot> {

@@ -20,7 +20,6 @@
 
 .command-header,
 .command-header div,
-.command-settings-row,
 .command-input-row,
 .command-text-wrap,
 .command-actions,
@@ -46,7 +45,6 @@
 }
 
 .command-header button,
-.command-settings-row button,
 .command-input-row button,
 .command-actions button {
   border: 0;
@@ -66,31 +64,12 @@
 }
 
 .command-header button:hover,
-.command-settings-row button:hover,
 .command-input-row button:hover,
 .command-actions button:hover {
   background: oklch(1 0 0 / 0.08);
   color: var(--fg-0);
 }
 
-.command-settings-row {
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.command-settings-row label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--fg-1);
-  font-size: 12px;
-}
-
-.command-settings-row input[type="checkbox"] {
-  accent-color: var(--accent);
-}
-
-.command-settings-row button,
 .command-input-row button,
 .command-actions button {
   height: 28px;
@@ -98,12 +77,6 @@
   font-size: 12px;
 }
 
-.command-paths {
-  display: grid;
-  gap: 8px;
-}
-
-.command-paths input,
 .command-text-wrap input {
   min-width: 0;
   height: 32px;
@@ -116,7 +89,6 @@
   padding: 0 10px;
 }
 
-.command-paths input:focus,
 .command-text-wrap:focus-within input {
   border-color: oklch(1 0 0 / 0.16);
 }
@@ -265,7 +237,6 @@
 }
 
 .command-header button:disabled,
-.command-settings-row button:disabled,
 .command-input-row button:disabled,
 .command-actions button:disabled {
   cursor: not-allowed;

@@ -38,14 +38,16 @@ Run the command from the folder containing `hikari.app`, or replace `hikari.app`
 ## Shortcuts
 
 - `Cmd+F` on macOS or `Ctrl+F` on Windows/Linux: focus and select the search field.
+- `Space`: open the text command prompt when focus is not in a text field or control.
 - `Esc` in search: clear the search text; when search is empty, blur the field.
+- `Esc` in the text command prompt: clear the prompt and preview; when empty, close the prompt.
 - `Esc` with the right panel open: close the active device or group panel.
 
 ## Local Text Commands
 
 Local text commands use the standalone `lifx-command-engine` JSONL sidecar. Release builds bundle the lightweight rule-only sidecar and enable local commands automatically. The sidecar only interprets text into a structured plan; hikari still validates targets, previews the action, asks for confirmation, and sends any LIFX commands itself.
 
-For development, run `./scripts/bundle-command-sidecar.sh` after `wails build`, put `lifx-command-engine` on `PATH`, or set an explicit path in the command modal. You can also seed defaults with:
+For development, run `./scripts/bundle-command-sidecar.sh` after `wails build`, put `lifx-command-engine` on `PATH`, or set an explicit path with environment variables:
 
 ```sh
 HIKARI_COMMANDS_ENABLED=1 \
@@ -53,7 +55,7 @@ HIKARI_COMMAND_ENGINE_PATH=/path/to/lifx-command-engine \
 wails dev
 ```
 
-Optional FunctionGemma and whisper.cpp runtime/model paths belong in a `lifx-command-engine` config file, then in hikari set the optional config path. The base hikari app does not download or bundle model weights or speech runtimes.
+Optional FunctionGemma and whisper.cpp runtime/model paths belong in a `lifx-command-engine` config file, then in hikari set `HIKARI_COMMAND_ENGINE_CONFIG` to that file. The base hikari app does not download or bundle model weights or speech runtimes.
 
 ## Requirements
 
