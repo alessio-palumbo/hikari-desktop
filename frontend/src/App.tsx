@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getCommandEngineSettings, getDeviceSnapshot, getNetworkSettings, interpretCommand, restartDeviceDiscovery, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, type CommandEngineSettings, type CommandPreview, type CommandPreviewAction, type DeviceEffectStatus, type NetworkSettings } from './backend/api';
+import { getCommandEngineSettings, getDeviceSnapshot, getNetworkSettings, interpretCommand, restartDeviceDiscovery, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, type CommandEngineSettings, type CommandPreview, type DeviceEffectStatus, type NetworkSettings } from './backend/api';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
 import { GroupInspector } from './components/GroupInspector';
@@ -10,6 +10,7 @@ import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/comma
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
+import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
 const REFRESH_INTERVAL_MS = 5000;
@@ -442,11 +443,9 @@ export function App() {
     setCommandError(undefined);
     try {
       for (const command of commandPreview.commands) {
-        for (const target of command.targets) {
-          const device = snapshot.devices.find((entry) => entry.serial === target.serial);
-          if (!device) throw new Error('Device ' + target.serial + ' is no longer available');
-          if (!isLightDevice(device)) throw new Error(device.name + ' is not a supported light target');
-          await updateListDevice(applyCommandAction(device, command.action));
+        const devices = executableTextCommandTargets([command], snapshot.devices);
+        for (const device of devices) {
+          await updateListDevice(applyTextCommandAction(device, command.action));
         }
       }
       setCommandOpen(false);
@@ -636,34 +635,6 @@ function DiscoveryStatus(props: { title: string; message: string; children?: Rea
   );
 }
 
-function applyCommandAction(device: Device, action: CommandPreviewAction): Device {
-  let next: Device = { ...device };
-  const color = { ...(next.color ?? { h: 38, s: 0, l: next.brightness || 0.55 }) };
-  if (typeof action.power === 'boolean') next = { ...next, on: action.power };
-  if (typeof action.brightness === 'number') {
-    const brightness = clamp(action.brightness / 100, 0, 1);
-    next = { ...next, brightness };
-    color.l = brightness || color.l;
-  }
-  if (typeof action.kelvin === 'number') {
-    color.h = 38;
-    color.s = 0;
-    color.kelvin = action.kelvin;
-    next = { ...next, kelvin: action.kelvin, color, on: true };
-  }
-  if (typeof action.hue === 'number' || typeof action.saturation === 'number') {
-    color.h = typeof action.hue === 'number' ? action.hue : color.h;
-    color.s = typeof action.saturation === 'number' ? action.saturation / 100 : color.s;
-    delete color.kelvin;
-    next = { ...next, color, on: true };
-  }
-  if (typeof action.brightness === 'number' && action.brightness > 0) next = { ...next, on: true, color };
-  return next;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function loadPreference(key: string): string {
   try {
