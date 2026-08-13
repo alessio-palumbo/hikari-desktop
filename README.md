@@ -38,7 +38,8 @@ Run the command from the folder containing `hikari.app`, or replace `hikari.app`
 ## Shortcuts
 
 - `Cmd+F` on macOS or `Ctrl+F` on Windows/Linux: focus and select the search field.
-- `Space`: open the text command prompt when focus is not in a text field or control.
+- `S`: focus and select the search field when focus is not in a text field or control.
+- `Space`: open the text command prompt when focus is not in a text field or control, or when the focused search field is empty.
 - `Esc` in search: clear the search text; when search is empty, blur the field.
 - `Esc` in the text command prompt: clear the prompt and preview; when empty, close the prompt.
 - `Esc` with the right panel open: close the active device or group panel.

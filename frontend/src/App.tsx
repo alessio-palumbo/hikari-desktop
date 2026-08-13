@@ -161,7 +161,7 @@ export function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-      if (commandOpen || isEditableShortcutTarget(event.target)) return;
+      if (commandOpen || isEditableShortcutTarget(event.target, { allowEmptySearch: true })) return;
       event.preventDefault();
       event.stopPropagation();
       openCommandModal();
@@ -604,8 +604,9 @@ export function App() {
   );
 }
 
-function isEditableShortcutTarget(target: EventTarget | null): boolean {
+function isEditableShortcutTarget(target: EventTarget | null, options: { allowEmptySearch?: boolean } = {}): boolean {
   if (!(target instanceof HTMLElement)) return false;
+  if (options.allowEmptySearch && target instanceof HTMLInputElement && target.dataset.shortcutTarget === 'search' && target.value.length === 0) return false;
   const tag = target.tagName.toLowerCase();
   return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target.isContentEditable;
 }

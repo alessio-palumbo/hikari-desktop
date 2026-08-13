@@ -47,7 +47,10 @@ export function Sidebar(props: SidebarProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== 'f' || (!event.metaKey && !event.ctrlKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      const searchShortcut = key === 's' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !isEditableShortcutTarget(event.target);
+      const findShortcut = key === 'f' && (event.metaKey || event.ctrlKey) && !event.altKey;
+      if (!searchShortcut && !findShortcut) return;
       event.preventDefault();
       event.stopPropagation();
       searchRef.current?.focus();
@@ -67,6 +70,7 @@ export function Sidebar(props: SidebarProps) {
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
+          data-shortcut-target="search"
           onChange={(event) => props.onQueryChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== 'Escape') return;
@@ -128,6 +132,12 @@ export function Sidebar(props: SidebarProps) {
       </div>
     </aside>
   );
+}
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target.isContentEditable;
 }
 
 interface NetworkInterfaceControlProps {
