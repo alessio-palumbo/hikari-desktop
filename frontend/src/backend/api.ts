@@ -86,6 +86,7 @@ export interface CommandPreview {
   needsConfirmation: boolean;
   empty: boolean;
   commands: CommandPreviewCommand[];
+  skippedTargets: CommandPreviewTarget[];
 }
 
 export interface CommandPreviewCommand {
@@ -181,7 +182,7 @@ export async function interpretCommand(text: string): Promise<CommandPreview> {
   const app = window.go?.main?.App;
   if (app?.InterpretCommand) return normalizeCommandPreview(await app.InterpretCommand({ text }));
   await new Promise((resolve) => window.setTimeout(resolve, 120));
-  return { summary: 'No supported command found', confidence: 0, confidenceLevel: 'low', reasons: ['command engine unavailable'], needsConfirmation: false, empty: true, commands: [] };
+  return { summary: 'No supported command found', confidence: 0, confidenceLevel: 'low', reasons: ['command engine unavailable'], needsConfirmation: false, empty: true, commands: [], skippedTargets: [] };
 }
 
 function mockSnapshot(): DeviceSnapshot {
@@ -307,6 +308,7 @@ function normalizeCommandPreview(preview: CommandPreview | null | undefined): Co
     needsConfirmation: Boolean(preview?.needsConfirmation),
     empty: Boolean(preview?.empty),
     commands: Array.isArray(preview?.commands) ? preview.commands : [],
+    skippedTargets: Array.isArray(preview?.skippedTargets) ? preview.skippedTargets : [],
   };
 }
 

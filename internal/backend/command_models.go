@@ -26,6 +26,7 @@ type CommandPreview struct {
 	NeedsConfirmation bool                    `json:"needsConfirmation"`
 	Empty             bool                    `json:"empty"`
 	Commands          []CommandPreviewCommand `json:"commands"`
+	SkippedTargets    []CommandPreviewTarget  `json:"skippedTargets"`
 }
 
 type CommandPreviewCommand struct {

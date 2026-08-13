@@ -128,6 +128,7 @@ func commandPreviewFromPlan(plan commandclient.CommandPlan, snapshot DeviceSnaps
 		NeedsConfirmation: plan.NeedsConfirmation,
 		Empty:             len(plan.Commands) == 0,
 		Commands:          make([]CommandPreviewCommand, 0, len(plan.Commands)),
+		SkippedTargets:    []CommandPreviewTarget{},
 	}
 	devicesBySerial := make(map[string]Device, len(snapshot.Devices))
 	for _, device := range snapshot.Devices {
@@ -141,6 +142,12 @@ func commandPreviewFromPlan(plan commandclient.CommandPlan, snapshot DeviceSnaps
 				return CommandPreview{}, fmt.Errorf("command targets unknown device %q", target.Serial)
 			}
 			if device.Kind == DeviceKindSwitch {
+				preview.SkippedTargets = append(preview.SkippedTargets, CommandPreviewTarget{
+					Serial:   target.Serial,
+					Label:    firstNonEmpty(target.Label, device.Name),
+					Group:    target.Group,
+					Location: target.Location,
+				})
 				continue
 			}
 			if err := validateCommandAction(command.Action, device); err != nil {

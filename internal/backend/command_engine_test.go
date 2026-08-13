@@ -111,6 +111,9 @@ func TestCommandEngineServiceSkipsSwitchTargets(t *testing.T) {
 	if preview.Commands[0].Targets[0].Serial != "d0:73:d5:01:a2:c3" {
 		t.Fatalf("targets = %#v", preview.Commands[0].Targets)
 	}
+	if len(preview.SkippedTargets) != 1 || preview.SkippedTargets[0].Serial != "d0:73:d5:02:b1:20" {
+		t.Fatalf("skipped = %#v", preview.SkippedTargets)
+	}
 }
 
 func TestCommandEngineServiceReturnsEmptyWhenOnlySwitchTargetsRemain(t *testing.T) {
@@ -136,6 +139,9 @@ func TestCommandEngineServiceReturnsEmptyWhenOnlySwitchTargetsRemain(t *testing.
 	}
 	if !preview.Empty || len(preview.Commands) != 0 {
 		t.Fatalf("preview = %#v, want empty unsupported command", preview)
+	}
+	if len(preview.SkippedTargets) != 1 || preview.SkippedTargets[0].Serial != "d0:73:d5:02:b1:20" {
+		t.Fatalf("skipped = %#v", preview.SkippedTargets)
 	}
 }
 

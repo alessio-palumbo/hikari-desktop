@@ -1,6 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Check, MessageSquareText, X } from 'lucide-react';
-import type { CommandEngineSettings, CommandPreview } from '../backend/api';
+import type { CommandEngineSettings, CommandPreview, CommandPreviewAction } from '../backend/api';
 import './CommandModal.css';
 
 interface CommandModalProps {
@@ -43,8 +43,6 @@ export function CommandModal(props: CommandModalProps) {
     event.preventDefault();
     if (canInterpret) props.onInterpret(text);
   };
-
-  const actionLabel = useMemo(() => (props.preview ? describePreviewAction(props.preview) : ''), [props.preview]);
 
   if (!props.open) return null;
 
@@ -100,20 +98,35 @@ export function CommandModal(props: CommandModalProps) {
               <strong>{props.preview.empty ? 'No supported command found' : props.preview.summary}</strong>
               <span>{Math.round(props.preview.confidence * 100)}% · {props.preview.confidenceLevel || 'unknown'}</span>
             </div>
-            {actionLabel ? <p>{actionLabel}</p> : null}
+
+            {props.preview.commands.length ? (
+              <div className="command-command-list">
+                {props.preview.commands.map((command, index) => (
+                  <section className="command-command" key={index}>
+                    <div className="command-command-meta">
+                      <span>{command.targets.length} target{command.targets.length === 1 ? '' : 's'}</span>
+                      <strong>{describeAction(command.action)}</strong>
+                    </div>
+                    <div className="command-targets">
+                      {command.targets.map((target) => (
+                        <span key={target.serial} title={target.serial}>{target.label || target.serial}</span>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : null}
+
+            {props.preview.skippedTargets.length ? (
+              <p className="command-skipped">Skipped unsupported target{props.preview.skippedTargets.length === 1 ? '' : 's'}: {props.preview.skippedTargets.map((target) => target.label || target.serial).join(', ')}</p>
+            ) : null}
+
             {props.preview.reasons.length ? (
               <ul>
                 {props.preview.reasons.slice(0, 3).map((reason) => (
                   <li key={reason}>{reason}</li>
                 ))}
               </ul>
-            ) : null}
-            {props.preview.commands.length ? (
-              <div className="command-targets">
-                {props.preview.commands.flatMap((command) => command.targets).map((target) => (
-                  <span key={target.serial}>{target.label || target.serial}</span>
-                ))}
-              </div>
             ) : null}
           </div>
         ) : null}
@@ -130,14 +143,12 @@ export function CommandModal(props: CommandModalProps) {
   );
 }
 
-function describePreviewAction(preview: CommandPreview): string {
-  const action = preview.commands[0]?.action;
-  if (!action) return '';
+function describeAction(action: CommandPreviewAction): string {
   const parts: string[] = [];
   if (typeof action.power === 'boolean') parts.push(action.power ? 'power on' : 'power off');
   if (typeof action.brightness === 'number') parts.push(`brightness ${Math.round(action.brightness)}%`);
   if (typeof action.kelvin === 'number') parts.push(`${action.kelvin}K`);
   if (typeof action.hue === 'number') parts.push(`hue ${Math.round(action.hue)}°`);
   if (typeof action.saturation === 'number') parts.push(`saturation ${Math.round(action.saturation)}%`);
-  return parts.join(' · ');
+  return parts.length ? parts.join(' · ') : 'no state change';
 }

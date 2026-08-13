@@ -24,6 +24,7 @@
 .command-input-row,
 .command-actions,
 .command-preview-title,
+.command-command-meta,
 .command-targets {
   display: flex;
   align-items: center;
@@ -130,7 +131,8 @@
 .command-warning,
 .command-error,
 .command-preview p,
-.command-preview li {
+.command-preview li,
+.command-command-meta span {
   margin: 0;
   color: var(--fg-2);
   font-size: 12px;
@@ -174,6 +176,37 @@
   flex: 0 0 auto;
   color: var(--fg-3);
   font-size: 11px;
+}
+
+.command-command-list {
+  display: grid;
+  gap: 8px;
+}
+
+.command-command {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: oklch(1 0 0 / 0.02);
+}
+
+.command-command-meta {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.command-command-meta strong {
+  min-width: 0;
+  color: var(--fg-0);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+}
+
+.command-skipped {
+  color: var(--warm);
 }
 
 .command-preview ul {
