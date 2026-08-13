@@ -229,7 +229,9 @@ func bundledCommandEnginePath() (string, bool) {
 	exeDir := filepath.Dir(exe)
 	candidates := []string{
 		filepath.Join(exeDir, "lifx-command-engine"),
+		filepath.Join(exeDir, "lifx-command-engine.exe"),
 		filepath.Clean(filepath.Join(exeDir, "..", "Resources", "lifx-command-engine")),
+		filepath.Clean(filepath.Join(exeDir, "..", "Resources", "lifx-command-engine.exe")),
 	}
 	for _, candidate := range candidates {
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {

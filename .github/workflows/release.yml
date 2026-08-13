@@ -79,6 +79,10 @@ jobs:
       - name: Build Wails app
         run: wails build -clean -ldflags "-X main.version=${HIKARI_VERSION}"
 
+      - name: Bundle command sidecar
+        shell: bash
+        run: ./scripts/bundle-command-sidecar.sh
+
       - name: Package macOS app
         if: runner.os == 'macOS'
         run: |

@@ -43,9 +43,9 @@ Run the command from the folder containing `hikari.app`, or replace `hikari.app`
 
 ## Local Text Commands
 
-Local text commands are optional and use the standalone `lifx-command-engine` JSONL sidecar. The sidecar only interprets text into a structured plan; hikari still validates targets, previews the action, asks for confirmation, and sends any LIFX commands itself.
+Local text commands use the standalone `lifx-command-engine` JSONL sidecar. Release builds bundle the lightweight rule-only sidecar and enable local commands automatically. The sidecar only interprets text into a structured plan; hikari still validates targets, previews the action, asks for confirmation, and sends any LIFX commands itself.
 
-For development, either put `lifx-command-engine` on `PATH` or set an explicit path in the command modal. You can also seed defaults with:
+For development, run `./scripts/bundle-command-sidecar.sh` after `wails build`, put `lifx-command-engine` on `PATH`, or set an explicit path in the command modal. You can also seed defaults with:
 
 ```sh
 HIKARI_COMMANDS_ENABLED=1 \
@@ -127,7 +127,10 @@ Build the desktop app for the current platform:
 
 ```sh
 wails build -clean
+./scripts/bundle-command-sidecar.sh
 ```
+
+The sidecar script builds the pinned `lifx-command-engine` module from `go.mod` and places it next to the app binary, or in `hikari.app/Contents/Resources` on macOS.
 
 Release builds are intended to be produced natively on each platform through GitHub Actions.
 

@@ -88,6 +88,9 @@ func (s *memoryCommandSettingsStore) SaveCommandEngineSettings(settings CommandE
 func defaultCommandEngineSettings() CommandEngineSettings {
 	enabled := strings.EqualFold(os.Getenv("HIKARI_COMMANDS_ENABLED"), "1") ||
 		strings.EqualFold(os.Getenv("HIKARI_COMMANDS_ENABLED"), "true")
+	if !enabled {
+		_, enabled = bundledCommandEnginePath()
+	}
 	return CommandEngineSettings{
 		Enabled:    enabled,
 		EnginePath: strings.TrimSpace(os.Getenv("HIKARI_COMMAND_ENGINE_PATH")),
