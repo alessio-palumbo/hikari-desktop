@@ -48,7 +48,7 @@ func (s fileCommandSettingsStore) LoadCommandEngineSettings() (CommandEngineSett
 	if err := json.Unmarshal(data, &persisted); err != nil {
 		return CommandEngineSettings{}, fmt.Errorf("parse command settings: %w", err)
 	}
-	return commandSettingsFromPersisted(persisted), nil
+	return commandSettingsWithEnvOverrides(commandSettingsFromPersisted(persisted)), nil
 }
 
 func (s fileCommandSettingsStore) SaveCommandEngineSettings(settings CommandEngineSettings) error {
@@ -91,11 +91,11 @@ func defaultCommandEngineSettings() CommandEngineSettings {
 	if !enabled {
 		_, enabled = bundledCommandEnginePath()
 	}
-	return CommandEngineSettings{
+	return commandSettingsWithEnvOverrides(CommandEngineSettings{
 		Enabled:    enabled,
-		EnginePath: strings.TrimSpace(os.Getenv("HIKARI_COMMAND_ENGINE_PATH")),
-		ConfigPath: strings.TrimSpace(os.Getenv("HIKARI_COMMAND_ENGINE_CONFIG")),
-	}
+		EnginePath: "",
+		ConfigPath: "",
+	})
 }
 
 func commandSettingsFromPersisted(settings persistedCommandSettings) CommandEngineSettings {
@@ -104,4 +104,17 @@ func commandSettingsFromPersisted(settings persistedCommandSettings) CommandEngi
 		EnginePath: strings.TrimSpace(settings.EnginePath),
 		ConfigPath: strings.TrimSpace(settings.ConfigPath),
 	}
+}
+
+func commandSettingsWithEnvOverrides(settings CommandEngineSettings) CommandEngineSettings {
+	if enabled := strings.TrimSpace(os.Getenv("HIKARI_COMMANDS_ENABLED")); enabled != "" {
+		settings.Enabled = strings.EqualFold(enabled, "1") || strings.EqualFold(enabled, "true")
+	}
+	if path := strings.TrimSpace(os.Getenv("HIKARI_COMMAND_ENGINE_PATH")); path != "" {
+		settings.EnginePath = path
+	}
+	if path := strings.TrimSpace(os.Getenv("HIKARI_COMMAND_ENGINE_CONFIG")); path != "" {
+		settings.ConfigPath = path
+	}
+	return settings
 }

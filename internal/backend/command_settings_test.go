@@ -18,6 +18,21 @@ func TestDefaultCommandEngineSettingsHonorsEnv(t *testing.T) {
 	}
 }
 
+func TestFileCommandSettingsStoreEnvOverridesPersistedPath(t *testing.T) {
+	t.Setenv("HIKARI_COMMAND_ENGINE_PATH", "/tmp/current-engine")
+	path := filepath.Join(t.TempDir(), "command-settings.json")
+	if err := os.WriteFile(path, []byte(`{"enabled":true,"enginePath":"/tmp/old-engine"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := fileCommandSettingsStore{path: path}.LoadCommandEngineSettings()
+	if err != nil {
+		t.Fatalf("LoadCommandEngineSettings returned error: %v", err)
+	}
+	if settings.EnginePath != "/tmp/current-engine" {
+		t.Fatalf("EnginePath = %q", settings.EnginePath)
+	}
+}
+
 func TestCommandEngineCommandResolvesExplicitPath(t *testing.T) {
 	path, args, err := commandEngineCommand(CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine", ConfigPath: "/tmp/config.json"})
 	if err != nil {
