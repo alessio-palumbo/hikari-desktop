@@ -22,6 +22,7 @@
 .command-header div,
 .command-settings-row,
 .command-input-row,
+.command-text-wrap,
 .command-actions,
 .command-preview-title,
 .command-command-meta,
@@ -103,7 +104,7 @@
 }
 
 .command-paths input,
-.command-input-row input {
+.command-text-wrap input {
   min-width: 0;
   height: 32px;
   border: 1px solid var(--line);
@@ -116,7 +117,7 @@
 }
 
 .command-paths input:focus,
-.command-input-row input:focus {
+.command-text-wrap:focus-within input {
   border-color: oklch(1 0 0 / 0.16);
 }
 
@@ -124,8 +125,25 @@
   gap: 8px;
 }
 
-.command-input-row input {
+.command-text-wrap {
+  position: relative;
   flex: 1;
+}
+
+.command-text-wrap input {
+  width: 100%;
+  padding-right: 32px;
+}
+
+.command-text-wrap button {
+  position: absolute;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
 }
 
 .command-warning,

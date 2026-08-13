@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useState } from 'react';
 import { Check, MessageSquareText, X } from 'lucide-react';
 import type { CommandEngineSettings, CommandPreview, CommandPreviewAction } from '../backend/api';
 import './CommandModal.css';
@@ -20,6 +20,8 @@ interface CommandModalProps {
 
 export function CommandModal(props: CommandModalProps) {
   const [text, setText] = useState('');
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number | undefined>();
   const [enabled, setEnabled] = useState(props.settings.enabled);
   const [enginePath, setEnginePath] = useState(props.settings.enginePath ?? '');
   const [configPath, setConfigPath] = useState(props.settings.configPath ?? '');
@@ -33,15 +35,70 @@ export function CommandModal(props: CommandModalProps) {
   useEffect(() => {
     if (props.open) return;
     setText('');
+    setHistoryIndex(undefined);
     props.onClear();
   }, [props.open]);
 
   const canInterpret = enabled && text.trim().length > 0 && !props.interpreting && !props.loading;
-  const canConfirm = !!props.preview && !props.preview.empty && !props.executing;
+  const canConfirm = !!props.preview && !props.preview.empty && !props.executing && !props.interpreting;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (canInterpret) props.onInterpret(text);
+    if (canConfirm) {
+      props.onConfirm();
+      return;
+    }
+    if (!canInterpret) return;
+    const prompt = text.trim();
+    setHistory((current) => [prompt, ...current.filter((entry) => entry !== prompt)].slice(0, 20));
+    setHistoryIndex(undefined);
+    props.onInterpret(prompt);
+  };
+
+  const updateText = (next: string) => {
+    setText(next);
+    setHistoryIndex(undefined);
+    props.onClear();
+  };
+
+  const clearText = () => {
+    setText('');
+    setHistoryIndex(undefined);
+    props.onClear();
+  };
+
+  const handleTextKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (text || props.preview || props.error) clearText();
+      else props.onClose();
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      if (!history.length) return;
+      event.preventDefault();
+      const nextIndex = typeof historyIndex === 'number' ? Math.min(historyIndex + 1, history.length - 1) : 0;
+      setHistoryIndex(nextIndex);
+      setText(history[nextIndex]);
+      props.onClear();
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      if (!history.length || typeof historyIndex !== 'number') return;
+      event.preventDefault();
+      const nextIndex = historyIndex - 1;
+      if (nextIndex < 0) {
+        setHistoryIndex(undefined);
+        setText('');
+      } else {
+        setHistoryIndex(nextIndex);
+        setText(history[nextIndex]);
+      }
+      props.onClear();
+    }
   };
 
   if (!props.open) return null;
@@ -71,22 +128,31 @@ export function CommandModal(props: CommandModalProps) {
           </button>
         </div>
         <div className="command-paths">
-          <input value={enginePath} onChange={(event) => setEnginePath(event.target.value)} placeholder="lifx-command-engine path or PATH lookup" spellCheck={false} />
-          <input value={configPath} onChange={(event) => setConfigPath(event.target.value)} placeholder="optional config path" spellCheck={false} />
+          <input value={enginePath} onChange={(event) => setEnginePath(event.target.value)} placeholder="lifx-command-engine path or PATH lookup" autoComplete="off" spellCheck={false} />
+          <input value={configPath} onChange={(event) => setConfigPath(event.target.value)} placeholder="optional config path" autoComplete="off" spellCheck={false} />
         </div>
         {props.settings.warning ? <p className="command-warning">{props.settings.warning}</p> : null}
 
         <form className="command-input-row" onSubmit={submit}>
-          <input
-            value={text}
-            disabled={!enabled}
-            onChange={(event) => setText(event.target.value)}
-            placeholder={enabled ? 'turn desk warm white at 35%' : 'local commands disabled'}
-            autoFocus
-            spellCheck={false}
-          />
-          <button type="submit" disabled={!canInterpret}>
-            interpret
+          <div className="command-text-wrap">
+            <input
+              value={text}
+              disabled={!enabled}
+              onChange={(event) => updateText(event.target.value)}
+              onKeyDown={handleTextKeyDown}
+              placeholder={enabled ? 'turn desk warm white at 35%' : 'local commands disabled'}
+              autoComplete="off"
+              autoFocus
+              spellCheck={false}
+            />
+            {text ? (
+              <button type="button" aria-label="Clear command" onClick={clearText}>
+                <X size={12} />
+              </button>
+            ) : null}
+          </div>
+          <button type="submit" disabled={!canInterpret && !canConfirm}>
+            {canConfirm ? 'confirm' : 'interpret'}
           </button>
         </form>
 
