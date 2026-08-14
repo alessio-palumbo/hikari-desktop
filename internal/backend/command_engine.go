@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -20,6 +21,7 @@ const (
 	commandEngineStartupTimeout = 5 * time.Second
 	commandEngineRequestTimeout = 8 * time.Second
 	commandEngineSpeechTimeout  = 45 * time.Second
+	commandEngineMaxAudioBytes  = 12 * 1024 * 1024
 )
 
 type commandEngineClient interface {
@@ -157,6 +159,27 @@ func (s *CommandEngineService) TranscribeAndInterpret(ctx context.Context, req T
 	return SpeechCommandPreview{Transcript: commandTranscriptFromResult(result.Transcript), Preview: preview}, nil
 }
 
+func (s *CommandEngineService) TranscribeAudioAndInterpret(ctx context.Context, req TranscribeCommandAudioRequest, snapshot DeviceSnapshot) (SpeechCommandPreview, error) {
+	audio, err := decodeAudioBase64(req.AudioBase64)
+	if err != nil {
+		return SpeechCommandPreview{}, err
+	}
+	file, err := os.CreateTemp("", "hikari-voice-*.wav")
+	if err != nil {
+		return SpeechCommandPreview{}, fmt.Errorf("create voice temp file: %w", err)
+	}
+	path := file.Name()
+	defer func() { _ = os.Remove(path) }()
+	if _, err := file.Write(audio); err != nil {
+		_ = file.Close()
+		return SpeechCommandPreview{}, fmt.Errorf("write voice temp file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return SpeechCommandPreview{}, fmt.Errorf("close voice temp file: %w", err)
+	}
+	return s.TranscribeAndInterpret(ctx, TranscribeCommandRequest{AudioPath: path, Language: req.Language}, snapshot)
+}
+
 func (s *CommandEngineService) Close(ctx context.Context) error {
 	s.mu.Lock()
 	client := s.client
@@ -168,6 +191,31 @@ func (s *CommandEngineService) Close(ctx context.Context) error {
 		return nil
 	}
 	return client.Close()
+}
+
+func decodeAudioBase64(encoded string) ([]byte, error) {
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" {
+		return nil, fmt.Errorf("audio payload is required")
+	}
+	if strings.HasPrefix(encoded, "data:") {
+		comma := strings.IndexByte(encoded, ',')
+		if comma < 0 {
+			return nil, fmt.Errorf("audio data URL is missing payload")
+		}
+		encoded = encoded[comma+1:]
+	}
+	audio, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("decode audio payload: %w", err)
+	}
+	if len(audio) == 0 {
+		return nil, fmt.Errorf("audio payload is empty")
+	}
+	if len(audio) > commandEngineMaxAudioBytes {
+		return nil, fmt.Errorf("audio payload exceeds %d bytes", commandEngineMaxAudioBytes)
+	}
+	return audio, nil
 }
 
 func (s *CommandEngineService) ensureStarted(ctx context.Context, settings CommandEngineSettings) (commandEngineClient, error) {

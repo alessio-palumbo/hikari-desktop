@@ -1,18 +1,22 @@
-import { FormEvent, KeyboardEvent, useEffect, useState } from 'react';
-import { Sparkles, X } from 'lucide-react';
-import type { CommandPreview, CommandPreviewAction } from '../backend/api';
+import { FormEvent, KeyboardEvent, PointerEvent, useEffect, useRef, useState } from 'react';
+import { Mic, Sparkles, X } from 'lucide-react';
+import type { CommandPreview, CommandPreviewAction, CommandTranscript } from '../backend/api';
 import './CommandModal.css';
 
 interface CommandModalProps {
   open: boolean;
   interpreting: boolean;
+  transcribing: boolean;
   executing: boolean;
   autoExecute: boolean;
+  voiceAvailable: boolean;
   error?: string;
   warning?: string;
+  transcript?: CommandTranscript;
   preview?: CommandPreview;
   onClose: () => void;
   onInterpret: (text: string) => void;
+  onVoice: (audioBase64: string) => void;
   onConfirm: () => void;
   onAutoExecuteChange: (enabled: boolean) => void;
   onClear: () => void;
@@ -22,16 +26,30 @@ export function CommandModal(props: CommandModalProps) {
   const [text, setText] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | undefined>();
+  const [recording, setRecording] = useState(false);
+  const [recordingError, setRecordingError] = useState<string | undefined>();
+  const audioContextRef = useRef<AudioContext | undefined>(undefined);
+  const processorRef = useRef<ScriptProcessorNode | undefined>(undefined);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | undefined>(undefined);
+  const streamRef = useRef<MediaStream | undefined>(undefined);
+  const chunksRef = useRef<Float32Array[]>([]);
+  const sampleRateRef = useRef(48000);
+  const startedAtRef = useRef(0);
+  const pressingRef = useRef(false);
+  const maxTimerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (props.open) return;
     setText('');
     setHistoryIndex(undefined);
+    stopRecording(false);
     props.onClear();
   }, [props.open]);
 
-  const canInterpret = text.trim().length > 0 && !props.interpreting;
-  const canConfirm = !!props.preview && !props.preview.empty && !props.executing && !props.interpreting;
+  const canInterpret = text.trim().length > 0 && !props.interpreting && !props.transcribing && !recording;
+  const canConfirm = !!props.preview && !props.preview.empty && !props.executing && !props.interpreting && !props.transcribing && !recording;
+  const voiceBusy = recording || props.transcribing || props.interpreting || props.executing;
+  const voiceDisabled = !props.voiceAvailable || props.transcribing || props.interpreting || props.executing;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -55,7 +73,85 @@ export function CommandModal(props: CommandModalProps) {
   const clearText = () => {
     setText('');
     setHistoryIndex(undefined);
+    setRecordingError(undefined);
     props.onClear();
+  };
+
+  const startRecording = async (event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    if (voiceDisabled || recording) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pressingRef.current = true;
+    setRecordingError(undefined);
+    props.onClear();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+      if (!pressingRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      const context = new AudioContextCtor();
+      const source = context.createMediaStreamSource(stream);
+      const processor = context.createScriptProcessor(4096, 1, 1);
+      chunksRef.current = [];
+      sampleRateRef.current = context.sampleRate;
+      startedAtRef.current = performance.now();
+      processor.onaudioprocess = (audioEvent) => {
+        chunksRef.current.push(new Float32Array(audioEvent.inputBuffer.getChannelData(0)));
+      };
+      source.connect(processor);
+      processor.connect(context.destination);
+      streamRef.current = stream;
+      audioContextRef.current = context;
+      sourceRef.current = source;
+      processorRef.current = processor;
+      setRecording(true);
+      maxTimerRef.current = window.setTimeout(() => void stopRecording(true), 10000);
+    } catch (error) {
+      cleanupRecording();
+      setRecording(false);
+      setRecordingError(errorMessage(error));
+    }
+  };
+
+  const stopRecording = async (submit: boolean) => {
+    pressingRef.current = false;
+    if (maxTimerRef.current) window.clearTimeout(maxTimerRef.current);
+    const elapsed = performance.now() - startedAtRef.current;
+    const chunks = chunksRef.current;
+    const sampleRate = sampleRateRef.current;
+    cleanupRecording();
+    setRecording(false);
+    if (!submit || !chunks.length) return;
+    if (elapsed < 400) {
+      setRecordingError('hold a little longer');
+      return;
+    }
+    try {
+      props.onVoice(arrayBufferToBase64(encodeWav(chunks, sampleRate)));
+    } catch (error) {
+      setRecordingError(errorMessage(error));
+    }
+  };
+
+  const cancelRecording = () => {
+    pressingRef.current = false;
+    cleanupRecording();
+    setRecording(false);
+  };
+
+  const cleanupRecording = () => {
+    if (maxTimerRef.current) window.clearTimeout(maxTimerRef.current);
+    maxTimerRef.current = undefined;
+    processorRef.current?.disconnect();
+    sourceRef.current?.disconnect();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    void audioContextRef.current?.close();
+    processorRef.current = undefined;
+    sourceRef.current = undefined;
+    streamRef.current = undefined;
+    audioContextRef.current = undefined;
   };
 
   const handleTextKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -128,17 +224,35 @@ export function CommandModal(props: CommandModalProps) {
               </button>
             ) : null}
           </div>
+          <button
+            type="button"
+            className="command-voice-button"
+            data-recording={recording ? 'true' : 'false'}
+            disabled={voiceDisabled && !recording}
+            aria-label={recording ? 'Release to transcribe' : 'Hold to speak'}
+            title={props.voiceAvailable ? 'Hold to speak' : 'Voice commands are not configured'}
+            onPointerDown={(event) => void startRecording(event)}
+            onPointerUp={() => void stopRecording(true)}
+            onPointerCancel={cancelRecording}
+          >
+            <Mic size={13} />
+          </button>
           <button type="submit" disabled={!canInterpret && !canConfirm}>
-            {canConfirm ? 'confirm' : 'interpret'}
+            {props.transcribing ? 'transcribing' : canConfirm ? 'confirm' : 'interpret'}
           </button>
         </form>
+
+        {recording || props.transcribing ? <p className="command-voice-status">{recording ? 'listening' : 'transcribing'}</p> : null}
 
         <label className="command-auto-execute" title="Automatically run high-confidence commands that do not require confirmation.">
           <input type="checkbox" checked={props.autoExecute} onChange={(event) => props.onAutoExecuteChange(event.target.checked)} />
           <span>auto-run high confidence</span>
         </label>
 
+        {recordingError ? <p className="command-error">{recordingError}</p> : null}
         {props.error ? <p className="command-error">{props.error}</p> : null}
+
+        {props.transcript?.text ? <p className="command-transcript">Heard: "{props.transcript.text}"</p> : null}
 
         {props.preview ? (
           <div className="command-preview" data-empty={props.preview.empty ? 'true' : 'false'}>
@@ -192,4 +306,82 @@ function describeAction(action: CommandPreviewAction): string {
   if (typeof action.hue === 'number') parts.push(`hue ${Math.round(action.hue)}°`);
   if (typeof action.saturation === 'number') parts.push(`saturation ${Math.round(action.saturation)}%`);
   return parts.length ? parts.join(' · ') : 'no state change';
+}
+
+function encodeWav(chunks: Float32Array[], sourceSampleRate: number): ArrayBuffer {
+  const samples = downsample(mergeChunks(chunks), sourceSampleRate, 16000);
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 16000, true);
+  view.setUint32(28, 16000 * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+  let offset = 44;
+  for (const sample of samples) {
+    const clamped = Math.max(-1, Math.min(1, sample));
+    view.setInt16(offset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+    offset += 2;
+  }
+  return buffer;
+}
+
+function mergeChunks(chunks: Float32Array[]): Float32Array {
+  const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const merged = new Float32Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
+function downsample(samples: Float32Array, sourceRate: number, targetRate: number): Float32Array {
+  if (sourceRate === targetRate) return samples;
+  const ratio = sourceRate / targetRate;
+  const length = Math.floor(samples.length / ratio);
+  const result = new Float32Array(length);
+  for (let i = 0; i < length; i += 1) {
+    const start = Math.floor(i * ratio);
+    const end = Math.min(Math.floor((i + 1) * ratio), samples.length);
+    let sum = 0;
+    for (let j = start; j < end; j += 1) sum += samples[j];
+    result[i] = sum / Math.max(1, end - start);
+  }
+  return result;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return window.btoa(binary);
+}
+
+function writeString(view: DataView, offset: number, value: string) {
+  for (let i = 0; i < value.length; i += 1) view.setUint8(offset + i, value.charCodeAt(i));
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'voice command failed';
+}
+
+declare global {
+  interface Window {
+    webkitAudioContext?: typeof AudioContext;
+  }
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getCommandEngineSettings, getDeviceSnapshot, getNetworkSettings, interpretCommand, restartDeviceDiscovery, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, type CommandEngineSettings, type CommandPreview, type DeviceEffectStatus, type NetworkSettings } from './backend/api';
+import { getCommandEngineSettings, getDeviceSnapshot, getNetworkSettings, interpretCommand, restartDeviceDiscovery, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings } from './backend/api';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
 import { GroupInspector } from './components/GroupInspector';
@@ -44,8 +44,10 @@ export function App() {
   const [commandSettings, setCommandSettings] = useState<CommandEngineSettings>({ enabled: false, available: false, transcription: false });
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandInterpreting, setCommandInterpreting] = useState(false);
+  const [commandTranscribing, setCommandTranscribing] = useState(false);
   const [commandExecuting, setCommandExecuting] = useState(false);
   const [commandPreview, setCommandPreview] = useState<CommandPreview | undefined>();
+  const [commandTranscript, setCommandTranscript] = useState<CommandTranscript | undefined>();
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandAutoExecute, setCommandAutoExecute] = useState(() => loadBooleanPreference(COMMAND_AUTO_EXECUTE_KEY));
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
@@ -438,6 +440,7 @@ export function App() {
   const interpretTextCommand = async (text: string) => {
     setCommandInterpreting(true);
     setCommandError(undefined);
+    setCommandTranscript(undefined);
     try {
       const preview = await interpretCommand(text);
       setCommandPreview(preview);
@@ -450,6 +453,24 @@ export function App() {
       void getCommandEngineSettings().then(setCommandSettings).catch(() => undefined);
     } finally {
       setCommandInterpreting(false);
+    }
+  };
+
+  const transcribeVoiceCommand = async (audioBase64: string) => {
+    setCommandTranscribing(true);
+    setCommandError(undefined);
+    setCommandTranscript(undefined);
+    try {
+      const result = await transcribeCommandAudio(audioBase64, 'en');
+      setCommandTranscript(result.transcript);
+      setCommandPreview(result.preview);
+    } catch (error) {
+      setCommandPreview(undefined);
+      setCommandTranscript(undefined);
+      setCommandError(errorMessage(error));
+      void getCommandEngineSettings().then(setCommandSettings).catch(() => undefined);
+    } finally {
+      setCommandTranscribing(false);
     }
   };
 
@@ -570,17 +591,22 @@ export function App() {
       <CommandModal
         open={commandOpen}
         interpreting={commandInterpreting}
+        transcribing={commandTranscribing}
         executing={commandExecuting}
         autoExecute={commandAutoExecute}
+        voiceAvailable={commandSettings.transcription}
         error={commandError}
         warning={commandSettings.warning}
+        transcript={commandTranscript}
         preview={commandPreview}
         onClose={() => setCommandOpen(false)}
         onInterpret={(text) => void interpretTextCommand(text)}
+        onVoice={(audioBase64) => void transcribeVoiceCommand(audioBase64)}
         onConfirm={() => void confirmTextCommand()}
         onAutoExecuteChange={setCommandAutoExecute}
         onClear={() => {
           setCommandPreview(undefined);
+          setCommandTranscript(undefined);
           setCommandError(undefined);
         }}
       />

@@ -107,3 +107,11 @@ func (a *App) TranscribeCommand(req backend.TranscribeCommandRequest) (backend.S
 	}
 	return a.commandEngine.TranscribeAndInterpret(a.context(), req, snapshot)
 }
+
+func (a *App) TranscribeCommandAudio(req backend.TranscribeCommandAudioRequest) (backend.SpeechCommandPreview, error) {
+	snapshot, err := a.transport.Snapshot(a.context())
+	if err != nil {
+		return backend.SpeechCommandPreview{}, err
+	}
+	return a.commandEngine.TranscribeAudioAndInterpret(a.context(), req, snapshot)
+}

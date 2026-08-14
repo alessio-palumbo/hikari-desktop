@@ -72,7 +72,7 @@ HIKARI_WHISPER_MODEL=/path/to/ggml-base.en.bin \
 wails dev
 ```
 
-The first backend voice layer accepts an existing local audio file path and returns transcript plus the normal command preview. The microphone hold-to-talk UI will record the temporary audio file in a follow-up.
+When voice is configured, hold the mic button in the quick action prompt, speak a short English command, and release to transcribe. Hikari records a temporary WAV payload locally, sends it to the command sidecar, shows the transcript, and requires confirmation before execution.
 
 ## Requirements
 

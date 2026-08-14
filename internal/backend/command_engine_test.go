@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"os"
 	"testing"
@@ -228,6 +229,42 @@ func TestCommandEngineServiceRejectsVoiceWhenUnavailable(t *testing.T) {
 	}
 	if _, err := service.TranscribeAndInterpret(context.Background(), TranscribeCommandRequest{AudioPath: "/tmp/voice.wav"}, MockDeviceSnapshot()); err == nil {
 		t.Fatal("TranscribeAndInterpret returned nil error, want unavailable voice error")
+	}
+}
+
+func TestCommandEngineServiceTranscribesBase64Audio(t *testing.T) {
+	store := &memoryCommandSettingsStore{}
+	_ = store.SaveCommandEngineSettings(CommandEngineSettings{Enabled: true, EnginePath: "/bin/engine"})
+	caps := compatibleCommandCapabilities()
+	caps.Methods = append(caps.Methods, "transcribe")
+	caps.Transcription = true
+	client := &fakeCommandEngineClient{
+		capabilities: caps,
+		speechResult: commandclient.SpeechCommandResult{
+			Transcript: commandclient.TranscribeResult{Text: "turn ceiling on"},
+			Plan: commandclient.CommandPlan{
+				SchemaVersion:    "1",
+				Confidence:       0.95,
+				ConfidenceResult: commandclient.ConfidenceResult{Level: "high"},
+				Summary:          "Turn on Ceiling",
+				Commands: []commandclient.CommandIntent{{
+					Targets: []commandclient.TargetRef{{Serial: "d0:73:d5:01:a2:c3"}},
+					Action:  commandclient.Action{Power: boolPtr(true)},
+				}},
+			},
+		},
+	}
+	service := NewCommandEngineServiceWithStore(store)
+	service.newClient = func(config commandclient.Config) (commandEngineClient, error) { return client, nil }
+	payload := "data:audio/wav;base64," + base64.StdEncoding.EncodeToString([]byte("RIFF fake WAV"))
+	if _, err := service.TranscribeAudioAndInterpret(context.Background(), TranscribeCommandAudioRequest{AudioBase64: payload}, MockDeviceSnapshot()); err != nil {
+		t.Fatalf("TranscribeAudioAndInterpret returned error: %v", err)
+	}
+	if client.audio.AudioPath == "" {
+		t.Fatal("audio path was not passed to client")
+	}
+	if _, err := os.Stat(client.audio.AudioPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temp audio path still exists or stat failed unexpectedly: %v", err)
 	}
 }
 

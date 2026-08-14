@@ -74,6 +74,18 @@
   font-size: 12px;
 }
 
+.command-input-row .command-voice-button {
+  width: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.command-voice-button[data-recording="true"] {
+  background: oklch(0.72 0.18 28 / 0.22);
+  color: var(--fg-0);
+}
+
 .command-text-wrap input {
   min-width: 0;
   height: 32px;
@@ -117,6 +129,8 @@
 
 .command-warning,
 .command-error,
+.command-voice-status,
+.command-transcript,
 .command-preview p,
 .command-preview li,
 .command-command-meta span {
@@ -132,6 +146,21 @@
 
 .command-warning {
   color: var(--warm);
+}
+
+.command-voice-status {
+  color: var(--fg-1);
+}
+
+.command-voice-status::after {
+  content: "";
+  display: inline-block;
+  width: 1.6em;
+  animation: command-dots 1.2s steps(4, end) infinite;
+}
+
+.command-transcript {
+  color: var(--fg-1);
 }
 
 .command-auto-execute {
@@ -239,4 +268,20 @@
 .command-input-row button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+@keyframes command-dots {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75%,
+  100% {
+    content: "...";
+  }
 }

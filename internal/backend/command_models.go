@@ -24,6 +24,11 @@ type TranscribeCommandRequest struct {
 	Language  string `json:"language,omitempty"`
 }
 
+type TranscribeCommandAudioRequest struct {
+	AudioBase64 string `json:"audioBase64"`
+	Language    string `json:"language,omitempty"`
+}
+
 type SpeechCommandPreview struct {
 	Transcript CommandTranscript `json:"transcript"`
 	Preview    CommandPreview    `json:"preview"`

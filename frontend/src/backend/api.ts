@@ -14,6 +14,7 @@ interface WailsApp {
   SetCommandEngineSettings?: (request: SetCommandEngineSettingsRequest) => Promise<CommandEngineSettings>;
   InterpretCommand?: (request: InterpretCommandRequest) => Promise<CommandPreview>;
   TranscribeCommand?: (request: TranscribeCommandRequest) => Promise<SpeechCommandPreview>;
+  TranscribeCommandAudio?: (request: TranscribeCommandAudioRequest) => Promise<SpeechCommandPreview>;
 }
 
 export interface NetworkInterfaceOption {
@@ -82,6 +83,11 @@ interface InterpretCommandRequest {
 
 interface TranscribeCommandRequest {
   audioPath: string;
+  language?: string;
+}
+
+interface TranscribeCommandAudioRequest {
+  audioBase64: string;
   language?: string;
 }
 
@@ -212,6 +218,15 @@ export async function interpretCommand(text: string): Promise<CommandPreview> {
 export async function transcribeCommand(audioPath: string, language?: string): Promise<SpeechCommandPreview> {
   const app = window.go?.main?.App;
   if (app?.TranscribeCommand) return normalizeSpeechCommandPreview(await app.TranscribeCommand({ audioPath, language }));
+  return {
+    transcript: { text: '', segments: [] },
+    preview: { summary: 'Voice commands unavailable', confidence: 0, confidenceLevel: 'low', reasons: ['voice runtime unavailable'], needsConfirmation: true, empty: true, commands: [], skippedTargets: [] },
+  };
+}
+
+export async function transcribeCommandAudio(audioBase64: string, language?: string): Promise<SpeechCommandPreview> {
+  const app = window.go?.main?.App;
+  if (app?.TranscribeCommandAudio) return normalizeSpeechCommandPreview(await app.TranscribeCommandAudio({ audioBase64, language }));
   return {
     transcript: { text: '', segments: [] },
     preview: { summary: 'Voice commands unavailable', confidence: 0, confidenceLevel: 'low', reasons: ['voice runtime unavailable'], needsConfirmation: true, empty: true, commands: [], skippedTargets: [] },
