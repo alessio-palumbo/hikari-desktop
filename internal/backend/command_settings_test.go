@@ -67,6 +67,37 @@ func TestCommandEngineCommandAddsWhisperEnvFlags(t *testing.T) {
 	}
 }
 
+func TestCommandEngineSettingsReportsTranscriptionWhenWhisperEnvConfigured(t *testing.T) {
+	t.Setenv("HIKARI_WHISPER_COMMAND", "/tmp/whisper-cli")
+	t.Setenv("HIKARI_WHISPER_MODEL", "/tmp/model.bin")
+	service := NewCommandEngineServiceWithStore(&memoryCommandSettingsStore{
+		settings: CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine"},
+	})
+
+	settings, err := service.Settings(nil)
+	if err != nil {
+		t.Fatalf("Settings returned error: %v", err)
+	}
+	if !settings.Transcription {
+		t.Fatalf("Transcription = false; want true")
+	}
+}
+
+func TestCommandEngineSettingsDoesNotReportTranscriptionWithPartialWhisperEnv(t *testing.T) {
+	t.Setenv("HIKARI_WHISPER_COMMAND", "/tmp/whisper-cli")
+	service := NewCommandEngineServiceWithStore(&memoryCommandSettingsStore{
+		settings: CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine"},
+	})
+
+	settings, err := service.Settings(nil)
+	if err != nil {
+		t.Fatalf("Settings returned error: %v", err)
+	}
+	if settings.Transcription {
+		t.Fatalf("Transcription = true; want false")
+	}
+}
+
 func TestBundledCommandEnginePathFindsExecutableBesideBinary(t *testing.T) {
 	exe, err := os.Executable()
 	if err != nil {

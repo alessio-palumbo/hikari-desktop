@@ -290,7 +290,7 @@ func (s *CommandEngineService) decorateSettings(settings CommandEngineSettings) 
 		return settings
 	}
 	settings.Available = true
-	settings.Transcription = s.transcriptionAvailable()
+	settings.Transcription = s.transcriptionAvailable() || transcriptionConfigured(settings)
 	return settings
 }
 
@@ -298,6 +298,14 @@ func (s *CommandEngineService) transcriptionAvailable() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.started && s.caps.Transcription && containsString(s.caps.Methods, "transcribe")
+}
+
+func transcriptionConfigured(settings CommandEngineSettings) bool {
+	if strings.TrimSpace(settings.ConfigPath) != "" {
+		return true
+	}
+	return strings.TrimSpace(os.Getenv("HIKARI_WHISPER_COMMAND")) != "" &&
+		strings.TrimSpace(os.Getenv("HIKARI_WHISPER_MODEL")) != ""
 }
 
 func commandEngineCommand(settings CommandEngineSettings) (string, []string, error) {
