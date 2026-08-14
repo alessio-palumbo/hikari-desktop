@@ -48,7 +48,6 @@ export function CommandModal(props: CommandModalProps) {
 
   const canInterpret = text.trim().length > 0 && !props.interpreting && !props.transcribing && !recording;
   const canConfirm = !!props.preview && !props.preview.empty && !props.executing && !props.interpreting && !props.transcribing && !recording;
-  const voiceBusy = recording || props.transcribing || props.interpreting || props.executing;
   const voiceDisabled = !props.voiceAvailable || props.transcribing || props.interpreting || props.executing;
 
   const submit = (event: FormEvent) => {
@@ -77,11 +76,10 @@ export function CommandModal(props: CommandModalProps) {
     props.onClear();
   };
 
-  const startRecording = async (event: PointerEvent<HTMLButtonElement>) => {
-    event.preventDefault();
+  const beginRecording = async () => {
     if (voiceDisabled || recording) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
     pressingRef.current = true;
+    setRecording(true);
     setRecordingError(undefined);
     props.onClear();
     try {
@@ -106,13 +104,19 @@ export function CommandModal(props: CommandModalProps) {
       audioContextRef.current = context;
       sourceRef.current = source;
       processorRef.current = processor;
-      setRecording(true);
       maxTimerRef.current = window.setTimeout(() => void stopRecording(true), 10000);
     } catch (error) {
+      pressingRef.current = false;
       cleanupRecording();
       setRecording(false);
       setRecordingError(errorMessage(error));
     }
+  };
+
+  const startPointerRecording = async (event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    await beginRecording();
   };
 
   const stopRecording = async (submit: boolean) => {
@@ -155,6 +159,14 @@ export function CommandModal(props: CommandModalProps) {
   };
 
   const handleTextKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === ' ' && text.length === 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (voiceDisabled || event.repeat || pressingRef.current) return;
+      void beginRecording();
+      return;
+    }
+
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -188,6 +200,18 @@ export function CommandModal(props: CommandModalProps) {
     }
   };
 
+  const handleTextKeyUp = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== ' ' || !pressingRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void stopRecording(true);
+  };
+
+  const handleTextBeforeInput = (event: FormEvent<HTMLInputElement>) => {
+    const nativeEvent = event.nativeEvent as InputEvent;
+    if (text.length === 0 && nativeEvent.data?.trim() === '') event.preventDefault();
+  };
+
   if (!props.open) return null;
 
   return (
@@ -212,7 +236,9 @@ export function CommandModal(props: CommandModalProps) {
             <input
               value={text}
               onChange={(event) => updateText(event.target.value)}
+              onBeforeInput={handleTextBeforeInput}
               onKeyDown={handleTextKeyDown}
+              onKeyUp={handleTextKeyUp}
               placeholder="turn desk warm white at 35%"
               autoComplete="off"
               autoFocus
@@ -230,8 +256,8 @@ export function CommandModal(props: CommandModalProps) {
             data-recording={recording ? 'true' : 'false'}
             disabled={voiceDisabled && !recording}
             aria-label={recording ? 'Release to transcribe' : 'Hold to speak'}
-            title={props.voiceAvailable ? 'Hold to speak' : 'Voice commands are not configured'}
-            onPointerDown={(event) => void startRecording(event)}
+            title={props.voiceAvailable ? 'Hold to speak, or hold Space while the command is empty' : 'Voice commands are not configured'}
+            onPointerDown={(event) => void startPointerRecording(event)}
             onPointerUp={() => void stopRecording(true)}
             onPointerCancel={cancelRecording}
           >
@@ -242,7 +268,9 @@ export function CommandModal(props: CommandModalProps) {
           </button>
         </form>
 
-        {recording || props.transcribing ? <p className="command-voice-status">{recording ? 'listening' : 'transcribing'}</p> : null}
+        <p className="command-voice-status" data-active={recording || props.transcribing ? 'true' : 'false'}>
+          {recording ? 'listening' : props.transcribing ? 'transcribing' : '\u00a0'}
+        </p>
 
         <label className="command-auto-execute" title="Automatically run high-confidence commands that do not require confirmation.">
           <input type="checkbox" checked={props.autoExecute} onChange={(event) => props.onAutoExecuteChange(event.target.checked)} />

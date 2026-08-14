@@ -82,8 +82,10 @@
 }
 
 .command-voice-button[data-recording="true"] {
-  background: oklch(0.72 0.18 28 / 0.22);
+  background: oklch(0.72 0.18 28 / 0.3);
+  box-shadow: inset 0 0 0 1px oklch(0.82 0.16 35 / 0.42), 0 0 0 3px oklch(0.72 0.18 28 / 0.12);
   color: var(--fg-0);
+  transform: translateY(1px);
 }
 
 .command-text-wrap input {
@@ -150,9 +152,15 @@
 
 .command-voice-status {
   color: var(--fg-1);
+  min-height: 17px;
+  opacity: 0;
 }
 
-.command-voice-status::after {
+.command-voice-status[data-active="true"] {
+  opacity: 1;
+}
+
+.command-voice-status[data-active="true"]::after {
   content: "";
   display: inline-block;
   width: 1.6em;
