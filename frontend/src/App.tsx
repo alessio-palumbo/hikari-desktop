@@ -41,7 +41,7 @@ export function App() {
   const [refreshError, setRefreshError] = useState<string | undefined>();
   const [networkSettings, setNetworkSettings] = useState<NetworkSettings>({ selectedInterfaceName: '', interfaces: [] });
   const [networkChanging, setNetworkChanging] = useState(false);
-  const [commandSettings, setCommandSettings] = useState<CommandEngineSettings>({ enabled: false, available: false });
+  const [commandSettings, setCommandSettings] = useState<CommandEngineSettings>({ enabled: false, available: false, transcription: false });
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandInterpreting, setCommandInterpreting] = useState(false);
   const [commandExecuting, setCommandExecuting] = useState(false);

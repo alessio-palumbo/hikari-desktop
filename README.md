@@ -60,6 +60,20 @@ wails dev
 
 Optional FunctionGemma and whisper.cpp runtime/model paths belong in a `lifx-command-engine` config file, then in hikari set `HIKARI_COMMAND_ENGINE_CONFIG` to that file. The base hikari app does not download or bundle model weights or speech runtimes.
 
+### Voice Command Development
+
+Voice commands are optional and are not bundled in the base app. For local testing, build the command sidecar and point Hikari at a local `whisper.cpp` CLI plus model:
+
+```sh
+./scripts/bundle-command-sidecar.sh
+HIKARI_COMMAND_ENGINE_PATH="$PWD/build/bin/lifx-command-engine" \
+HIKARI_WHISPER_COMMAND=/path/to/whisper-cli \
+HIKARI_WHISPER_MODEL=/path/to/ggml-base.en.bin \
+wails dev
+```
+
+The first backend voice layer accepts an existing local audio file path and returns transcript plus the normal command preview. The microphone hold-to-talk UI will record the temporary audio file in a follow-up.
+
 ## Requirements
 
 - Go 1.25

@@ -218,6 +218,22 @@ func commandPreviewAction(action commandclient.Action) CommandPreviewAction {
 	return preview
 }
 
+func commandTranscriptFromResult(transcript commandclient.TranscribeResult) CommandTranscript {
+	segments := make([]CommandTranscriptSegment, 0, len(transcript.Segments))
+	for _, segment := range transcript.Segments {
+		segments = append(segments, CommandTranscriptSegment{
+			StartMS: segment.StartMS,
+			EndMS:   segment.EndMS,
+			Text:    segment.Text,
+		})
+	}
+	return CommandTranscript{
+		Text:     transcript.Text,
+		Language: transcript.Language,
+		Segments: segments,
+	}
+}
+
 func boolPointer(value bool) *bool {
 	return &value
 }

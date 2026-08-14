@@ -181,6 +181,56 @@ func TestCommandEngineServiceHonorsRequestCancellation(t *testing.T) {
 	}
 }
 
+func TestCommandEngineServiceTranscribesThroughClient(t *testing.T) {
+	store := &memoryCommandSettingsStore{}
+	_ = store.SaveCommandEngineSettings(CommandEngineSettings{Enabled: true, EnginePath: "/bin/engine"})
+	caps := compatibleCommandCapabilities()
+	caps.Methods = append(caps.Methods, "transcribe")
+	caps.Transcription = true
+	caps.TranscriptionSchema = "1"
+	client := &fakeCommandEngineClient{
+		capabilities: caps,
+		speechResult: commandclient.SpeechCommandResult{
+			Transcript: commandclient.TranscribeResult{Text: "turn ceiling on", Language: "en"},
+			Plan: commandclient.CommandPlan{
+				SchemaVersion:     "1",
+				Confidence:        0.95,
+				ConfidenceResult:  commandclient.ConfidenceResult{Level: "high"},
+				NeedsConfirmation: false,
+				Summary:           "Turn on Ceiling",
+				Commands: []commandclient.CommandIntent{{
+					Targets: []commandclient.TargetRef{{Serial: "d0:73:d5:01:a2:c3", Label: "Ceiling"}},
+					Action:  commandclient.Action{Power: boolPtr(true)},
+				}},
+			},
+		},
+	}
+	service := NewCommandEngineServiceWithStore(store)
+	service.newClient = func(config commandclient.Config) (commandEngineClient, error) { return client, nil }
+	got, err := service.TranscribeAndInterpret(context.Background(), TranscribeCommandRequest{AudioPath: "/tmp/voice.wav", Language: "en"}, MockDeviceSnapshot())
+	if err != nil {
+		t.Fatalf("TranscribeAndInterpret returned error: %v", err)
+	}
+	if client.audio.AudioPath != "/tmp/voice.wav" || client.audio.Language != "en" {
+		t.Fatalf("audio input = %#v", client.audio)
+	}
+	if got.Transcript.Text != "turn ceiling on" || got.Preview.Summary != "Turn on Ceiling" || !got.Preview.NeedsConfirmation {
+		t.Fatalf("speech preview = %#v", got)
+	}
+}
+
+func TestCommandEngineServiceRejectsVoiceWhenUnavailable(t *testing.T) {
+	store := &memoryCommandSettingsStore{}
+	_ = store.SaveCommandEngineSettings(CommandEngineSettings{Enabled: true, EnginePath: "/bin/engine"})
+	service := NewCommandEngineServiceWithStore(store)
+	service.newClient = func(config commandclient.Config) (commandEngineClient, error) {
+		return &fakeCommandEngineClient{capabilities: compatibleCommandCapabilities()}, nil
+	}
+	if _, err := service.TranscribeAndInterpret(context.Background(), TranscribeCommandRequest{AudioPath: "/tmp/voice.wav"}, MockDeviceSnapshot()); err == nil {
+		t.Fatal("TranscribeAndInterpret returned nil error, want unavailable voice error")
+	}
+}
+
 func TestCommandEngineServiceIntegrationRuleOnlySidecar(t *testing.T) {
 	binary := os.Getenv("HIKARI_COMMAND_ENGINE_TEST_BINARY")
 	if binary == "" {
@@ -216,6 +266,8 @@ type fakeCommandEngineClient struct {
 	capabilities       commandclient.Capabilities
 	plan               commandclient.CommandPlan
 	input              commandclient.InterpretInput
+	audio              commandclient.TranscribeInput
+	speechResult       commandclient.SpeechCommandResult
 	blockInterpret     bool
 }
 
@@ -236,6 +288,11 @@ func (c *fakeCommandEngineClient) Interpret(ctx context.Context, input commandcl
 		return commandclient.CommandPlan{}, ctx.Err()
 	}
 	return c.plan, ctx.Err()
+}
+
+func (c *fakeCommandEngineClient) TranscribeAndInterpret(ctx context.Context, audio commandclient.TranscribeInput, snapshot commandclient.DeviceSnapshot) (commandclient.SpeechCommandResult, error) {
+	c.audio = audio
+	return c.speechResult, ctx.Err()
 }
 
 func (c *fakeCommandEngineClient) Close() error {

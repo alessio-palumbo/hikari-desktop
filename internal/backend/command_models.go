@@ -1,11 +1,12 @@
 package backend
 
 type CommandEngineSettings struct {
-	Enabled    bool   `json:"enabled"`
-	EnginePath string `json:"enginePath,omitempty"`
-	ConfigPath string `json:"configPath,omitempty"`
-	Available  bool   `json:"available"`
-	Warning    string `json:"warning,omitempty"`
+	Enabled       bool   `json:"enabled"`
+	EnginePath    string `json:"enginePath,omitempty"`
+	ConfigPath    string `json:"configPath,omitempty"`
+	Available     bool   `json:"available"`
+	Transcription bool   `json:"transcription"`
+	Warning       string `json:"warning,omitempty"`
 }
 
 type SetCommandEngineSettingsRequest struct {
@@ -16,6 +17,28 @@ type SetCommandEngineSettingsRequest struct {
 
 type InterpretCommandRequest struct {
 	Text string `json:"text"`
+}
+
+type TranscribeCommandRequest struct {
+	AudioPath string `json:"audioPath"`
+	Language  string `json:"language,omitempty"`
+}
+
+type SpeechCommandPreview struct {
+	Transcript CommandTranscript `json:"transcript"`
+	Preview    CommandPreview    `json:"preview"`
+}
+
+type CommandTranscript struct {
+	Text     string                     `json:"text"`
+	Language string                     `json:"language,omitempty"`
+	Segments []CommandTranscriptSegment `json:"segments"`
+}
+
+type CommandTranscriptSegment struct {
+	StartMS int64  `json:"startMs"`
+	EndMS   int64  `json:"endMs"`
+	Text    string `json:"text"`
 }
 
 type CommandPreview struct {

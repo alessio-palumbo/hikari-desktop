@@ -13,6 +13,7 @@ interface WailsApp {
   CommandEngineSettings?: () => Promise<CommandEngineSettings>;
   SetCommandEngineSettings?: (request: SetCommandEngineSettingsRequest) => Promise<CommandEngineSettings>;
   InterpretCommand?: (request: InterpretCommandRequest) => Promise<CommandPreview>;
+  TranscribeCommand?: (request: TranscribeCommandRequest) => Promise<SpeechCommandPreview>;
 }
 
 export interface NetworkInterfaceOption {
@@ -65,6 +66,7 @@ export interface CommandEngineSettings {
   enginePath?: string;
   configPath?: string;
   available: boolean;
+  transcription: boolean;
   warning?: string;
 }
 
@@ -75,6 +77,28 @@ interface SetCommandEngineSettingsRequest {
 }
 
 interface InterpretCommandRequest {
+  text: string;
+}
+
+interface TranscribeCommandRequest {
+  audioPath: string;
+  language?: string;
+}
+
+export interface SpeechCommandPreview {
+  transcript: CommandTranscript;
+  preview: CommandPreview;
+}
+
+export interface CommandTranscript {
+  text: string;
+  language?: string;
+  segments: CommandTranscriptSegment[];
+}
+
+export interface CommandTranscriptSegment {
+  startMs: number;
+  endMs: number;
   text: string;
 }
 
@@ -169,13 +193,13 @@ export async function stopDeviceEffect(device: Device): Promise<DeviceEffectStat
 export async function getCommandEngineSettings(): Promise<CommandEngineSettings> {
   const app = window.go?.main?.App;
   if (app?.CommandEngineSettings) return normalizeCommandEngineSettings(await app.CommandEngineSettings());
-  return { enabled: false, available: false };
+  return { enabled: false, available: false, transcription: false };
 }
 
 export async function setCommandEngineSettings(settings: SetCommandEngineSettingsRequest): Promise<CommandEngineSettings> {
   const app = window.go?.main?.App;
   if (app?.SetCommandEngineSettings) return normalizeCommandEngineSettings(await app.SetCommandEngineSettings(settings));
-  return { ...settings, available: false };
+  return { ...settings, available: false, transcription: false };
 }
 
 export async function interpretCommand(text: string): Promise<CommandPreview> {
@@ -183,6 +207,15 @@ export async function interpretCommand(text: string): Promise<CommandPreview> {
   if (app?.InterpretCommand) return normalizeCommandPreview(await app.InterpretCommand({ text }));
   await new Promise((resolve) => window.setTimeout(resolve, 120));
   return { summary: 'No supported command found', confidence: 0, confidenceLevel: 'low', reasons: ['command engine unavailable'], needsConfirmation: false, empty: true, commands: [], skippedTargets: [] };
+}
+
+export async function transcribeCommand(audioPath: string, language?: string): Promise<SpeechCommandPreview> {
+  const app = window.go?.main?.App;
+  if (app?.TranscribeCommand) return normalizeSpeechCommandPreview(await app.TranscribeCommand({ audioPath, language }));
+  return {
+    transcript: { text: '', segments: [] },
+    preview: { summary: 'Voice commands unavailable', confidence: 0, confidenceLevel: 'low', reasons: ['voice runtime unavailable'], needsConfirmation: true, empty: true, commands: [], skippedTargets: [] },
+  };
 }
 
 function mockSnapshot(): DeviceSnapshot {
@@ -295,6 +328,7 @@ function normalizeCommandEngineSettings(settings: CommandEngineSettings | null |
     enginePath: settings?.enginePath ?? '',
     configPath: settings?.configPath ?? '',
     available: Boolean(settings?.available),
+    transcription: Boolean(settings?.transcription),
     warning: settings?.warning,
   };
 }
@@ -309,6 +343,17 @@ function normalizeCommandPreview(preview: CommandPreview | null | undefined): Co
     empty: Boolean(preview?.empty),
     commands: Array.isArray(preview?.commands) ? preview.commands : [],
     skippedTargets: Array.isArray(preview?.skippedTargets) ? preview.skippedTargets : [],
+  };
+}
+
+function normalizeSpeechCommandPreview(result: SpeechCommandPreview | null | undefined): SpeechCommandPreview {
+  return {
+    transcript: {
+      text: result?.transcript?.text ?? '',
+      language: result?.transcript?.language ?? '',
+      segments: Array.isArray(result?.transcript?.segments) ? result.transcript.segments : [],
+    },
+    preview: normalizeCommandPreview(result?.preview),
   };
 }
 

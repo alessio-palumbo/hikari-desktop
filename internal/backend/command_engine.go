@@ -19,12 +19,14 @@ const (
 	commandEnginePlanSchema     = "1"
 	commandEngineStartupTimeout = 5 * time.Second
 	commandEngineRequestTimeout = 8 * time.Second
+	commandEngineSpeechTimeout  = 45 * time.Second
 )
 
 type commandEngineClient interface {
 	Start(ctx context.Context) error
 	Capabilities(ctx context.Context) (commandclient.Capabilities, error)
 	Interpret(ctx context.Context, input commandclient.InterpretInput) (commandclient.CommandPlan, error)
+	TranscribeAndInterpret(ctx context.Context, audio commandclient.TranscribeInput, snapshot commandclient.DeviceSnapshot) (commandclient.SpeechCommandResult, error)
 	Close() error
 }
 
@@ -38,6 +40,7 @@ type CommandEngineService struct {
 	mu       sync.Mutex
 	client   commandEngineClient
 	settings CommandEngineSettings
+	caps     commandclient.Capabilities
 	started  bool
 }
 
@@ -80,6 +83,7 @@ func (s *CommandEngineService) SetSettings(ctx context.Context, req SetCommandEn
 	}
 	s.client = nil
 	s.started = false
+	s.caps = commandclient.Capabilities{}
 	s.settings = settings
 	s.mu.Unlock()
 	return s.decorateSettings(settings), nil
@@ -117,11 +121,48 @@ func (s *CommandEngineService) Interpret(ctx context.Context, text string, snaps
 	return preview, nil
 }
 
+func (s *CommandEngineService) TranscribeAndInterpret(ctx context.Context, req TranscribeCommandRequest, snapshot DeviceSnapshot) (SpeechCommandPreview, error) {
+	audioPath := strings.TrimSpace(req.AudioPath)
+	if audioPath == "" {
+		return SpeechCommandPreview{}, fmt.Errorf("audio path is required")
+	}
+	settings, err := s.loadSettings()
+	if err != nil {
+		return SpeechCommandPreview{}, err
+	}
+	if !settings.Enabled {
+		return SpeechCommandPreview{}, fmt.Errorf("local text commands are disabled")
+	}
+	client, err := s.ensureStarted(ctx, settings)
+	if err != nil {
+		return SpeechCommandPreview{}, err
+	}
+	if !s.transcriptionAvailable() {
+		return SpeechCommandPreview{}, fmt.Errorf("voice commands are not configured")
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, commandEngineSpeechTimeout)
+	defer cancel()
+	result, err := client.TranscribeAndInterpret(requestCtx, commandclient.TranscribeInput{
+		AudioPath: audioPath,
+		Language:  strings.TrimSpace(req.Language),
+	}, CommandSnapshotFromDeviceSnapshot(snapshot))
+	if err != nil {
+		return SpeechCommandPreview{}, fmt.Errorf("transcribe command: %w", err)
+	}
+	preview, err := commandPreviewFromPlan(result.Plan, snapshot)
+	if err != nil {
+		return SpeechCommandPreview{}, err
+	}
+	preview.NeedsConfirmation = true
+	return SpeechCommandPreview{Transcript: commandTranscriptFromResult(result.Transcript), Preview: preview}, nil
+}
+
 func (s *CommandEngineService) Close(ctx context.Context) error {
 	s.mu.Lock()
 	client := s.client
 	s.client = nil
 	s.started = false
+	s.caps = commandclient.Capabilities{}
 	s.mu.Unlock()
 	if client == nil {
 		return nil
@@ -143,6 +184,7 @@ func (s *CommandEngineService) ensureStarted(ctx context.Context, settings Comma
 		_ = s.client.Close()
 		s.client = nil
 		s.started = false
+		s.caps = commandclient.Capabilities{}
 	}
 	client, err := s.newClient(commandclient.Config{
 		Path:           path,
@@ -171,6 +213,7 @@ func (s *CommandEngineService) ensureStarted(ctx context.Context, settings Comma
 	}
 	s.client = client
 	s.settings = settings
+	s.caps = capabilities
 	s.started = true
 	return client, nil
 }
@@ -199,7 +242,14 @@ func (s *CommandEngineService) decorateSettings(settings CommandEngineSettings) 
 		return settings
 	}
 	settings.Available = true
+	settings.Transcription = s.transcriptionAvailable()
 	return settings
+}
+
+func (s *CommandEngineService) transcriptionAvailable() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.started && s.caps.Transcription && containsString(s.caps.Methods, "transcribe")
 }
 
 func commandEngineCommand(settings CommandEngineSettings) (string, []string, error) {
@@ -215,8 +265,20 @@ func commandEngineCommand(settings CommandEngineSettings) (string, []string, err
 		return "", nil, fmt.Errorf("lifx-command-engine binary not found; set a command engine path")
 	}
 	args := []string{}
-	if strings.TrimSpace(settings.ConfigPath) != "" {
-		args = append(args, "serve", "-config", strings.TrimSpace(settings.ConfigPath))
+	configPath := strings.TrimSpace(settings.ConfigPath)
+	whisperCommand := strings.TrimSpace(os.Getenv("HIKARI_WHISPER_COMMAND"))
+	whisperModel := strings.TrimSpace(os.Getenv("HIKARI_WHISPER_MODEL"))
+	if configPath != "" || whisperCommand != "" || whisperModel != "" {
+		args = append(args, "serve")
+	}
+	if configPath != "" {
+		args = append(args, "-config", configPath)
+	}
+	if whisperCommand != "" {
+		args = append(args, "-whisper-command", whisperCommand)
+	}
+	if whisperModel != "" {
+		args = append(args, "-whisper-model", whisperModel)
 	}
 	return path, args, nil
 }

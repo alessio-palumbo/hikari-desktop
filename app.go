@@ -99,3 +99,11 @@ func (a *App) InterpretCommand(req backend.InterpretCommandRequest) (backend.Com
 	}
 	return a.commandEngine.Interpret(a.context(), req.Text, snapshot)
 }
+
+func (a *App) TranscribeCommand(req backend.TranscribeCommandRequest) (backend.SpeechCommandPreview, error) {
+	snapshot, err := a.transport.Snapshot(a.context())
+	if err != nil {
+		return backend.SpeechCommandPreview{}, err
+	}
+	return a.commandEngine.TranscribeAndInterpret(a.context(), req, snapshot)
+}

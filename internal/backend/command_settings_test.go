@@ -46,6 +46,27 @@ func TestCommandEngineCommandResolvesExplicitPath(t *testing.T) {
 	}
 }
 
+func TestCommandEngineCommandAddsWhisperEnvFlags(t *testing.T) {
+	t.Setenv("HIKARI_WHISPER_COMMAND", "/tmp/whisper-cli")
+	t.Setenv("HIKARI_WHISPER_MODEL", "/tmp/model.bin")
+	path, args, err := commandEngineCommand(CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine"})
+	if err != nil {
+		t.Fatalf("commandEngineCommand returned error: %v", err)
+	}
+	if path != "/tmp/engine" {
+		t.Fatalf("path = %q", path)
+	}
+	want := []string{"serve", "-whisper-command", "/tmp/whisper-cli", "-whisper-model", "/tmp/model.bin"}
+	if len(args) != len(want) {
+		t.Fatalf("args = %#v", args)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Fatalf("args = %#v", args)
+		}
+	}
+}
+
 func TestBundledCommandEnginePathFindsExecutableBesideBinary(t *testing.T) {
 	exe, err := os.Executable()
 	if err != nil {
