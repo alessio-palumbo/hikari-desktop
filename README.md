@@ -72,7 +72,13 @@ HIKARI_WHISPER_MODEL=/path/to/ggml-base.en.bin \
 wails dev
 ```
 
-When voice is configured, hold the mic button in the quick action prompt, speak a short English command, and release to transcribe. Hikari records a temporary WAV payload locally, sends it to the command sidecar, shows the transcript, and requires confirmation before execution.
+Extra whisper.cpp arguments can be passed through the command sidecar with `HIKARI_WHISPER_ARGS`. Use a JSON array when an argument contains spaces, such as a seeded prompt:
+
+```sh
+HIKARI_WHISPER_ARGS='["--prompt","turn tv off, set desk warm white, kitchen 30 percent","--language","en"]'
+```
+
+When voice is configured, click the mic button in the quick action prompt to start recording, then click again to stop. You can also hold Space while the command field is empty. Hikari records a temporary WAV payload locally, sends it to the command sidecar, shows the transcript, and requires confirmation before execution.
 
 ## Requirements
 

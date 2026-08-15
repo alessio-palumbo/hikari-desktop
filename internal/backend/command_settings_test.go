@@ -49,6 +49,7 @@ func TestCommandEngineCommandResolvesExplicitPath(t *testing.T) {
 func TestCommandEngineCommandAddsWhisperEnvFlags(t *testing.T) {
 	t.Setenv("HIKARI_WHISPER_COMMAND", "/tmp/whisper-cli")
 	t.Setenv("HIKARI_WHISPER_MODEL", "/tmp/model.bin")
+	t.Setenv("HIKARI_WHISPER_ARGS", "-ng --language en")
 	path, args, err := commandEngineCommand(CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine"})
 	if err != nil {
 		t.Fatalf("commandEngineCommand returned error: %v", err)
@@ -56,7 +57,7 @@ func TestCommandEngineCommandAddsWhisperEnvFlags(t *testing.T) {
 	if path != "/tmp/engine" {
 		t.Fatalf("path = %q", path)
 	}
-	want := []string{"serve", "-whisper-command", "/tmp/whisper-cli", "-whisper-model", "/tmp/model.bin"}
+	want := []string{"serve", "-whisper-command", "/tmp/whisper-cli", "-whisper-model", "/tmp/model.bin", "-whisper-arg", "-ng", "-whisper-arg", "--language", "-whisper-arg", "en"}
 	if len(args) != len(want) {
 		t.Fatalf("args = %#v", args)
 	}
@@ -64,6 +65,32 @@ func TestCommandEngineCommandAddsWhisperEnvFlags(t *testing.T) {
 		if args[i] != want[i] {
 			t.Fatalf("args = %#v", args)
 		}
+	}
+}
+
+func TestCommandEngineCommandAddsWhisperJSONArgs(t *testing.T) {
+	t.Setenv("HIKARI_WHISPER_COMMAND", "/tmp/whisper-cli")
+	t.Setenv("HIKARI_WHISPER_MODEL", "/tmp/model.bin")
+	t.Setenv("HIKARI_WHISPER_ARGS", `["--prompt","turn tv off, set desk warm white","--language","en"]`)
+	_, args, err := commandEngineCommand(CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine"})
+	if err != nil {
+		t.Fatalf("commandEngineCommand returned error: %v", err)
+	}
+	want := []string{"serve", "-whisper-command", "/tmp/whisper-cli", "-whisper-model", "/tmp/model.bin", "-whisper-arg", "--prompt", "-whisper-arg", "turn tv off, set desk warm white", "-whisper-arg", "--language", "-whisper-arg", "en"}
+	if len(args) != len(want) {
+		t.Fatalf("args = %#v", args)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Fatalf("args = %#v", args)
+		}
+	}
+}
+
+func TestCommandEngineCommandRejectsInvalidWhisperJSONArgs(t *testing.T) {
+	t.Setenv("HIKARI_WHISPER_ARGS", `[`)
+	if _, _, err := commandEngineCommand(CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine"}); err == nil {
+		t.Fatal("commandEngineCommand returned nil error")
 	}
 }
 

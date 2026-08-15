@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -324,7 +325,11 @@ func commandEngineCommand(settings CommandEngineSettings) (string, []string, err
 	configPath := strings.TrimSpace(settings.ConfigPath)
 	whisperCommand := strings.TrimSpace(os.Getenv("HIKARI_WHISPER_COMMAND"))
 	whisperModel := strings.TrimSpace(os.Getenv("HIKARI_WHISPER_MODEL"))
-	if configPath != "" || whisperCommand != "" || whisperModel != "" {
+	whisperArgs, err := whisperExtraArgsFromEnv()
+	if err != nil {
+		return "", nil, err
+	}
+	if configPath != "" || whisperCommand != "" || whisperModel != "" || len(whisperArgs) > 0 {
 		args = append(args, "serve")
 	}
 	if configPath != "" {
@@ -336,7 +341,35 @@ func commandEngineCommand(settings CommandEngineSettings) (string, []string, err
 	if whisperModel != "" {
 		args = append(args, "-whisper-model", whisperModel)
 	}
+	for _, arg := range whisperArgs {
+		args = append(args, "-whisper-arg", arg)
+	}
 	return path, args, nil
+}
+
+func whisperExtraArgsFromEnv() ([]string, error) {
+	value := strings.TrimSpace(os.Getenv("HIKARI_WHISPER_ARGS"))
+	if value == "" {
+		return nil, nil
+	}
+	if strings.HasPrefix(value, "[") {
+		var args []string
+		if err := json.Unmarshal([]byte(value), &args); err != nil {
+			return nil, fmt.Errorf("parse HIKARI_WHISPER_ARGS JSON: %w", err)
+		}
+		return cleanWhisperArgs(args), nil
+	}
+	return cleanWhisperArgs(strings.Fields(value)), nil
+}
+
+func cleanWhisperArgs(args []string) []string {
+	cleaned := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg = strings.TrimSpace(arg); arg != "" {
+			cleaned = append(cleaned, arg)
+		}
+	}
+	return cleaned
 }
 
 func bundledCommandEnginePath() (string, bool) {
