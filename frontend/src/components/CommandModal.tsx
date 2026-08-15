@@ -1,5 +1,5 @@
-import { FormEvent, KeyboardEvent, PointerEvent, useEffect, useRef, useState } from 'react';
-import { Mic, Sparkles, X } from 'lucide-react';
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { Mic, Sparkles, Square, X } from 'lucide-react';
 import type { CommandPreview, CommandPreviewAction, CommandTranscript } from '../backend/api';
 import './CommandModal.css';
 
@@ -36,6 +36,7 @@ export function CommandModal(props: CommandModalProps) {
   const sampleRateRef = useRef(48000);
   const startedAtRef = useRef(0);
   const pressingRef = useRef(false);
+  const keyboardRecordingRef = useRef(false);
   const maxTimerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -81,7 +82,6 @@ export function CommandModal(props: CommandModalProps) {
     pressingRef.current = true;
     setRecording(true);
     setRecordingError(undefined);
-    props.onClear();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
       if (!pressingRef.current) {
@@ -107,20 +107,24 @@ export function CommandModal(props: CommandModalProps) {
       maxTimerRef.current = window.setTimeout(() => void stopRecording(true), 10000);
     } catch (error) {
       pressingRef.current = false;
+      keyboardRecordingRef.current = false;
       cleanupRecording();
       setRecording(false);
       setRecordingError(errorMessage(error));
     }
   };
 
-  const startPointerRecording = async (event: PointerEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    await beginRecording();
+  const togglePointerRecording = () => {
+    if (recording) {
+      void stopRecording(true);
+      return;
+    }
+    void beginRecording();
   };
 
   const stopRecording = async (submit: boolean) => {
     pressingRef.current = false;
+    keyboardRecordingRef.current = false;
     if (maxTimerRef.current) window.clearTimeout(maxTimerRef.current);
     const elapsed = performance.now() - startedAtRef.current;
     const chunks = chunksRef.current;
@@ -137,12 +141,6 @@ export function CommandModal(props: CommandModalProps) {
     } catch (error) {
       setRecordingError(errorMessage(error));
     }
-  };
-
-  const cancelRecording = () => {
-    pressingRef.current = false;
-    cleanupRecording();
-    setRecording(false);
   };
 
   const cleanupRecording = () => {
@@ -163,6 +161,7 @@ export function CommandModal(props: CommandModalProps) {
       event.preventDefault();
       event.stopPropagation();
       if (voiceDisabled || event.repeat || pressingRef.current) return;
+      keyboardRecordingRef.current = true;
       void beginRecording();
       return;
     }
@@ -201,7 +200,7 @@ export function CommandModal(props: CommandModalProps) {
   };
 
   const handleTextKeyUp = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== ' ' || !pressingRef.current) return;
+    if (event.key !== ' ' || !keyboardRecordingRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     void stopRecording(true);
@@ -211,6 +210,37 @@ export function CommandModal(props: CommandModalProps) {
     const nativeEvent = event.nativeEvent as InputEvent;
     if (text.length === 0 && nativeEvent.data?.trim() === '') event.preventDefault();
   };
+
+  useEffect(() => {
+    if (!props.open) return undefined;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (recording) void stopRecording(false);
+        else props.onClose();
+        return;
+      }
+      if (event.key !== ' ' || text.length !== 0 || commandVoiceShortcutBlocksTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (voiceDisabled || event.repeat || pressingRef.current) return;
+      keyboardRecordingRef.current = true;
+      void beginRecording();
+    };
+    const onKeyUp = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== ' ' || !keyboardRecordingRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void stopRecording(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [props.open, text, voiceDisabled, recording, props.onClose]);
 
   if (!props.open) return null;
 
@@ -255,15 +285,13 @@ export function CommandModal(props: CommandModalProps) {
             className="command-voice-button"
             data-recording={recording ? 'true' : 'false'}
             disabled={voiceDisabled && !recording}
-            aria-label={recording ? 'Release to transcribe' : 'Hold to speak'}
-            title={props.voiceAvailable ? 'Hold to speak, or hold Space while the command is empty' : 'Voice commands are not configured'}
-            onPointerDown={(event) => void startPointerRecording(event)}
-            onPointerUp={() => void stopRecording(true)}
-            onPointerCancel={cancelRecording}
+            aria-label={recording ? 'Stop recording' : 'Start recording'}
+            title={props.voiceAvailable ? 'Click to start or stop recording, or hold Space while the command is empty' : 'Voice commands are not configured'}
+            onClick={togglePointerRecording}
           >
-            <Mic size={13} />
+            {recording ? <Square size={12} /> : <Mic size={13} />}
           </button>
-          <button type="submit" disabled={!canInterpret && !canConfirm}>
+          <button type="submit" className="command-submit-button" disabled={!canInterpret && !canConfirm}>
             {props.transcribing ? 'transcribing' : canConfirm ? 'confirm' : 'interpret'}
           </button>
         </form>
@@ -334,6 +362,12 @@ function describeAction(action: CommandPreviewAction): string {
   if (typeof action.hue === 'number') parts.push(`hue ${Math.round(action.hue)}°`);
   if (typeof action.saturation === 'number') parts.push(`saturation ${Math.round(action.saturation)}%`);
   return parts.length ? parts.join(' · ') : 'no state change';
+}
+
+function commandVoiceShortcutBlocksTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target.isContentEditable;
 }
 
 function encodeWav(chunks: Float32Array[], sourceSampleRate: number): ArrayBuffer {

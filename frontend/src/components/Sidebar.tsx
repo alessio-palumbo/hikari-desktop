@@ -23,6 +23,7 @@ interface SidebarProps {
   onNetworkInterfaceChange: (name: string) => void;
   onRefreshDiscovery: () => void;
   onOpenCommands: () => void;
+  commandsOpen?: boolean;
   onGroupPower: (groupId: string, on: boolean) => void;
 }
 
@@ -47,6 +48,7 @@ export function Sidebar(props: SidebarProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (props.commandsOpen) return;
       const key = event.key.toLowerCase();
       const searchShortcut = key === 's' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !isEditableShortcutTarget(event.target);
       const findShortcut = key === 'f' && (event.metaKey || event.ctrlKey) && !event.altKey;
@@ -58,7 +60,7 @@ export function Sidebar(props: SidebarProps) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [props.commandsOpen]);
 
   return (
     <aside className="left-panel sidebar">

@@ -459,7 +459,6 @@ export function App() {
   const transcribeVoiceCommand = async (audioBase64: string) => {
     setCommandTranscribing(true);
     setCommandError(undefined);
-    setCommandTranscript(undefined);
     try {
       const result = await transcribeCommandAudio(audioBase64, 'en');
       setCommandTranscript(result.transcript);
@@ -559,6 +558,7 @@ export function App() {
         onNetworkInterfaceChange={(name) => void changeNetworkInterface(name)}
         onRefreshDiscovery={() => void refreshDiscovery()}
         onOpenCommands={openCommandModal}
+        commandsOpen={commandOpen}
         onGroupPower={(id, on) =>
           void Promise.all(snapshot.devices.filter(isLightDevice).filter((device) => device.groupId === id).map((device) => updateListDevice({ ...device, on })))
         }

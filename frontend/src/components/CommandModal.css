@@ -81,6 +81,11 @@
   place-items: center;
 }
 
+.command-input-row .command-submit-button {
+  width: 86px;
+  padding: 0;
+}
+
 .command-voice-button[data-recording="true"] {
   background: oklch(0.72 0.18 28 / 0.3);
   box-shadow: inset 0 0 0 1px oklch(0.82 0.16 35 / 0.42), 0 0 0 3px oklch(0.72 0.18 28 / 0.12);
