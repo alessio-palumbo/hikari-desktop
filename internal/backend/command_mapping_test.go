@@ -3,6 +3,8 @@ package backend
 import (
 	"math"
 	"testing"
+
+	commandclient "github.com/alessio-palumbo/lifx-command-engine/client"
 )
 
 func TestCommandSnapshotFromDeviceSnapshotMapsInventory(t *testing.T) {
@@ -110,6 +112,52 @@ func TestCommandSnapshotFromDeviceSnapshotMapsSingleZoneCurrentState(t *testing.
 	}
 	if state.Kelvin == nil || *state.Kelvin != 2700 {
 		t.Fatalf("kelvin = %#v", state)
+	}
+}
+
+func TestCommandPreviewFromPlanSkipsNonColorTargetsForColorActions(t *testing.T) {
+	hue := 0.0
+	saturation := 100.0
+	snapshot := DeviceSnapshot{
+		Locations: []Location{{ID: "home", Name: "Home"}},
+		Groups:    []Group{{ID: "tv", LocationID: "home", Name: "TV"}},
+		Devices: []Device{
+			{
+				GroupID:    "tv",
+				Serial:     "color",
+				Name:       "TV Backlight",
+				Kind:       DeviceKindSingle,
+				Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+			},
+			{
+				GroupID:    "tv",
+				Serial:     "white",
+				Name:       "Filo L 6369C1",
+				Kind:       DeviceKindSingle,
+				Capability: DeviceCapability{HasColor: false, KelvinMin: 2700, KelvinMax: 2700},
+			},
+		},
+	}
+
+	preview, err := commandPreviewFromPlan(commandclient.CommandPlan{
+		SchemaVersion: commandEnginePlanSchema,
+		Summary:       "Set TV red",
+		Commands: []commandclient.CommandIntent{{
+			Targets: []commandclient.TargetRef{{Serial: "color"}, {Serial: "white"}},
+			Action:  commandclient.Action{Hue: &hue, Saturation: &saturation},
+		}},
+	}, snapshot)
+	if err != nil {
+		t.Fatalf("commandPreviewFromPlan returned error: %v", err)
+	}
+	if preview.Empty || len(preview.Commands) != 1 || len(preview.Commands[0].Targets) != 1 {
+		t.Fatalf("preview = %#v, want color target retained", preview)
+	}
+	if preview.Commands[0].Targets[0].Serial != "color" {
+		t.Fatalf("targets = %#v", preview.Commands[0].Targets)
+	}
+	if len(preview.SkippedTargets) != 1 || preview.SkippedTargets[0].Serial != "white" {
+		t.Fatalf("skipped = %#v", preview.SkippedTargets)
 	}
 }
 

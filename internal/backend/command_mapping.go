@@ -150,6 +150,15 @@ func commandPreviewFromPlan(plan commandclient.CommandPlan, snapshot DeviceSnaps
 				})
 				continue
 			}
+			if unsupportedCommandAction(command.Action, device) {
+				preview.SkippedTargets = append(preview.SkippedTargets, CommandPreviewTarget{
+					Serial:   target.Serial,
+					Label:    firstNonEmpty(target.Label, device.Name),
+					Group:    target.Group,
+					Location: target.Location,
+				})
+				continue
+			}
 			if err := validateCommandAction(command.Action, device); err != nil {
 				return CommandPreview{}, err
 			}
@@ -173,6 +182,10 @@ func commandPreviewFromPlan(plan commandclient.CommandPlan, snapshot DeviceSnaps
 		preview.Summary = "No supported command found"
 	}
 	return preview, nil
+}
+
+func unsupportedCommandAction(action commandclient.Action, device Device) bool {
+	return (action.Hue != nil || action.Saturation != nil) && !device.Capability.HasColor
 }
 
 func validateCommandAction(action commandclient.Action, device Device) error {
