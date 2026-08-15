@@ -49,7 +49,7 @@ func TestCommandEngineCommandResolvesExplicitPath(t *testing.T) {
 func TestCommandEngineCommandAddsWhisperEnvFlags(t *testing.T) {
 	t.Setenv("HIKARI_WHISPER_COMMAND", "/tmp/whisper-cli")
 	t.Setenv("HIKARI_WHISPER_MODEL", "/tmp/model.bin")
-	t.Setenv("HIKARI_WHISPER_ARGS", "-ng --language en")
+	t.Setenv("HIKARI_WHISPER_ARGS", "-ng --no-timestamps")
 	path, args, err := commandEngineCommand(CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine"})
 	if err != nil {
 		t.Fatalf("commandEngineCommand returned error: %v", err)
@@ -57,7 +57,7 @@ func TestCommandEngineCommandAddsWhisperEnvFlags(t *testing.T) {
 	if path != "/tmp/engine" {
 		t.Fatalf("path = %q", path)
 	}
-	want := []string{"serve", "-whisper-command", "/tmp/whisper-cli", "-whisper-model", "/tmp/model.bin", "-whisper-arg", "-ng", "-whisper-arg", "--language", "-whisper-arg", "en"}
+	want := []string{"serve", "-whisper-command", "/tmp/whisper-cli", "-whisper-model", "/tmp/model.bin", "-whisper-arg", "-ng", "-whisper-arg", "--no-timestamps"}
 	if len(args) != len(want) {
 		t.Fatalf("args = %#v", args)
 	}
@@ -71,12 +71,12 @@ func TestCommandEngineCommandAddsWhisperEnvFlags(t *testing.T) {
 func TestCommandEngineCommandAddsWhisperJSONArgs(t *testing.T) {
 	t.Setenv("HIKARI_WHISPER_COMMAND", "/tmp/whisper-cli")
 	t.Setenv("HIKARI_WHISPER_MODEL", "/tmp/model.bin")
-	t.Setenv("HIKARI_WHISPER_ARGS", `["--prompt","turn tv off, set desk warm white","--language","en"]`)
+	t.Setenv("HIKARI_WHISPER_ARGS", `["-ng","--prompt","turn tv off, set desk warm white"]`)
 	_, args, err := commandEngineCommand(CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine"})
 	if err != nil {
 		t.Fatalf("commandEngineCommand returned error: %v", err)
 	}
-	want := []string{"serve", "-whisper-command", "/tmp/whisper-cli", "-whisper-model", "/tmp/model.bin", "-whisper-arg", "--prompt", "-whisper-arg", "turn tv off, set desk warm white", "-whisper-arg", "--language", "-whisper-arg", "en"}
+	want := []string{"serve", "-whisper-command", "/tmp/whisper-cli", "-whisper-model", "/tmp/model.bin", "-whisper-arg", "-ng", "-whisper-arg", "--prompt", "-whisper-arg", "turn tv off, set desk warm white"}
 	if len(args) != len(want) {
 		t.Fatalf("args = %#v", args)
 	}

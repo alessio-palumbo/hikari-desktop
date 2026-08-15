@@ -75,8 +75,10 @@ wails dev
 Extra whisper.cpp arguments can be passed through the command sidecar with `HIKARI_WHISPER_ARGS`. Use a JSON array when an argument contains spaces, such as a seeded prompt:
 
 ```sh
-HIKARI_WHISPER_ARGS='["--prompt","turn tv off, set desk warm white, kitchen 30 percent","--language","en"]'
+HIKARI_WHISPER_ARGS='["-ng","--prompt","turn tv off, set desk warm white, kitchen 30 percent"]'
 ```
+
+Hikari sends the selected language, currently `en`, in the transcribe request. Do not pass language through `HIKARI_WHISPER_ARGS`.
 
 When voice is configured, click the mic button in the quick action prompt to start recording, then click again to stop. You can also hold Space while the command field is empty. Hikari records a temporary WAV payload locally, sends it to the command sidecar, shows the transcript, and requires confirmation before execution.
 
