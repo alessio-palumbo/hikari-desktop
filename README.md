@@ -195,10 +195,11 @@ The backend keeps `lifxlan-go` behind the transport boundary so real device beha
 
 ## Release Builds
 
-The release workflow builds macOS, Windows, and Linux artifacts from tags matching `v*`.
+The release workflow builds macOS, Windows, and Linux artifacts from tags matching `v*`. The normal artifacts stay lightweight and include the rule-only command sidecar. A separate `hikari-macos-voice.zip` artifact also bundles `whisper-cli` and the `base.en` model for local voice commands.
 
 Current release limitations:
 
 - macOS signing and notarization are not configured.
+- Voice packaging is currently macOS-only.
 - Windows signing is not configured.
 - Linux packaging is limited to the Wails build output.

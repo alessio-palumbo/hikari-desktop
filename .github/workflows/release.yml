@@ -83,15 +83,6 @@ jobs:
         shell: bash
         run: ./scripts/bundle-command-sidecar.sh
 
-      - name: Bundle voice runtime
-        shell: bash
-        run: |
-          if [[ -n "${HIKARI_WHISPER_COMMAND:-}" && -n "${HIKARI_WHISPER_MODEL:-}" ]]; then
-            ./scripts/bundle-voice-runtime.sh
-          else
-            echo "Skipping voice runtime bundle; HIKARI_WHISPER_COMMAND and HIKARI_WHISPER_MODEL are not set"
-          fi
-
       - name: Package macOS app
         if: runner.os == 'macOS'
         run: |
@@ -118,10 +109,96 @@ jobs:
           path: release/${{ matrix.archive }}
           if-no-files-found: error
 
+  build-macos-voice:
+    name: Build macOS voice
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Test frontend
+        working-directory: frontend
+        run: npm run test
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Test Go
+        run: go test ./...
+
+      - name: Prepare build metadata
+        shell: bash
+        run: |
+          echo "HIKARI_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build Wails app
+        run: wails build -clean -ldflags "-X main.version=${HIKARI_VERSION}"
+
+      - name: Bundle command sidecar
+        shell: bash
+        run: ./scripts/bundle-command-sidecar.sh
+
+      - name: Checkout whisper.cpp
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/whisper.cpp
+          path: build/whisper.cpp
+
+      - name: Build whisper.cpp
+        working-directory: build/whisper.cpp
+        run: cmake -B build && cmake --build build --config Release --target whisper-cli
+
+      - name: Download base.en model
+        working-directory: build/whisper.cpp
+        run: ./models/download-ggml-model.sh base.en models
+
+      - name: Bundle voice runtime
+        shell: bash
+        env:
+          HIKARI_WHISPER_COMMAND: ${{ github.workspace }}/build/whisper.cpp/build/bin/whisper-cli
+          HIKARI_WHISPER_MODEL: ${{ github.workspace }}/build/whisper.cpp/models/ggml-base.en.bin
+        run: ./scripts/bundle-voice-runtime.sh
+
+      - name: Package macOS voice app
+        run: |
+          mkdir -p release
+          ditto -c -k --keepParent build/bin/hikari.app release/hikari-macos-voice.zip
+
+      - name: Upload packaged voice build
+        uses: actions/upload-artifact@v4
+        with:
+          name: hikari-macos-voice
+          path: release/hikari-macos-voice.zip
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
     runs-on: ubuntu-22.04
-    needs: build
+    needs:
+      - build
+      - build-macos-voice
 
     steps:
       - name: Download artifacts
@@ -132,6 +209,7 @@ jobs:
       - name: Collect release files
         run: |
           mv artifacts/hikari-macos/hikari-macos.zip .
+          mv artifacts/hikari-macos-voice/hikari-macos-voice.zip .
           mv artifacts/hikari-windows/hikari-windows.zip .
           mv artifacts/hikari-linux/hikari-linux.tar.gz .
 
@@ -140,5 +218,6 @@ jobs:
         with:
           files: |
             hikari-macos.zip
+            hikari-macos-voice.zip
             hikari-windows.zip
             hikari-linux.tar.gz
