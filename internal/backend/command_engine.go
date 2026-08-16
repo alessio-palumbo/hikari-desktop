@@ -305,8 +305,8 @@ func transcriptionConfigured(settings CommandEngineSettings) bool {
 	if strings.TrimSpace(settings.ConfigPath) != "" {
 		return true
 	}
-	return strings.TrimSpace(os.Getenv("HIKARI_WHISPER_COMMAND")) != "" &&
-		strings.TrimSpace(os.Getenv("HIKARI_WHISPER_MODEL")) != ""
+	command, model := whisperRuntime(settings)
+	return command != "" && model != ""
 }
 
 func commandEngineCommand(settings CommandEngineSettings) (string, []string, error) {
@@ -323,8 +323,7 @@ func commandEngineCommand(settings CommandEngineSettings) (string, []string, err
 	}
 	args := []string{}
 	configPath := strings.TrimSpace(settings.ConfigPath)
-	whisperCommand := strings.TrimSpace(os.Getenv("HIKARI_WHISPER_COMMAND"))
-	whisperModel := strings.TrimSpace(os.Getenv("HIKARI_WHISPER_MODEL"))
+	whisperCommand, whisperModel := whisperRuntime(settings)
 	whisperArgs, err := whisperExtraArgsFromEnv()
 	if err != nil {
 		return "", nil, err
@@ -345,6 +344,18 @@ func commandEngineCommand(settings CommandEngineSettings) (string, []string, err
 		args = append(args, "-whisper-arg", arg)
 	}
 	return path, args, nil
+}
+
+func whisperRuntime(settings CommandEngineSettings) (string, string) {
+	if strings.TrimSpace(settings.ConfigPath) != "" {
+		return "", ""
+	}
+	whisperCommand := strings.TrimSpace(os.Getenv("HIKARI_WHISPER_COMMAND"))
+	whisperModel := strings.TrimSpace(os.Getenv("HIKARI_WHISPER_MODEL"))
+	if whisperCommand != "" || whisperModel != "" {
+		return whisperCommand, whisperModel
+	}
+	return bundledWhisperRuntime()
 }
 
 func whisperExtraArgsFromEnv() ([]string, error) {
@@ -390,6 +401,44 @@ func bundledCommandEnginePath() (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func bundledWhisperRuntime() (string, string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", ""
+	}
+	exeDir := filepath.Dir(exe)
+	commandNames := []string{"whisper-cli", "whisper-cli.exe"}
+	modelNames := []string{"ggml-base.en.bin"}
+	commandDirs := []string{
+		exeDir,
+		filepath.Clean(filepath.Join(exeDir, "..", "Resources")),
+	}
+	modelDirs := []string{
+		exeDir,
+		filepath.Join(exeDir, "models"),
+		filepath.Clean(filepath.Join(exeDir, "..", "Resources")),
+		filepath.Clean(filepath.Join(exeDir, "..", "Resources", "models")),
+	}
+	command := firstExistingFile(commandDirs, commandNames)
+	model := firstExistingFile(modelDirs, modelNames)
+	if command == "" || model == "" {
+		return "", ""
+	}
+	return command, model
+}
+
+func firstExistingFile(dirs []string, names []string) string {
+	for _, dir := range dirs {
+		for _, name := range names {
+			candidate := filepath.Join(dir, name)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate
+			}
+		}
+	}
+	return ""
 }
 
 func validateCommandEngineCapabilities(capabilities commandclient.Capabilities) error {

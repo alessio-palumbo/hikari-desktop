@@ -83,6 +83,15 @@ jobs:
         shell: bash
         run: ./scripts/bundle-command-sidecar.sh
 
+      - name: Bundle voice runtime
+        shell: bash
+        run: |
+          if [[ -n "${HIKARI_WHISPER_COMMAND:-}" && -n "${HIKARI_WHISPER_MODEL:-}" ]]; then
+            ./scripts/bundle-voice-runtime.sh
+          else
+            echo "Skipping voice runtime bundle; HIKARI_WHISPER_COMMAND and HIKARI_WHISPER_MODEL are not set"
+          fi
+
       - name: Package macOS app
         if: runner.os == 'macOS'
         run: |

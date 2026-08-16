@@ -62,7 +62,7 @@ Optional FunctionGemma and whisper.cpp runtime/model paths belong in a `lifx-com
 
 ### Voice Command Development
 
-Voice commands are optional and are not bundled in the base app. For local testing, build the command sidecar and point Hikari at a local `whisper.cpp` CLI plus model:
+Voice commands are optional and are not bundled in the base app. Model download and evaluation lives in `lifx-command-engine`; `base.en` is the current default candidate for Hikari voice builds. For local testing, build the command sidecar and point Hikari at a local `whisper.cpp` CLI plus model:
 
 ```sh
 ./scripts/bundle-command-sidecar.sh
@@ -81,6 +81,18 @@ HIKARI_WHISPER_ARGS='["-ng","--prompt","turn tv off, set desk warm white, kitche
 Hikari sends the selected language, currently `en`, in the transcribe request. Do not pass language through `HIKARI_WHISPER_ARGS`.
 
 When voice is configured, click the mic button in the quick action prompt to start recording, then click again to stop. You can also hold Space while the command field is empty. Hikari records a temporary WAV payload locally, sends it to the command sidecar, shows the transcript, and requires confirmation before execution.
+
+To create a local voice bundle from existing artifacts, build the app and sidecar, then copy in a built `whisper-cli` and `ggml-base.en.bin`:
+
+```sh
+wails build -clean
+./scripts/bundle-command-sidecar.sh
+HIKARI_WHISPER_COMMAND=/path/to/whisper-cli \
+HIKARI_WHISPER_MODEL=/path/to/ggml-base.en.bin \
+./scripts/bundle-voice-runtime.sh
+```
+
+The voice bundling script only copies existing files. It does not download whisper.cpp or model weights.
 
 ## Requirements
 
@@ -159,7 +171,7 @@ wails build -clean
 ./scripts/bundle-command-sidecar.sh
 ```
 
-`wails build` builds `frontend/dist` and the desktop app. The sidecar script only builds the pinned `lifx-command-engine` module from `go.mod` and places it next to the app binary, or in `hikari.app/Contents/Resources` on macOS.
+`wails build` builds `frontend/dist` and the desktop app. The sidecar script only builds the pinned `lifx-command-engine` module from `go.mod` and places it next to the app binary, or in `hikari.app/Contents/Resources` on macOS. Voice runtime packaging is optional and only copies explicitly provided local artifacts.
 
 Release builds are intended to be produced natively on each platform through GitHub Actions.
 

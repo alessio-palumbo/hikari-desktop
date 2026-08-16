@@ -87,6 +87,50 @@ func TestCommandEngineCommandAddsWhisperJSONArgs(t *testing.T) {
 	}
 }
 
+func TestCommandEngineCommandAddsBundledWhisperRuntime(t *testing.T) {
+	t.Setenv("HIKARI_WHISPER_COMMAND", "")
+	t.Setenv("HIKARI_WHISPER_MODEL", "")
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(exe)
+	commandName := "whisper-cli"
+	if filepath.Ext(exe) == ".exe" {
+		commandName += ".exe"
+	}
+	commandPath := filepath.Join(dir, commandName)
+	modelDir := filepath.Join(dir, "models")
+	modelPath := filepath.Join(modelDir, "ggml-base.en.bin")
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(commandPath, []byte("test"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(modelPath, []byte("test"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Remove(commandPath)
+		_ = os.Remove(modelPath)
+	})
+
+	_, args, err := commandEngineCommand(CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine"})
+	if err != nil {
+		t.Fatalf("commandEngineCommand returned error: %v", err)
+	}
+	want := []string{"serve", "-whisper-command", commandPath, "-whisper-model", modelPath}
+	if len(args) != len(want) {
+		t.Fatalf("args = %#v", args)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Fatalf("args = %#v", args)
+		}
+	}
+}
+
 func TestCommandEngineCommandRejectsInvalidWhisperJSONArgs(t *testing.T) {
 	t.Setenv("HIKARI_WHISPER_ARGS", `[`)
 	if _, _, err := commandEngineCommand(CommandEngineSettings{Enabled: true, EnginePath: "/tmp/engine"}); err == nil {
