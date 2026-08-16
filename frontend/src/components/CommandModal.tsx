@@ -49,7 +49,8 @@ export function CommandModal(props: CommandModalProps) {
 
   const canInterpret = text.trim().length > 0 && !props.interpreting && !props.transcribing && !recording;
   const canConfirm = !!props.preview && !props.preview.empty && !props.executing && !props.interpreting && !props.transcribing && !recording;
-  const voiceDisabled = !props.voiceAvailable || props.transcribing || props.interpreting || props.executing;
+  const microphoneAvailable = browserMicrophoneAvailable();
+  const voiceDisabled = !props.voiceAvailable || !microphoneAvailable || props.transcribing || props.interpreting || props.executing;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -83,6 +84,9 @@ export function CommandModal(props: CommandModalProps) {
     setRecording(true);
     setRecordingError(undefined);
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('microphone recording is not available in this WebView');
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
       if (!pressingRef.current) {
         stream.getTracks().forEach((track) => track.stop());
@@ -286,7 +290,7 @@ export function CommandModal(props: CommandModalProps) {
             data-recording={recording ? 'true' : 'false'}
             disabled={voiceDisabled && !recording}
             aria-label={recording ? 'Stop recording' : 'Start recording'}
-            title={props.voiceAvailable ? 'Click to start or stop recording, or hold Space while the command is empty' : 'Voice commands are not configured'}
+            title={voiceButtonTitle(props.voiceAvailable, microphoneAvailable)}
             onClick={togglePointerRecording}
           >
             {recording ? <Square size={12} /> : <Mic size={13} />}
@@ -305,6 +309,7 @@ export function CommandModal(props: CommandModalProps) {
           <span>auto-run high confidence</span>
         </label>
 
+        {props.voiceAvailable && !microphoneAvailable ? <p className="command-error">Microphone recording is not available in this WebView.</p> : null}
         {recordingError ? <p className="command-error">{recordingError}</p> : null}
         {props.error ? <p className="command-error">{props.error}</p> : null}
 
@@ -368,6 +373,16 @@ function commandVoiceShortcutBlocksTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName.toLowerCase();
   return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target.isContentEditable;
+}
+
+function browserMicrophoneAvailable(): boolean {
+  return typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function';
+}
+
+function voiceButtonTitle(voiceAvailable: boolean, microphoneAvailable: boolean): string {
+  if (!voiceAvailable) return 'Voice commands are not configured';
+  if (!microphoneAvailable) return 'Microphone recording is not available in this WebView';
+  return 'Click to start or stop recording, or hold Space while the command is empty';
 }
 
 function encodeWav(chunks: Float32Array[], sourceSampleRate: number): ArrayBuffer {
