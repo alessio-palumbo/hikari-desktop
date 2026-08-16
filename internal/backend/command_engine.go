@@ -156,7 +156,6 @@ func (s *CommandEngineService) TranscribeAndInterpret(ctx context.Context, req T
 	if err != nil {
 		return SpeechCommandPreview{}, err
 	}
-	preview.NeedsConfirmation = true
 	return SpeechCommandPreview{Transcript: commandTranscriptFromResult(result.Transcript), Preview: preview}, nil
 }
 

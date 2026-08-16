@@ -215,7 +215,7 @@ func TestCommandEngineServiceTranscribesThroughClient(t *testing.T) {
 	if client.audio.AudioPath != "/tmp/voice.wav" || client.audio.Language != "en" {
 		t.Fatalf("audio input = %#v", client.audio)
 	}
-	if got.Transcript.Text != "turn ceiling on" || got.Preview.Summary != "Turn on Ceiling" || !got.Preview.NeedsConfirmation {
+	if got.Transcript.Text != "turn ceiling on" || got.Preview.Summary != "Turn on Ceiling" || got.Preview.NeedsConfirmation {
 		t.Fatalf("speech preview = %#v", got)
 	}
 }

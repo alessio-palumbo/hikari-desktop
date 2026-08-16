@@ -463,6 +463,9 @@ export function App() {
       const result = await transcribeCommandAudio(audioBase64, 'en');
       setCommandTranscript(result.transcript);
       setCommandPreview(result.preview);
+      if (commandAutoExecute && canAutoExecuteCommand(result.preview)) {
+        await executeTextCommandPreview(result.preview);
+      }
     } catch (error) {
       setCommandPreview(undefined);
       setCommandTranscript(undefined);
