@@ -284,17 +284,19 @@ export function CommandModal(props: CommandModalProps) {
               </button>
             ) : null}
           </div>
-          <button
-            type="button"
-            className="command-voice-button"
-            data-recording={recording ? 'true' : 'false'}
-            disabled={voiceDisabled && !recording}
-            aria-label={recording ? 'Stop recording' : 'Start recording'}
-            title={voiceButtonTitle(props.voiceAvailable, microphoneAvailable)}
-            onClick={togglePointerRecording}
-          >
-            {recording ? <Square size={12} /> : <Mic size={13} />}
-          </button>
+          {props.voiceAvailable ? (
+            <button
+              type="button"
+              className="command-voice-button"
+              data-recording={recording ? 'true' : 'false'}
+              disabled={voiceDisabled && !recording}
+              aria-label={recording ? 'Stop recording' : 'Start recording'}
+              title={voiceButtonTitle(microphoneAvailable)}
+              onClick={togglePointerRecording}
+            >
+              {recording ? <Square size={12} /> : <Mic size={13} />}
+            </button>
+          ) : null}
           <button type="submit" className="command-submit-button" disabled={!canInterpret && !canConfirm}>
             {props.transcribing ? 'transcribing' : canConfirm ? 'confirm' : 'interpret'}
           </button>
@@ -379,8 +381,7 @@ function browserMicrophoneAvailable(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function';
 }
 
-function voiceButtonTitle(voiceAvailable: boolean, microphoneAvailable: boolean): string {
-  if (!voiceAvailable) return 'Voice commands are not configured';
+function voiceButtonTitle(microphoneAvailable: boolean): string {
   if (!microphoneAvailable) return 'Microphone recording is not available in this WebView';
   return 'Click to start or stop recording, or hold Space while the command is empty';
 }
