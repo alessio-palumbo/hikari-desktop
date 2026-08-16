@@ -83,6 +83,10 @@ jobs:
         shell: bash
         run: ./scripts/bundle-command-sidecar.sh
 
+      - name: Re-sign macOS app
+        if: runner.os == 'macOS'
+        run: codesign --force --deep --sign - build/bin/hikari.app
+
       - name: Package macOS app
         if: runner.os == 'macOS'
         run: |
@@ -168,7 +172,9 @@ jobs:
 
       - name: Build whisper.cpp
         working-directory: build/whisper.cpp
-        run: cmake -B build && cmake --build build --config Release --target whisper-cli
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "13.0"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 && cmake --build build --config Release --target whisper-cli
 
       - name: Download base.en model
         working-directory: build/whisper.cpp
@@ -180,6 +186,9 @@ jobs:
           HIKARI_WHISPER_COMMAND: ${{ github.workspace }}/build/whisper.cpp/build/bin/whisper-cli
           HIKARI_WHISPER_MODEL: ${{ github.workspace }}/build/whisper.cpp/models/ggml-base.en.bin
         run: ./scripts/bundle-voice-runtime.sh
+
+      - name: Re-sign macOS voice app
+        run: codesign --force --deep --sign - build/bin/hikari.app
 
       - name: Package macOS voice app
         run: |
