@@ -34,7 +34,7 @@
 
 .floor-tools button,
 .floor-tools input,
-.floor-tools select {
+.floor-select-wrap {
   height: 28px;
   padding: 0 10px;
   border: 1px solid oklch(1 0 0 / 0.055);
@@ -45,7 +45,7 @@
 }
 
 .floor-tools button,
-.floor-tools select {
+.floor-select-wrap {
   cursor: pointer;
 }
 
@@ -55,7 +55,7 @@
 }
 
 .floor-tools input:focus,
-.floor-tools select:focus {
+.floor-select-wrap:focus-within {
   border-color: oklch(1 0 0 / 0.14);
   color: var(--fg-0);
 }
@@ -65,6 +65,36 @@
   border-color: oklch(1 0 0 / 0.12);
   background: oklch(1 0 0 / 0.055);
   color: var(--fg-0);
+}
+
+.floor-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 94px;
+  padding-right: 26px;
+}
+
+.floor-select-wrap select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  border-radius: inherit;
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  outline: 0;
+  padding: 0 26px 0 10px;
+}
+
+.floor-select-wrap svg {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+  color: var(--fg-4);
 }
 
 .floor-plan-header h1 {
@@ -121,7 +151,7 @@
 
 .floor-room {
   position: absolute;
-  inset: 20px;
+  inset: 0;
   border: 1px solid oklch(1 0 0 / 0.11);
   background: oklch(1 0 0 / 0.035);
 }
@@ -146,6 +176,26 @@
   background: oklch(0.67 0.08 160 / 0.1);
 }
 
+.floor-room[data-type="hallway"] {
+  background: oklch(0.73 0.06 95 / 0.09);
+}
+
+.floor-room[data-type="garage"] {
+  background: oklch(0.58 0.03 245 / 0.11);
+}
+
+.floor-room[data-type="outdoor"] {
+  background: oklch(0.72 0.08 135 / 0.1);
+}
+
+.floor-room[data-type="utility"] {
+  background: oklch(0.64 0.05 35 / 0.1);
+}
+
+.floor-room[data-type="other"] {
+  background: oklch(1 0 0 / 0.035);
+}
+
 .floor-room span {
   position: absolute;
   color: var(--fg-2);
@@ -156,25 +206,33 @@
 
 .floor-room[data-editing="true"] {
   border-color: oklch(1 0 0 / 0.16);
+  cursor: grab;
+}
+
+.floor-room[data-selected="true"] {
+  border-color: oklch(0.82 0.08 92 / 0.58);
+  box-shadow: inset 0 0 0 1px oklch(0.82 0.08 92 / 0.22);
+}
+
+.floor-room[data-editing="true"]:active {
+  cursor: grabbing;
 }
 
 .floor-room-editor {
-  position: absolute;
-  z-index: 3;
   display: grid;
-  grid-template-columns: minmax(90px, 1fr) 92px auto;
-  gap: 5px;
-  min-width: 260px;
-  padding: 6px;
+  grid-template-columns: auto 170px 118px 26px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  margin: -10px 0 14px;
+  padding: 6px 8px;
   border: 1px solid oklch(1 0 0 / 0.1);
   border-radius: 7px;
-  background: oklch(0.17 0.005 250 / 0.92);
-  box-shadow: 0 10px 28px oklch(0 0 0 / 0.25);
-  transform: translate(-50%, -50%);
+  background: oklch(1 0 0 / 0.025);
 }
 
 .floor-room-editor input,
-.floor-room-editor select,
+.floor-room-editor .floor-select-wrap,
 .floor-room-editor button {
   min-width: 0;
   height: 26px;
@@ -185,23 +243,55 @@
   font-size: 11px;
 }
 
+.floor-room-editor > span {
+  color: var(--fg-3);
+  font-size: 11px;
+}
+
+.floor-room-editor[data-empty="true"] {
+  display: flex;
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .floor-room-editor input {
   padding: 0 7px;
   outline: 0;
 }
 
-.floor-room-editor select,
 .floor-room-editor button {
   padding: 0 7px;
   cursor: pointer;
+}
+
+.floor-room-editor .floor-select-wrap {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+.floor-room-editor .floor-select-wrap select {
+  padding-left: 7px;
+}
+
+.floor-room-editor .floor-select-wrap svg {
+  right: 7px;
 }
 
 .floor-room-editor button {
   color: var(--fg-3);
 }
 
+.floor-room-editor .floor-icon-button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
 .floor-room-editor input:focus,
-.floor-room-editor select:focus,
+.floor-room-editor .floor-select-wrap:focus-within,
 .floor-room-editor button:hover {
   border-color: oklch(1 0 0 / 0.14);
   color: var(--fg-0);
@@ -304,7 +394,8 @@
 }
 
 .floor-section-title {
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 8px;
   padding: 0 2px;
 }
 

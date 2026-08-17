@@ -153,18 +153,62 @@ test('does not remove the last floor', () => {
   assert.equal(got.locations.home.activeFloorId, DEFAULT_FLOOR_ID);
 });
 
-test('updates and removes rooms while clearing device room links', () => {
+test('updates and moves rooms', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const room = createRectangleRoom('living', 'Living Room', 'living', { x: 0.1, y: 0.2 }, { x: 0.4, y: 0.3 });
+  const withRoom = addRoomToFloor(prefs, 'home', DEFAULT_FLOOR_ID, room);
+  const movedPoints = [
+    { x: 0.2, y: 0.25 },
+    { x: 0.6, y: 0.25 },
+    { x: 0.6, y: 0.55 },
+    { x: 0.2, y: 0.55 },
+  ];
+  const updated = updateRoomInFloor(withRoom, 'home', DEFAULT_FLOOR_ID, 'living', { label: 'Lounge', type: 'other', points: movedPoints });
+
+  assert.equal(updated.locations.home.floors[0].rooms[0].label, 'Lounge');
+  assert.equal(updated.locations.home.floors[0].rooms[0].type, 'other');
+  assert.deepEqual(updated.locations.home.floors[0].rooms[0].points, movedPoints);
+});
+
+test('moving rooms carries assigned devices', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const room = createRectangleRoom('living', 'Living Room', 'living', { x: 0.1, y: 0.2 }, { x: 0.4, y: 0.3 });
+  const withRoom = addRoomToFloor(prefs, 'home', DEFAULT_FLOOR_ID, room);
+  const withDevices = placeDeviceOnFloor(withRoom, 'home', DEFAULT_FLOOR_ID, 'd073d5000001', { x: 0.2, y: 0.3, roomId: 'living' });
+  const moved = updateRoomInFloor(withDevices, 'home', DEFAULT_FLOOR_ID, 'living', {
+    points: room.points.map((point) => ({ x: point.x + 0.1, y: point.y + 0.2 })),
+  });
+
+  const placement = moved.locations.home.floors[0].devices.d073d5000001;
+  assert.equal(placement.roomId, 'living');
+  assert.ok(Math.abs(placement.x - 0.3) < 0.000001);
+  assert.ok(Math.abs(placement.y - 0.5) < 0.000001);
+});
+
+test('moving rooms can set exact assigned device placements', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const room = createRectangleRoom('living', 'Living Room', 'living', { x: 0.1, y: 0.2 }, { x: 0.4, y: 0.3 });
+  const withRoom = addRoomToFloor(prefs, 'home', DEFAULT_FLOOR_ID, room);
+  const withDevices = placeDeviceOnFloor(withRoom, 'home', DEFAULT_FLOOR_ID, 'd073d5000001', { x: 0.2, y: 0.3, roomId: 'living' });
+  const moved = updateRoomInFloor(withDevices, 'home', DEFAULT_FLOOR_ID, 'living', {
+    points: room.points.map((point) => ({ x: point.x + 0.1, y: point.y + 0.2 })),
+    devices: {
+      d073d5000001: { x: 0.300004, y: 0.500006, roomId: 'living' },
+    },
+  });
+
+  assert.deepEqual(moved.locations.home.floors[0].devices.d073d5000001, { x: 0.300004, y: 0.500006, roomId: 'living' });
+});
+
+test('removing rooms unassigns devices from the floor', () => {
   const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
   const room = createRectangleRoom('living', 'Living Room', 'living', { x: 0.1, y: 0.2 }, { x: 0.4, y: 0.3 });
   const withRoom = addRoomToFloor(prefs, 'home', DEFAULT_FLOOR_ID, room);
   const withDevice = placeDeviceOnFloor(withRoom, 'home', DEFAULT_FLOOR_ID, 'd073d5000001', { x: 0.2, y: 0.3, roomId: 'living' });
-  const updated = updateRoomInFloor(withDevice, 'home', DEFAULT_FLOOR_ID, 'living', { label: 'Lounge', type: 'other' });
-  const removed = removeRoomFromFloor(updated, 'home', DEFAULT_FLOOR_ID, 'living');
+  const removed = removeRoomFromFloor(withDevice, 'home', DEFAULT_FLOOR_ID, 'living');
 
-  assert.equal(updated.locations.home.floors[0].rooms[0].label, 'Lounge');
-  assert.equal(updated.locations.home.floors[0].rooms[0].type, 'other');
   assert.equal(removed.locations.home.floors[0].rooms.length, 0);
-  assert.deepEqual(removed.locations.home.floors[0].devices.d073d5000001, { x: 0.2, y: 0.3 });
+  assert.equal(removed.locations.home.floors[0].devices.d073d5000001, undefined);
 });
 
 test('loads and saves preferences through a storage boundary', () => {

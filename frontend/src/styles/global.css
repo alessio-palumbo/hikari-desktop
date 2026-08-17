@@ -77,6 +77,15 @@ button {
   border-left: 1px solid var(--line);
 }
 
+.app-shell[data-center-view="floor"] .right-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  box-shadow: var(--shadow-lg);
+}
+
 .center-panel {
   flex: 1;
   min-width: 0;

@@ -54,6 +54,10 @@ export interface FloorPlanStorage {
   setItem(key: string, value: string): void;
 }
 
+export type FloorPlanRoomPatch = Partial<Pick<FloorPlanRoom, 'label' | 'type' | 'points'>> & {
+  devices?: Record<string, FloorPlanDevicePlacement>;
+};
+
 export const FLOOR_PLAN_ROOM_TYPES: FloorPlanRoomType[] = [
   'bedroom',
   'living',
@@ -292,20 +296,56 @@ export function updateRoomInFloor(
   locationId: string,
   floorId: string,
   roomId: string,
-  patch: Partial<Pick<FloorPlanRoom, 'label' | 'type'>>,
+  patch: FloorPlanRoomPatch,
 ): FloorPlanPreferences {
   const cleanRoomId = cleanId(roomId);
   if (!cleanRoomId) return normalizeFloorPlanPreferences(preferences);
 
   return updateFloor(preferences, locationId, floorId, (floor) => ({
     ...floor,
-    rooms: floor.rooms.map((room) => {
-      if (room.id !== cleanRoomId) return room;
-      const label = patch.label === undefined ? room.label : cleanLabel(patch.label) || room.label;
-      const type = patch.type === undefined ? room.type : roomTypes.has(patch.type) ? patch.type : undefined;
-      return { ...room, label, ...(type ? { type } : { type: undefined }) };
-    }),
+    ...updateFloorRoomGeometry(floor, cleanRoomId, patch),
   }));
+}
+
+function updateFloorRoomGeometry(
+  floor: FloorPlanFloor,
+  roomId: string,
+  patch: FloorPlanRoomPatch,
+): Pick<FloorPlanFloor, 'rooms' | 'devices'> {
+  let delta: FloorPlanPoint | undefined;
+  const rooms = floor.rooms.map((room) => {
+    if (room.id !== roomId) return room;
+    const label = patch.label === undefined ? room.label : cleanLabel(patch.label) || room.label;
+    const type = patch.type === undefined ? room.type : roomTypes.has(patch.type) ? patch.type : undefined;
+    const points = patch.points === undefined ? room.points : patch.points.filter(isPointLike).map(normalizePoint);
+    const nextPoints = points.length >= 3 ? points : room.points;
+    if (patch.points !== undefined) {
+      const before = pointsCenter(room.points);
+      const after = pointsCenter(nextPoints);
+      delta = { x: after.x - before.x, y: after.y - before.y };
+    }
+    return { ...room, label, points: nextPoints, ...(type ? { type } : { type: undefined }) };
+  });
+
+  if (patch.devices) {
+    const devices = { ...floor.devices };
+    for (const [serial, placement] of Object.entries(patch.devices)) {
+      if (!floor.devices[serial] || floor.devices[serial].roomId !== roomId) continue;
+      devices[serial] = normalizePlacement(placement);
+    }
+    return { rooms, devices };
+  }
+
+  if (!delta || (delta.x === 0 && delta.y === 0)) return { rooms, devices: floor.devices };
+  const moveDelta = delta;
+
+  const devices = Object.fromEntries(
+    Object.entries(floor.devices).map(([serial, placement]) => {
+      if (placement.roomId !== roomId) return [serial, placement];
+      return [serial, normalizePlacement({ ...placement, x: placement.x + moveDelta.x, y: placement.y + moveDelta.y })];
+    }),
+  );
+  return { rooms, devices };
 }
 
 export function removeRoomFromFloor(preferences: FloorPlanPreferences, locationId: string, floorId: string, roomId: string): FloorPlanPreferences {
@@ -313,13 +353,10 @@ export function removeRoomFromFloor(preferences: FloorPlanPreferences, locationI
   if (!cleanRoomId) return normalizeFloorPlanPreferences(preferences);
 
   return updateFloor(preferences, locationId, floorId, (floor) => {
-    const devices = Object.fromEntries(
-      Object.entries(floor.devices).map(([serial, placement]) => {
-        if (placement.roomId !== cleanRoomId) return [serial, placement];
-        const { roomId: _roomId, ...rest } = placement;
-        return [serial, rest];
-      }),
-    );
+    const devices = { ...floor.devices };
+    for (const [serial, placement] of Object.entries(floor.devices)) {
+      if (placement.roomId === cleanRoomId) delete devices[serial];
+    }
     return {
       ...floor,
       rooms: floor.rooms.filter((room) => room.id !== cleanRoomId),
@@ -395,6 +432,13 @@ function normalizePlacement(value: FloorPlanDevicePlacement | Record<string, unk
   return {
     ...normalizePoint({ x: numberOrZero(value.x), y: numberOrZero(value.y) }),
     ...(roomId ? { roomId } : {}),
+  };
+}
+
+function pointsCenter(points: FloorPlanPoint[]): FloorPlanPoint {
+  return {
+    x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+    y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
   };
 }
 

@@ -11,7 +11,7 @@ import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
-import { addFloorToLocation, addRoomToFloor, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, placeDeviceOnFloor, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoomType } from './domain/floorPlan';
+import { addFloorToLocation, addRoomToFloor, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, placeDeviceOnFloor, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
@@ -28,6 +28,7 @@ const CENTER_VIEW_KEY = 'hikari:centerView';
 type DeviceStatus = Record<string, { loading?: boolean; error?: string }>;
 type DeviceEffectStates = Record<string, DeviceEffectStatus & { loading?: boolean }>;
 type PendingDeviceStates = Record<string, PendingDeviceState>;
+type FloorPlanRoomPatch = Partial<Pick<FloorPlanRoom, 'label' | 'type' | 'points'>>;
 
 export function App() {
   const [snapshot, setSnapshot] = useState<DeviceSnapshot>({ locations: [], groups: [], devices: [] });
@@ -239,7 +240,8 @@ export function App() {
     const floor = activeFloorPlanFloor(layout);
     if (!floor) return;
     const index = floor.rooms.length + 1;
-    const room = createRectangleRoom(`room-${Date.now().toString(36)}-${index}`, `Room ${index}`, 'other', { x: 0.2, y: 0.18 }, { x: 0.36, y: 0.28 });
+    const offset = (floor.rooms.length % 6) * 0.055;
+    const room = createRectangleRoom(`room-${Date.now().toString(36)}-${index}`, `Room ${index}`, 'other', { x: 0.12 + offset, y: 0.12 + offset }, { x: 0.36, y: 0.28 });
     setFloorPlan((current) => addRoomToFloor(current, locationId, floor.id, room));
   };
 
@@ -266,7 +268,7 @@ export function App() {
     setFloorPlan((current) => removeFloorFromLocation(current, locationId, floorId));
   };
 
-  const updateFloorRoom = (floorId: string, roomId: string, patch: { label?: string; type?: FloorPlanRoomType }) => {
+  const updateFloorRoom = (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => {
     if (!locationId) return;
     setFloorPlan((current) => updateRoomInFloor(current, locationId, floorId, roomId, patch));
   };
@@ -591,7 +593,7 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-center-view={centerView}>
       <Sidebar
         locations={snapshot.locations}
         groups={snapshot.groups}

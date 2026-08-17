@@ -1,7 +1,8 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronDown, Trash2 } from 'lucide-react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
-import { FLOOR_PLAN_ROOM_TYPES, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomType } from '../domain/floorPlan';
+import { FLOOR_PLAN_ROOM_TYPES, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
 import { CenterViewToggle, type CenterView } from './CenterViewToggle';
 import './FloorPlan.css';
 
@@ -23,7 +24,7 @@ interface FloorPlanProps {
   onSelectFloor: (floorId: string) => void;
   onRenameFloor: (floorId: string, label: string) => void;
   onRemoveFloor: (floorId: string) => void;
-  onUpdateRoom: (floorId: string, roomId: string, patch: { label?: string; type?: FloorPlanRoomType }) => void;
+  onUpdateRoom: (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => void;
   onRemoveRoom: (floorId: string, roomId: string) => void;
   onPlaceDevice: (serial: string, placement: FloorPlanDevicePlacement) => void;
   onSelect: (serial: string) => void;
@@ -56,6 +57,8 @@ export function FloorPlan({
 }: FloorPlanProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
   const floor = activeFloor(layout);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | undefined>();
+  const selectedRoom = floor?.rooms.find((room) => room.id === selectedRoomId);
   const placed = new Set(Object.keys(floor?.devices ?? {}));
   const selectedGroupDevices = selectedGroupId ? new Set(devices.filter((device) => device.groupId === selectedGroupId).map((device) => device.serial)) : undefined;
   const matches = searchMatches(devices, groups, query);
@@ -74,12 +77,18 @@ export function FloorPlan({
     };
   };
 
+  useEffect(() => {
+    if (!editing || !selectedRoomId || floor?.rooms.some((room) => room.id === selectedRoomId)) return;
+    setSelectedRoomId(undefined);
+  }, [editing, floor?.id, floor?.rooms, selectedRoomId]);
+
   return (
     <main
       className="center-panel"
       onClick={(event) => {
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest('.floor-device-node, .floor-unplaced-device, .floor-tools, button, select, input')) return;
+        if (target?.closest('.floor-device-node, .floor-unplaced-device, .floor-tools, .floor-room, .floor-room-editor, button, select, input')) return;
+        setSelectedRoomId(undefined);
         onSurfaceClick();
       }}
     >
@@ -91,16 +100,18 @@ export function FloorPlan({
           </div>
           <div className="floor-plan-actions">
             <div className="floor-plan-meta">
-              <span>{devices.length} device{devices.length === 1 ? '' : 's'}</span>
               <span>{floor?.rooms.length ?? 0} room{floor?.rooms.length === 1 ? '' : 's'}</span>
             </div>
             <div className="floor-tools">
               {editing && layout ? (
-                <select value={floor?.id ?? ''} aria-label="Floor" onChange={(event) => onSelectFloor(event.target.value)}>
-                  {layout.floors.map((entry) => (
-                    <option key={entry.id} value={entry.id}>{entry.label}</option>
-                  ))}
-                </select>
+                <label className="floor-select-wrap">
+                  <select value={floor?.id ?? ''} aria-label="Floor" onChange={(event) => onSelectFloor(event.target.value)}>
+                    {layout.floors.map((entry) => (
+                      <option key={entry.id} value={entry.id}>{entry.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={12} aria-hidden="true" />
+                </label>
               ) : null}
               {editing && floor ? <input value={floor.label} aria-label="Floor label" onChange={(event) => onRenameFloor(floor.id, event.target.value)} /> : null}
               {editing ? <button type="button" onClick={onAddFloor}>add floor</button> : null}
@@ -113,6 +124,18 @@ export function FloorPlan({
             <CenterViewToggle view={view} onChange={onViewChange} />
           </div>
         </header>
+
+        {editing && floor ? (
+          <RoomEditor
+            floorId={floor.id}
+            room={selectedRoom}
+            onUpdateRoom={onUpdateRoom}
+            onRemoveRoom={(floorId, roomId) => {
+              onRemoveRoom(floorId, roomId);
+              setSelectedRoomId(undefined);
+            }}
+          />
+        ) : null}
 
         <section
           ref={canvasRef}
@@ -138,8 +161,11 @@ export function FloorPlan({
               room={room}
               floorId={floor.id}
               editing={editing}
+              selected={room.id === selectedRoomId}
+              canvasPoint={canvasPoint}
+              floorDevices={floor.devices}
+              onSelectRoom={setSelectedRoomId}
               onUpdateRoom={onUpdateRoom}
-              onRemoveRoom={onRemoveRoom}
             />
           ))}
 
@@ -170,9 +196,9 @@ export function FloorPlan({
           ) : null}
         </section>
 
-        <section className="floor-unplaced" aria-label="Unplaced devices">
+        <section className="floor-unplaced" aria-label="Unassigned devices">
           <div className="floor-section-title">
-            <span>unplaced</span>
+            <span>unassigned</span>
             <b>{unplacedDevices.length}</b>
           </div>
           {unplacedDevices.length ? (
@@ -215,39 +241,141 @@ function RoomShape({
   room,
   floorId,
   editing,
+  selected,
+  canvasPoint,
+  floorDevices,
+  onSelectRoom,
   onUpdateRoom,
-  onRemoveRoom,
 }: {
   room: FloorPlanRoom;
   floorId: string;
   editing: boolean;
-  onUpdateRoom: (floorId: string, roomId: string, patch: { label?: string; type?: FloorPlanRoomType }) => void;
+  selected: boolean;
+  canvasPoint: (clientX: number, clientY: number) => FloorPlanPoint | undefined;
+  floorDevices: Record<string, FloorPlanDevicePlacement>;
+  onSelectRoom: (roomId: string) => void;
+  onUpdateRoom: (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => void;
+}) {
+  const dragRef = useRef<{
+    offset: FloorPlanPoint;
+    room: FloorPlanRoom;
+    devices: Record<string, FloorPlanDevicePlacement>;
+  } | undefined>(undefined);
+  const movedRef = useRef(false);
+
+  return (
+    <div
+      className="floor-room"
+      data-type={room.type ?? 'other'}
+      data-editing={editing ? 'true' : 'false'}
+      data-selected={selected ? 'true' : 'false'}
+      style={{
+        clipPath: `polygon(${room.points.map((point) => `${point.x * 100}% ${point.y * 100}%`).join(', ')})`,
+      }}
+      onPointerDown={(event) => {
+        movedRef.current = false;
+        if (!editing) return;
+        const point = canvasPoint(event.clientX, event.clientY);
+        if (!point) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const center = roomCenter(room);
+        dragRef.current = {
+          offset: { x: point.x - center.x, y: point.y - center.y },
+          room,
+          devices: assignedRoomDevices(floorDevices, room.id),
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!editing || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        const point = canvasPoint(event.clientX, event.clientY);
+        const drag = dragRef.current;
+        if (!point || !drag) return;
+        movedRef.current = true;
+        const points = moveRoomTo(drag.room, { x: point.x - drag.offset.x, y: point.y - drag.offset.y });
+        const delta = roomMoveDelta(drag.room, points);
+        onUpdateRoom(floorId, room.id, { points, devices: moveAssignedDevices(drag.devices, delta) });
+      }}
+      onPointerUp={(event) => {
+        dragRef.current = undefined;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={(event) => {
+        dragRef.current = undefined;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onClick={(event) => {
+        if (!editing) return;
+        event.stopPropagation();
+        if (movedRef.current) {
+          movedRef.current = false;
+          return;
+        }
+        onSelectRoom(room.id);
+      }}
+    >
+      <span style={roomLabelPosition(room)}>{room.label}</span>
+    </div>
+  );
+}
+
+function RoomEditor({
+  floorId,
+  room,
+  onUpdateRoom,
+  onRemoveRoom,
+}: {
+  floorId: string;
+  room?: FloorPlanRoom;
+  onUpdateRoom: (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => void;
   onRemoveRoom: (floorId: string, roomId: string) => void;
 }) {
+  const [label, setLabel] = useState(room?.label ?? '');
+
+  useEffect(() => setLabel(room?.label ?? ''), [room?.id, room?.label]);
+
+  const commitLabel = () => {
+    if (!room) return;
+    const next = label.trim();
+    setLabel(next || room.label);
+    if (next && next !== room.label) onUpdateRoom(floorId, room.id, { label: next });
+  };
+
   return (
-    <>
-      <div
-        className="floor-room"
-        data-type={room.type ?? 'other'}
-        data-editing={editing ? 'true' : 'false'}
-        style={{
-          clipPath: `polygon(${room.points.map((point) => `${point.x * 100}% ${point.y * 100}%`).join(', ')})`,
-        }}
-      >
-        <span style={roomLabelPosition(room)}>{room.label}</span>
-      </div>
-      {editing ? (
-        <div className="floor-room-editor" style={roomLabelPosition(room)}>
-          <input value={room.label} aria-label={`${room.label} room label`} onChange={(event) => onUpdateRoom(floorId, room.id, { label: event.target.value })} />
-          <select value={room.type ?? 'other'} aria-label={`${room.label} room type`} onChange={(event) => onUpdateRoom(floorId, room.id, { type: event.target.value as FloorPlanRoomType })}>
-            {FLOOR_PLAN_ROOM_TYPES.map((type) => (
-              <option key={type} value={type}>{roomTypeLabel(type)}</option>
-            ))}
-          </select>
-          <button type="button" aria-label={`Delete ${room.label}`} onClick={() => onRemoveRoom(floorId, room.id)}>delete</button>
-        </div>
-      ) : null}
-    </>
+    <div className="floor-room-editor" data-empty={!room ? 'true' : 'false'} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+      {room ? (
+        <>
+          <span>room</span>
+          <input
+            value={label}
+            aria-label={`${room.label} room label`}
+            onChange={(event) => setLabel(event.target.value)}
+            onBlur={commitLabel}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              commitLabel();
+              event.currentTarget.blur();
+            }}
+          />
+          <label className="floor-select-wrap">
+            <select value={room.type ?? 'other'} aria-label={`${room.label} room type`} onChange={(event) => onUpdateRoom(floorId, room.id, { type: event.target.value as FloorPlanRoomType })}>
+              {FLOOR_PLAN_ROOM_TYPES.map((type) => (
+                <option key={type} value={type}>{roomTypeLabel(type)}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} aria-hidden="true" />
+          </label>
+          <button type="button" className="floor-icon-button" aria-label={`Delete ${room.label}`} onClick={() => onRemoveRoom(floorId, room.id)}>
+            <Trash2 size={13} strokeWidth={1.8} aria-hidden="true" />
+          </button>
+        </>
+      ) : (
+        <span>select a room to edit label and type</span>
+      )}
+    </div>
   );
 }
 
@@ -323,9 +451,66 @@ function DeviceSwatch({ device }: { device: Device }) {
 }
 
 function roomLabelPosition(room: FloorPlanRoom): { left: string; top: string } {
+  const center = roomCenter(room);
+  return { left: `${center.x * 100}%`, top: `${center.y * 100}%` };
+}
+
+function roomCenter(room: FloorPlanRoom): FloorPlanPoint {
   const x = room.points.reduce((sum, point) => sum + point.x, 0) / room.points.length;
   const y = room.points.reduce((sum, point) => sum + point.y, 0) / room.points.length;
-  return { left: `${x * 100}%`, top: `${y * 100}%` };
+  return { x, y };
+}
+
+function moveRoomTo(room: FloorPlanRoom, center: FloorPlanPoint): FloorPlanPoint[] {
+  const current = roomCenter(room);
+  const bounds = roomBounds(room.points);
+  let dx = center.x - current.x;
+  let dy = center.y - current.y;
+  dx = Math.max(-bounds.left, Math.min(1 - bounds.right, dx));
+  dy = Math.max(-bounds.top, Math.min(1 - bounds.bottom, dy));
+  return room.points.map((point) => ({ x: point.x + dx, y: point.y + dy }));
+}
+
+function roomMoveDelta(room: FloorPlanRoom, points: FloorPlanPoint[]): FloorPlanPoint {
+  const before = roomCenter(room);
+  const after = pointsCenter(points);
+  return { x: after.x - before.x, y: after.y - before.y };
+}
+
+function assignedRoomDevices(devices: Record<string, FloorPlanDevicePlacement>, roomId: string): Record<string, FloorPlanDevicePlacement> {
+  return Object.fromEntries(Object.entries(devices).filter(([, placement]) => placement.roomId === roomId));
+}
+
+function moveAssignedDevices(devices: Record<string, FloorPlanDevicePlacement>, delta: FloorPlanPoint): Record<string, FloorPlanDevicePlacement> {
+  return Object.fromEntries(
+    Object.entries(devices).map(([serial, placement]) => [
+      serial,
+      { ...placement, x: clampUnit(placement.x + delta.x), y: clampUnit(placement.y + delta.y) },
+    ]),
+  );
+}
+
+function roomBounds(points: FloorPlanPoint[]) {
+  return points.reduce(
+    (bounds, point) => ({
+      left: Math.min(bounds.left, point.x),
+      right: Math.max(bounds.right, point.x),
+      top: Math.min(bounds.top, point.y),
+      bottom: Math.max(bounds.bottom, point.y),
+    }),
+    { left: 1, right: 0, top: 1, bottom: 0 },
+  );
+}
+
+function pointsCenter(points: FloorPlanPoint[]): FloorPlanPoint {
+  return {
+    x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+    y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+  };
+}
+
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 function searchMatches(devices: Device[], groups: Group[], query: string): Set<string> {
