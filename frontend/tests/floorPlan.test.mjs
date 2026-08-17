@@ -12,6 +12,7 @@ import {
   normalizeFloorPlanPreferences,
   parseFloorPlanPreferences,
   placeDeviceOnFloor,
+  removeDeviceFromFloorPlan,
   removeFloorFromLocation,
   removeRoomFromFloor,
   saveFloorPlanPreferences,
@@ -118,6 +119,15 @@ test('moving a device to another floor removes the previous placement', () => {
 
   assert.equal(got.locations.home.floors[0].devices.d073d5000001, undefined);
   assert.deepEqual(got.locations.home.floors[1].devices.d073d5000001, { x: 0.8, y: 0.6 });
+});
+
+test('removing a device from the floor plan makes it unassigned', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const placed = placeDeviceOnFloor(prefs, 'home', DEFAULT_FLOOR_ID, 'd073d5000001', { x: 0.25, y: 0.75 });
+  const removed = removeDeviceFromFloorPlan(placed, 'home', 'd073d5000001');
+
+  assert.equal(placed.locations.home.floors[0].devices.d073d5000001.x, 0.25);
+  assert.equal(removed.locations.home.floors[0].devices.d073d5000001, undefined);
 });
 
 test('adds a room to a floor without mutating existing layout', () => {

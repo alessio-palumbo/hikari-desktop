@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { ChevronDown, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, X } from 'lucide-react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
 import { FLOOR_PLAN_ROOM_TYPES, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
@@ -28,6 +28,7 @@ interface FloorPlanProps {
   onUpdateRoom: (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => void;
   onRemoveRoom: (floorId: string, roomId: string) => void;
   onPlaceDevice: (serial: string, placement: FloorPlanDevicePlacement) => void;
+  onRemoveDevice: (serial: string) => void;
   onSelect: (serial: string) => void;
   onRoomSelect: (floorId: string, roomId: string) => void;
   onRoomPower: (floorId: string, roomId: string, on: boolean) => void;
@@ -58,6 +59,7 @@ export function FloorPlan({
   onUpdateRoom,
   onRemoveRoom,
   onPlaceDevice,
+  onRemoveDevice,
   onSelect,
   onRoomSelect,
   onRoomPower,
@@ -69,10 +71,11 @@ export function FloorPlan({
   const editedRoom = floor?.rooms.find((room) => room.id === editedRoomId);
   const roomLabelRef = useRef<HTMLInputElement | null>(null);
   const placed = new Set(Object.keys(floor?.devices ?? {}));
+  const placedAnywhere = new Set(layout?.floors.flatMap((entry) => Object.keys(entry.devices)) ?? []);
   const selectedGroupDevices = selectedGroupId ? new Set(devices.filter((device) => device.groupId === selectedGroupId).map((device) => device.serial)) : undefined;
   const matches = searchMatches(devices, groups, query);
   const placedDevices = floor ? devices.filter((device) => placed.has(device.serial)) : [];
-  const unplacedDevices = floor ? devices.filter((device) => !placed.has(device.serial)) : devices;
+  const unplacedDevices = layout ? devices.filter((device) => !placedAnywhere.has(device.serial)) : devices;
   const placeDevice = (serial: string, point: FloorPlanPoint) => {
     const roomId = floor ? roomAtPoint(floor.rooms, point)?.id : undefined;
     onPlaceDevice(serial, { ...point, ...(roomId ? { roomId } : {}) });
@@ -237,6 +240,7 @@ export function FloorPlan({
                 editing={editing}
                 canvasPoint={canvasPoint}
                 onMove={placeDevice}
+                onRemove={onRemoveDevice}
                 onSelect={onSelect}
               />
             );
@@ -251,35 +255,17 @@ export function FloorPlan({
         </section>
 
         <section className="floor-unplaced" aria-label="Unassigned devices">
-          <div className="floor-section-title">
-            <span>unassigned</span>
-            <b>{unplacedDevices.length}</b>
-          </div>
-          {unplacedDevices.length ? (
-            <div className="floor-unplaced-list">
-              {unplacedDevices.map((device) => (
-                <button
-                  key={device.serial}
-                  type="button"
-                  className="floor-unplaced-device"
-                  data-selected={device.serial === selectedSerial}
-                  data-dimmed={shouldDim(device, searching, matches, selectedGroupDevices) ? 'true' : 'false'}
-                  draggable={editing}
-                  onDragStart={(event) => {
-                    if (!editing) return;
-                    event.dataTransfer.setData('application/x-hikari-device', device.serial);
-                    event.dataTransfer.effectAllowed = 'move';
-                  }}
-                  onClick={() => onSelect(device.serial)}
-                >
-                  <DeviceSwatch device={device} />
-                  <span>{device.name}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p>all devices placed on this floor</p>
-          )}
+          <DeviceSourceList
+            title="unassigned"
+            empty=""
+            devices={unplacedDevices}
+            editing={editing}
+            selectedSerial={selectedSerial}
+            searching={searching}
+            matches={matches}
+            selectedGroupDevices={selectedGroupDevices}
+            onSelect={onSelect}
+          />
         </section>
       </div>
     </main>
@@ -289,6 +275,62 @@ export function FloorPlan({
 function activeFloor(layout?: FloorPlanLocation): FloorPlanFloor | undefined {
   if (!layout?.floors.length) return undefined;
   return layout.floors.find((floor) => floor.id === layout.activeFloorId) ?? layout.floors[0];
+}
+
+function DeviceSourceList({
+  title,
+  empty,
+  devices,
+  editing,
+  selectedSerial,
+  searching,
+  matches,
+  selectedGroupDevices,
+  onSelect,
+}: {
+  title: string;
+  empty: string;
+  devices: Device[];
+  editing: boolean;
+  selectedSerial?: string;
+  searching: boolean;
+  matches: Set<string>;
+  selectedGroupDevices?: Set<string>;
+  onSelect: (serial: string) => void;
+}) {
+  return (
+    <div className="floor-device-source">
+      <div className="floor-section-title">
+        <span>{title}</span>
+        <b>{devices.length}</b>
+      </div>
+      {devices.length ? (
+        <div className="floor-unplaced-list">
+          {devices.map((device) => (
+            <button
+              key={device.serial}
+              type="button"
+              className="floor-unplaced-device"
+              data-selected={device.serial === selectedSerial}
+              data-dimmed={shouldDim(device, searching, matches, selectedGroupDevices) ? 'true' : 'false'}
+              draggable={editing}
+              onDragStart={(event) => {
+                if (!editing) return;
+                event.dataTransfer.setData('application/x-hikari-device', device.serial);
+                event.dataTransfer.effectAllowed = 'move';
+              }}
+              onClick={() => onSelect(device.serial)}
+            >
+              <DeviceSwatch device={device} />
+              <span>{device.name}</span>
+            </button>
+          ))}
+        </div>
+      ) : empty ? (
+        <p>{empty}</p>
+      ) : null}
+    </div>
+  );
 }
 
 function RoomShape({
@@ -465,6 +507,7 @@ function DeviceNode({
   editing,
   canvasPoint,
   onMove,
+  onRemove,
   onSelect,
 }: {
   device: Device;
@@ -475,12 +518,14 @@ function DeviceNode({
   editing: boolean;
   canvasPoint: (clientX: number, clientY: number) => FloorPlanPoint | undefined;
   onMove: (serial: string, point: FloorPlanPoint) => void;
+  onRemove: (serial: string) => void;
   onSelect: (serial: string) => void;
 }) {
   const movedRef = useRef(false);
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className="floor-device-node"
       data-selected={selected}
       data-offline={!device.online ? 'true' : 'false'}
@@ -514,10 +559,40 @@ function DeviceNode({
         }
         onSelect(device.serial);
       }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onSelect(device.serial);
+      }}
     >
       <DeviceSwatch device={device} />
       <span>{device.name}</span>
-    </button>
+      {editing ? (
+        <i
+          role="button"
+          tabIndex={0}
+          className="floor-device-remove"
+          aria-label={`Unassign ${device.name}`}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onRemove(device.serial);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            event.stopPropagation();
+            onRemove(device.serial);
+          }}
+        >
+          <X size={11} strokeWidth={2} aria-hidden="true" />
+        </i>
+      ) : null}
+    </div>
   );
 }
 

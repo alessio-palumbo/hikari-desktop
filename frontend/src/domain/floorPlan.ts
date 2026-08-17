@@ -264,6 +264,34 @@ export function placeDeviceOnFloor(
   };
 }
 
+export function removeDeviceFromFloorPlan(
+  preferences: FloorPlanPreferences,
+  locationId: string,
+  serial: string,
+): FloorPlanPreferences {
+  const normalized = ensureLocationFloorPlan(preferences, locationId);
+  const cleanLocationId = cleanId(locationId);
+  const cleanSerial = cleanId(serial);
+  const location = normalized.locations[cleanLocationId];
+  if (!location || !cleanSerial) return normalized;
+
+  return {
+    ...normalized,
+    locations: {
+      ...normalized.locations,
+      [cleanLocationId]: {
+        ...location,
+        floors: location.floors.map((floor) => {
+          if (!floor.devices[cleanSerial]) return floor;
+          const devices = { ...floor.devices };
+          delete devices[cleanSerial];
+          return { ...floor, devices };
+        }),
+      },
+    },
+  };
+}
+
 export function addRoomToFloor(
   preferences: FloorPlanPreferences,
   locationId: string,
