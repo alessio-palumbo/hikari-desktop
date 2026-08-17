@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_FLOOR_ID,
+  addFloorToLocation,
   addRoomToFloor,
   createFloorPlanFloor,
   createRectangleRoom,
@@ -11,7 +12,12 @@ import {
   normalizeFloorPlanPreferences,
   parseFloorPlanPreferences,
   placeDeviceOnFloor,
+  removeFloorFromLocation,
+  removeRoomFromFloor,
   saveFloorPlanPreferences,
+  setActiveFloor,
+  updateFloorLabel,
+  updateRoomInFloor,
 } from '../dist-test/domain/floorPlan.js';
 
 test('creates a default floor for a location without existing layout', () => {
@@ -122,6 +128,43 @@ test('adds a room to a floor without mutating existing layout', () => {
 
   assert.equal(prefs.locations.home.floors[0].rooms.length, 0);
   assert.deepEqual(got.locations.home.floors[0].rooms, [room]);
+});
+
+test('adds, activates, renames, and removes floors', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const withFloor = addFloorToLocation(prefs, 'home', createFloorPlanFloor('upstairs', 'Upstairs'));
+  const activated = setActiveFloor(withFloor, 'home', DEFAULT_FLOOR_ID);
+  const renamed = updateFloorLabel(activated, 'home', DEFAULT_FLOOR_ID, 'Main Floor');
+  const removed = removeFloorFromLocation(renamed, 'home', DEFAULT_FLOOR_ID);
+
+  assert.equal(withFloor.locations.home.activeFloorId, 'upstairs');
+  assert.equal(withFloor.locations.home.floors.length, 2);
+  assert.equal(activated.locations.home.activeFloorId, DEFAULT_FLOOR_ID);
+  assert.equal(renamed.locations.home.floors[0].label, 'Main Floor');
+  assert.equal(removed.locations.home.floors.length, 1);
+  assert.equal(removed.locations.home.activeFloorId, 'upstairs');
+});
+
+test('does not remove the last floor', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const got = removeFloorFromLocation(prefs, 'home', DEFAULT_FLOOR_ID);
+
+  assert.equal(got.locations.home.floors.length, 1);
+  assert.equal(got.locations.home.activeFloorId, DEFAULT_FLOOR_ID);
+});
+
+test('updates and removes rooms while clearing device room links', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const room = createRectangleRoom('living', 'Living Room', 'living', { x: 0.1, y: 0.2 }, { x: 0.4, y: 0.3 });
+  const withRoom = addRoomToFloor(prefs, 'home', DEFAULT_FLOOR_ID, room);
+  const withDevice = placeDeviceOnFloor(withRoom, 'home', DEFAULT_FLOOR_ID, 'd073d5000001', { x: 0.2, y: 0.3, roomId: 'living' });
+  const updated = updateRoomInFloor(withDevice, 'home', DEFAULT_FLOOR_ID, 'living', { label: 'Lounge', type: 'other' });
+  const removed = removeRoomFromFloor(updated, 'home', DEFAULT_FLOOR_ID, 'living');
+
+  assert.equal(updated.locations.home.floors[0].rooms[0].label, 'Lounge');
+  assert.equal(updated.locations.home.floors[0].rooms[0].type, 'other');
+  assert.equal(removed.locations.home.floors[0].rooms.length, 0);
+  assert.deepEqual(removed.locations.home.floors[0].devices.d073d5000001, { x: 0.2, y: 0.3 });
 });
 
 test('loads and saves preferences through a storage boundary', () => {

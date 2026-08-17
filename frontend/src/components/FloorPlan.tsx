@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
-import type { FloorPlanDevicePlacement, FloorPlanFloor, FloorPlanLocation, FloorPlanPoint, FloorPlanRoom } from '../domain/floorPlan';
+import { FLOOR_PLAN_ROOM_TYPES, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomType } from '../domain/floorPlan';
 import { CenterViewToggle, type CenterView } from './CenterViewToggle';
 import './FloorPlan.css';
 
@@ -19,6 +19,12 @@ interface FloorPlanProps {
   onViewChange: (view: CenterView) => void;
   onEditingChange: (editing: boolean) => void;
   onAddRoom: () => void;
+  onAddFloor: () => void;
+  onSelectFloor: (floorId: string) => void;
+  onRenameFloor: (floorId: string, label: string) => void;
+  onRemoveFloor: (floorId: string) => void;
+  onUpdateRoom: (floorId: string, roomId: string, patch: { label?: string; type?: FloorPlanRoomType }) => void;
+  onRemoveRoom: (floorId: string, roomId: string) => void;
   onPlaceDevice: (serial: string, placement: FloorPlanDevicePlacement) => void;
   onSelect: (serial: string) => void;
   onSurfaceClick: () => void;
@@ -38,6 +44,12 @@ export function FloorPlan({
   onViewChange,
   onEditingChange,
   onAddRoom,
+  onAddFloor,
+  onSelectFloor,
+  onRenameFloor,
+  onRemoveFloor,
+  onUpdateRoom,
+  onRemoveRoom,
   onPlaceDevice,
   onSelect,
   onSurfaceClick,
@@ -83,7 +95,17 @@ export function FloorPlan({
               <span>{floor?.rooms.length ?? 0} room{floor?.rooms.length === 1 ? '' : 's'}</span>
             </div>
             <div className="floor-tools">
+              {editing && layout ? (
+                <select value={floor?.id ?? ''} aria-label="Floor" onChange={(event) => onSelectFloor(event.target.value)}>
+                  {layout.floors.map((entry) => (
+                    <option key={entry.id} value={entry.id}>{entry.label}</option>
+                  ))}
+                </select>
+              ) : null}
+              {editing && floor ? <input value={floor.label} aria-label="Floor label" onChange={(event) => onRenameFloor(floor.id, event.target.value)} /> : null}
+              {editing ? <button type="button" onClick={onAddFloor}>add floor</button> : null}
               {editing ? <button type="button" onClick={onAddRoom}>add room</button> : null}
+              {editing && floor && (layout?.floors.length ?? 0) > 1 ? <button type="button" onClick={() => onRemoveFloor(floor.id)}>delete floor</button> : null}
               <button type="button" data-active={editing ? 'true' : 'false'} onClick={() => onEditingChange(!editing)}>
                 edit
               </button>
@@ -110,7 +132,16 @@ export function FloorPlan({
             placeDevice(serial, point);
           }}
         >
-          {floor?.rooms.map((room) => <RoomShape key={room.id} room={room} />)}
+          {floor?.rooms.map((room) => (
+            <RoomShape
+              key={room.id}
+              room={room}
+              floorId={floor.id}
+              editing={editing}
+              onUpdateRoom={onUpdateRoom}
+              onRemoveRoom={onRemoveRoom}
+            />
+          ))}
 
           {placedDevices.map((device) => {
             const placement = floor?.devices[device.serial];
@@ -180,17 +211,43 @@ function activeFloor(layout?: FloorPlanLocation): FloorPlanFloor | undefined {
   return layout.floors.find((floor) => floor.id === layout.activeFloorId) ?? layout.floors[0];
 }
 
-function RoomShape({ room }: { room: FloorPlanRoom }) {
+function RoomShape({
+  room,
+  floorId,
+  editing,
+  onUpdateRoom,
+  onRemoveRoom,
+}: {
+  room: FloorPlanRoom;
+  floorId: string;
+  editing: boolean;
+  onUpdateRoom: (floorId: string, roomId: string, patch: { label?: string; type?: FloorPlanRoomType }) => void;
+  onRemoveRoom: (floorId: string, roomId: string) => void;
+}) {
   return (
-    <div
-      className="floor-room"
-      data-type={room.type ?? 'other'}
-      style={{
-        clipPath: `polygon(${room.points.map((point) => `${point.x * 100}% ${point.y * 100}%`).join(', ')})`,
-      }}
-    >
-      <span style={roomLabelPosition(room)}>{room.label}</span>
-    </div>
+    <>
+      <div
+        className="floor-room"
+        data-type={room.type ?? 'other'}
+        data-editing={editing ? 'true' : 'false'}
+        style={{
+          clipPath: `polygon(${room.points.map((point) => `${point.x * 100}% ${point.y * 100}%`).join(', ')})`,
+        }}
+      >
+        <span style={roomLabelPosition(room)}>{room.label}</span>
+      </div>
+      {editing ? (
+        <div className="floor-room-editor" style={roomLabelPosition(room)}>
+          <input value={room.label} aria-label={`${room.label} room label`} onChange={(event) => onUpdateRoom(floorId, room.id, { label: event.target.value })} />
+          <select value={room.type ?? 'other'} aria-label={`${room.label} room type`} onChange={(event) => onUpdateRoom(floorId, room.id, { type: event.target.value as FloorPlanRoomType })}>
+            {FLOOR_PLAN_ROOM_TYPES.map((type) => (
+              <option key={type} value={type}>{roomTypeLabel(type)}</option>
+            ))}
+          </select>
+          <button type="button" aria-label={`Delete ${room.label}`} onClick={() => onRemoveRoom(floorId, room.id)}>delete</button>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -287,6 +344,10 @@ function searchMatches(devices: Device[], groups: Group[], query: string): Set<s
 function shouldDim(device: Device, searching: boolean, matches: Set<string>, selectedGroupDevices?: Set<string>): boolean {
   if (searching) return !matches.has(device.serial);
   return !!selectedGroupDevices && !selectedGroupDevices.has(device.serial);
+}
+
+function roomTypeLabel(type: FloorPlanRoomType): string {
+  return type.replace('-', ' ');
 }
 
 function roomAtPoint(rooms: FloorPlanRoom[], point: FloorPlanPoint): FloorPlanRoom | undefined {

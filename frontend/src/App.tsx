@@ -11,7 +11,7 @@ import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
-import { addRoomToFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, placeDeviceOnFloor, saveFloorPlanPreferences, type FloorPlanDevicePlacement, type FloorPlanPreferences } from './domain/floorPlan';
+import { addFloorToLocation, addRoomToFloor, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, placeDeviceOnFloor, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoomType } from './domain/floorPlan';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
@@ -241,6 +241,39 @@ export function App() {
     const index = floor.rooms.length + 1;
     const room = createRectangleRoom(`room-${Date.now().toString(36)}-${index}`, `Room ${index}`, 'other', { x: 0.2, y: 0.18 }, { x: 0.36, y: 0.28 });
     setFloorPlan((current) => addRoomToFloor(current, locationId, floor.id, room));
+  };
+
+  const addFloor = () => {
+    if (!locationId) return;
+    const layout = floorPlan.locations[locationId];
+    const index = (layout?.floors.length ?? 0) + 1;
+    const floor = createFloorPlanFloor(`floor-${Date.now().toString(36)}-${index}`, `Floor ${index}`);
+    setFloorPlan((current) => addFloorToLocation(current, locationId, floor));
+  };
+
+  const selectFloor = (floorId: string) => {
+    if (!locationId) return;
+    setFloorPlan((current) => setActiveFloor(current, locationId, floorId));
+  };
+
+  const renameFloor = (floorId: string, label: string) => {
+    if (!locationId) return;
+    setFloorPlan((current) => updateFloorLabel(current, locationId, floorId, label));
+  };
+
+  const removeFloor = (floorId: string) => {
+    if (!locationId) return;
+    setFloorPlan((current) => removeFloorFromLocation(current, locationId, floorId));
+  };
+
+  const updateFloorRoom = (floorId: string, roomId: string, patch: { label?: string; type?: FloorPlanRoomType }) => {
+    if (!locationId) return;
+    setFloorPlan((current) => updateRoomInFloor(current, locationId, floorId, roomId, patch));
+  };
+
+  const removeFloorRoom = (floorId: string, roomId: string) => {
+    if (!locationId) return;
+    setFloorPlan((current) => removeRoomFromFloor(current, locationId, floorId, roomId));
   };
 
   const placeFloorDevice = (serial: string, placement: FloorPlanDevicePlacement) => {
@@ -617,6 +650,12 @@ export function App() {
           onViewChange={setCenterView}
           onEditingChange={setFloorEditing}
           onAddRoom={addFloorRoom}
+          onAddFloor={addFloor}
+          onSelectFloor={selectFloor}
+          onRenameFloor={renameFloor}
+          onRemoveFloor={removeFloor}
+          onUpdateRoom={updateFloorRoom}
+          onRemoveRoom={removeFloorRoom}
           onPlaceDevice={placeFloorDevice}
           onSelect={selectDevice}
           onSurfaceClick={closeInspector}

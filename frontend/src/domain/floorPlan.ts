@@ -54,7 +54,7 @@ export interface FloorPlanStorage {
   setItem(key: string, value: string): void;
 }
 
-const roomTypes = new Set<FloorPlanRoomType>([
+export const FLOOR_PLAN_ROOM_TYPES: FloorPlanRoomType[] = [
   'bedroom',
   'living',
   'kitchen',
@@ -65,7 +65,9 @@ const roomTypes = new Set<FloorPlanRoomType>([
   'outdoor',
   'utility',
   'other',
-]);
+];
+
+const roomTypes = new Set<FloorPlanRoomType>(FLOOR_PLAN_ROOM_TYPES);
 
 export function emptyFloorPlanPreferences(): FloorPlanPreferences {
   return { version: FLOOR_PLAN_VERSION, locations: {} };
@@ -120,6 +122,69 @@ export function createFloorPlanFloor(id: string, label: string): FloorPlanFloor 
     label: cleanLabel(label) || 'Floor',
     rooms: [],
     devices: {},
+  };
+}
+
+export function addFloorToLocation(preferences: FloorPlanPreferences, locationId: string, floor: FloorPlanFloor): FloorPlanPreferences {
+  const normalized = ensureLocationFloorPlan(preferences, locationId);
+  const cleanLocationId = cleanId(locationId);
+  const normalizedFloor = normalizeFloor(floor);
+  const location = normalized.locations[cleanLocationId];
+  if (!location || !normalizedFloor) return normalized;
+
+  return {
+    ...normalized,
+    locations: {
+      ...normalized.locations,
+      [cleanLocationId]: {
+        activeFloorId: normalizedFloor.id,
+        floors: [...location.floors.filter((existing) => existing.id !== normalizedFloor.id), normalizedFloor],
+      },
+    },
+  };
+}
+
+export function setActiveFloor(preferences: FloorPlanPreferences, locationId: string, floorId: string): FloorPlanPreferences {
+  const normalized = ensureLocationFloorPlan(preferences, locationId);
+  const cleanLocationId = cleanId(locationId);
+  const cleanFloorId = cleanId(floorId);
+  const location = normalized.locations[cleanLocationId];
+  if (!location || !location.floors.some((floor) => floor.id === cleanFloorId)) return normalized;
+
+  return {
+    ...normalized,
+    locations: {
+      ...normalized.locations,
+      [cleanLocationId]: { ...location, activeFloorId: cleanFloorId },
+    },
+  };
+}
+
+export function updateFloorLabel(preferences: FloorPlanPreferences, locationId: string, floorId: string, label: string): FloorPlanPreferences {
+  const cleanLabelValue = cleanLabel(label);
+  if (!cleanLabelValue) return normalizeFloorPlanPreferences(preferences);
+  return updateFloor(preferences, locationId, floorId, (floor) => ({ ...floor, label: cleanLabelValue }));
+}
+
+export function removeFloorFromLocation(preferences: FloorPlanPreferences, locationId: string, floorId: string): FloorPlanPreferences {
+  const normalized = ensureLocationFloorPlan(preferences, locationId);
+  const cleanLocationId = cleanId(locationId);
+  const cleanFloorId = cleanId(floorId);
+  const location = normalized.locations[cleanLocationId];
+  if (!location || location.floors.length <= 1) return normalized;
+
+  const floors = location.floors.filter((floor) => floor.id !== cleanFloorId);
+  if (floors.length === location.floors.length) return normalized;
+
+  return {
+    ...normalized,
+    locations: {
+      ...normalized.locations,
+      [cleanLocationId]: {
+        activeFloorId: floors.some((floor) => floor.id === location.activeFloorId) ? location.activeFloorId : floors[0].id,
+        floors,
+      },
+    },
   };
 }
 
@@ -222,6 +287,47 @@ export function addRoomToFloor(
   };
 }
 
+export function updateRoomInFloor(
+  preferences: FloorPlanPreferences,
+  locationId: string,
+  floorId: string,
+  roomId: string,
+  patch: Partial<Pick<FloorPlanRoom, 'label' | 'type'>>,
+): FloorPlanPreferences {
+  const cleanRoomId = cleanId(roomId);
+  if (!cleanRoomId) return normalizeFloorPlanPreferences(preferences);
+
+  return updateFloor(preferences, locationId, floorId, (floor) => ({
+    ...floor,
+    rooms: floor.rooms.map((room) => {
+      if (room.id !== cleanRoomId) return room;
+      const label = patch.label === undefined ? room.label : cleanLabel(patch.label) || room.label;
+      const type = patch.type === undefined ? room.type : roomTypes.has(patch.type) ? patch.type : undefined;
+      return { ...room, label, ...(type ? { type } : { type: undefined }) };
+    }),
+  }));
+}
+
+export function removeRoomFromFloor(preferences: FloorPlanPreferences, locationId: string, floorId: string, roomId: string): FloorPlanPreferences {
+  const cleanRoomId = cleanId(roomId);
+  if (!cleanRoomId) return normalizeFloorPlanPreferences(preferences);
+
+  return updateFloor(preferences, locationId, floorId, (floor) => {
+    const devices = Object.fromEntries(
+      Object.entries(floor.devices).map(([serial, placement]) => {
+        if (placement.roomId !== cleanRoomId) return [serial, placement];
+        const { roomId: _roomId, ...rest } = placement;
+        return [serial, rest];
+      }),
+    );
+    return {
+      ...floor,
+      rooms: floor.rooms.filter((room) => room.id !== cleanRoomId),
+      devices,
+    };
+  });
+}
+
 export function normalizeFloorPlanPreferences(value: Partial<FloorPlanPreferences> | unknown): FloorPlanPreferences {
   if (!isRecord(value)) return emptyFloorPlanPreferences();
   if (value.version !== FLOOR_PLAN_VERSION || !isRecord(value.locations)) return emptyFloorPlanPreferences();
@@ -289,6 +395,34 @@ function normalizePlacement(value: FloorPlanDevicePlacement | Record<string, unk
   return {
     ...normalizePoint({ x: numberOrZero(value.x), y: numberOrZero(value.y) }),
     ...(roomId ? { roomId } : {}),
+  };
+}
+
+function updateFloor(
+  preferences: FloorPlanPreferences,
+  locationId: string,
+  floorId: string,
+  updater: (floor: FloorPlanFloor) => FloorPlanFloor,
+): FloorPlanPreferences {
+  const normalized = ensureLocationFloorPlan(preferences, locationId);
+  const cleanLocationId = cleanId(locationId);
+  const cleanFloorId = cleanId(floorId);
+  const location = normalized.locations[cleanLocationId];
+  if (!location) return normalized;
+
+  const floors = location.floors.map((floor) => (floor.id === cleanFloorId ? normalizeFloor(updater(floor)) ?? floor : floor));
+  const activeFloorId = floors.some((floor) => floor.id === cleanFloorId) ? cleanFloorId : location.activeFloorId;
+
+  return {
+    ...normalized,
+    locations: {
+      ...normalized.locations,
+      [cleanLocationId]: {
+        ...location,
+        activeFloorId,
+        floors,
+      },
+    },
   };
 }
 
