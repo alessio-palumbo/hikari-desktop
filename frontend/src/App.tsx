@@ -11,7 +11,7 @@ import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
-import { ensureLocationFloorPlan, loadFloorPlanPreferences, saveFloorPlanPreferences, type FloorPlanPreferences } from './domain/floorPlan';
+import { addRoomToFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, placeDeviceOnFloor, saveFloorPlanPreferences, type FloorPlanDevicePlacement, type FloorPlanPreferences } from './domain/floorPlan';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
@@ -36,6 +36,7 @@ export function App() {
   const [groupId, setGroupId] = useState(() => loadPreference(GROUP_KEY));
   const [centerView, setCenterView] = useState<CenterView>(() => loadCenterViewPreference());
   const [floorPlan, setFloorPlan] = useState<FloorPlanPreferences>(() => loadFloorPlanPreferences(window.localStorage));
+  const [floorEditing, setFloorEditing] = useState(false);
   const [selectedSerial, setSelectedSerial] = useState<string | undefined>();
   const [selectedGroupInspectorId, setSelectedGroupInspectorId] = useState<string | undefined>();
   const [query, setQuery] = useState('');
@@ -230,6 +231,24 @@ export function App() {
   const closeInspector = () => {
     setSelectedSerial(undefined);
     setSelectedGroupInspectorId(undefined);
+  };
+
+  const addFloorRoom = () => {
+    if (!locationId) return;
+    const layout = floorPlan.locations[locationId];
+    const floor = activeFloorPlanFloor(layout);
+    if (!floor) return;
+    const index = floor.rooms.length + 1;
+    const room = createRectangleRoom(`room-${Date.now().toString(36)}-${index}`, `Room ${index}`, 'other', { x: 0.2, y: 0.18 }, { x: 0.36, y: 0.28 });
+    setFloorPlan((current) => addRoomToFloor(current, locationId, floor.id, room));
+  };
+
+  const placeFloorDevice = (serial: string, placement: FloorPlanDevicePlacement) => {
+    if (!locationId) return;
+    const layout = floorPlan.locations[locationId];
+    const floor = activeFloorPlanFloor(layout);
+    if (!floor) return;
+    setFloorPlan((current) => placeDeviceOnFloor(current, locationId, floor.id, serial, placement));
   };
 
   const visibleDevices = useMemo(() => {
@@ -594,7 +613,11 @@ export function App() {
           searching={query.trim().length > 0}
           query={query}
           view={centerView}
+          editing={floorEditing}
           onViewChange={setCenterView}
+          onEditingChange={setFloorEditing}
+          onAddRoom={addFloorRoom}
+          onPlaceDevice={placeFloorDevice}
           onSelect={selectDevice}
           onSurfaceClick={closeInspector}
         />
@@ -738,6 +761,11 @@ function loadPreference(key: string): string {
 
 function loadCenterViewPreference(): CenterView {
   return loadPreference(CENTER_VIEW_KEY) === 'floor' ? 'floor' : 'list';
+}
+
+function activeFloorPlanFloor(layout: FloorPlanPreferences['locations'][string] | undefined) {
+  if (!layout?.floors.length) return undefined;
+  return layout.floors.find((floor) => floor.id === layout.activeFloorId) ?? layout.floors[0];
 }
 
 function savePreference(key: string, value: string) {

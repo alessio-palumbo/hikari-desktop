@@ -1,6 +1,7 @@
+import { useRef } from 'react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
-import type { FloorPlanFloor, FloorPlanLocation, FloorPlanRoom } from '../domain/floorPlan';
+import type { FloorPlanDevicePlacement, FloorPlanFloor, FloorPlanLocation, FloorPlanPoint, FloorPlanRoom } from '../domain/floorPlan';
 import { CenterViewToggle, type CenterView } from './CenterViewToggle';
 import './FloorPlan.css';
 
@@ -14,7 +15,11 @@ interface FloorPlanProps {
   searching: boolean;
   query: string;
   view: CenterView;
+  editing: boolean;
   onViewChange: (view: CenterView) => void;
+  onEditingChange: (editing: boolean) => void;
+  onAddRoom: () => void;
+  onPlaceDevice: (serial: string, placement: FloorPlanDevicePlacement) => void;
   onSelect: (serial: string) => void;
   onSurfaceClick: () => void;
 }
@@ -29,23 +34,40 @@ export function FloorPlan({
   searching,
   query,
   view,
+  editing,
   onViewChange,
+  onEditingChange,
+  onAddRoom,
+  onPlaceDevice,
   onSelect,
   onSurfaceClick,
 }: FloorPlanProps) {
+  const canvasRef = useRef<HTMLElement | null>(null);
   const floor = activeFloor(layout);
   const placed = new Set(Object.keys(floor?.devices ?? {}));
   const selectedGroupDevices = selectedGroupId ? new Set(devices.filter((device) => device.groupId === selectedGroupId).map((device) => device.serial)) : undefined;
   const matches = searchMatches(devices, groups, query);
   const placedDevices = floor ? devices.filter((device) => placed.has(device.serial)) : [];
   const unplacedDevices = floor ? devices.filter((device) => !placed.has(device.serial)) : devices;
+  const placeDevice = (serial: string, point: FloorPlanPoint) => {
+    const roomId = floor ? roomAtPoint(floor.rooms, point)?.id : undefined;
+    onPlaceDevice(serial, { ...point, ...(roomId ? { roomId } : {}) });
+  };
+  const canvasPoint = (clientX: number, clientY: number): FloorPlanPoint | undefined => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return undefined;
+    return {
+      x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+    };
+  };
 
   return (
     <main
       className="center-panel"
       onClick={(event) => {
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest('.floor-device-node, .floor-unplaced-device, button, select, input')) return;
+        if (target?.closest('.floor-device-node, .floor-unplaced-device, .floor-tools, button, select, input')) return;
         onSurfaceClick();
       }}
     >
@@ -60,11 +82,34 @@ export function FloorPlan({
               <span>{devices.length} device{devices.length === 1 ? '' : 's'}</span>
               <span>{floor?.rooms.length ?? 0} room{floor?.rooms.length === 1 ? '' : 's'}</span>
             </div>
+            <div className="floor-tools">
+              {editing ? <button type="button" onClick={onAddRoom}>add room</button> : null}
+              <button type="button" data-active={editing ? 'true' : 'false'} onClick={() => onEditingChange(!editing)}>
+                edit
+              </button>
+            </div>
             <CenterViewToggle view={view} onChange={onViewChange} />
           </div>
         </header>
 
-        <section className="floor-canvas" aria-label={`${floor?.label ?? 'Floor'} floor plan`}>
+        <section
+          ref={canvasRef}
+          className="floor-canvas"
+          data-editing={editing ? 'true' : 'false'}
+          aria-label={`${floor?.label ?? 'Floor'} floor plan`}
+          onDragOver={(event) => {
+            if (!editing) return;
+            event.preventDefault();
+          }}
+          onDrop={(event) => {
+            if (!editing) return;
+            const serial = event.dataTransfer.getData('application/x-hikari-device');
+            const point = canvasPoint(event.clientX, event.clientY);
+            if (!serial || !point) return;
+            event.preventDefault();
+            placeDevice(serial, point);
+          }}
+        >
           {floor?.rooms.map((room) => <RoomShape key={room.id} room={room} />)}
 
           {placedDevices.map((device) => {
@@ -78,6 +123,9 @@ export function FloorPlan({
                 dimmed={shouldDim(device, searching, matches, selectedGroupDevices)}
                 x={placement.x}
                 y={placement.y}
+                editing={editing}
+                canvasPoint={canvasPoint}
+                onMove={placeDevice}
                 onSelect={onSelect}
               />
             );
@@ -105,6 +153,12 @@ export function FloorPlan({
                   className="floor-unplaced-device"
                   data-selected={device.serial === selectedSerial}
                   data-dimmed={shouldDim(device, searching, matches, selectedGroupDevices) ? 'true' : 'false'}
+                  draggable={editing}
+                  onDragStart={(event) => {
+                    if (!editing) return;
+                    event.dataTransfer.setData('application/x-hikari-device', device.serial);
+                    event.dataTransfer.effectAllowed = 'move';
+                  }}
                   onClick={() => onSelect(device.serial)}
                 >
                   <DeviceSwatch device={device} />
@@ -140,7 +194,28 @@ function RoomShape({ room }: { room: FloorPlanRoom }) {
   );
 }
 
-function DeviceNode({ device, selected, dimmed, x, y, onSelect }: { device: Device; selected: boolean; dimmed: boolean; x: number; y: number; onSelect: (serial: string) => void }) {
+function DeviceNode({
+  device,
+  selected,
+  dimmed,
+  x,
+  y,
+  editing,
+  canvasPoint,
+  onMove,
+  onSelect,
+}: {
+  device: Device;
+  selected: boolean;
+  dimmed: boolean;
+  x: number;
+  y: number;
+  editing: boolean;
+  canvasPoint: (clientX: number, clientY: number) => FloorPlanPoint | undefined;
+  onMove: (serial: string, point: FloorPlanPoint) => void;
+  onSelect: (serial: string) => void;
+}) {
+  const movedRef = useRef(false);
   return (
     <button
       type="button"
@@ -148,8 +223,35 @@ function DeviceNode({ device, selected, dimmed, x, y, onSelect }: { device: Devi
       data-selected={selected}
       data-offline={!device.online ? 'true' : 'false'}
       data-dimmed={dimmed ? 'true' : 'false'}
+      data-editing={editing ? 'true' : 'false'}
       style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
-      onClick={() => onSelect(device.serial)}
+      onPointerDown={(event) => {
+        movedRef.current = false;
+        if (!editing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!editing || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        const point = canvasPoint(event.clientX, event.clientY);
+        if (!point) return;
+        movedRef.current = true;
+        onMove(device.serial, point);
+      }}
+      onPointerUp={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onClick={() => {
+        if (movedRef.current) {
+          movedRef.current = false;
+          return;
+        }
+        onSelect(device.serial);
+      }}
     >
       <DeviceSwatch device={device} />
       <span>{device.name}</span>
@@ -185,4 +287,21 @@ function searchMatches(devices: Device[], groups: Group[], query: string): Set<s
 function shouldDim(device: Device, searching: boolean, matches: Set<string>, selectedGroupDevices?: Set<string>): boolean {
   if (searching) return !matches.has(device.serial);
   return !!selectedGroupDevices && !selectedGroupDevices.has(device.serial);
+}
+
+function roomAtPoint(rooms: FloorPlanRoom[], point: FloorPlanPoint): FloorPlanRoom | undefined {
+  return rooms.find((room) => pointInPolygon(point, room.points));
+}
+
+function pointInPolygon(point: FloorPlanPoint, polygon: FloorPlanPoint[]): boolean {
+  let inside = false;
+  for (let current = 0, previous = polygon.length - 1; current < polygon.length; previous = current, current += 1) {
+    const currentPoint = polygon[current];
+    const previousPoint = polygon[previous];
+    const crosses = currentPoint.y > point.y !== previousPoint.y > point.y;
+    if (!crosses) continue;
+    const x = ((previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)) / (previousPoint.y - currentPoint.y) + currentPoint.x;
+    if (point.x < x) inside = !inside;
+  }
+  return inside;
 }

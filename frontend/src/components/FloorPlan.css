@@ -26,6 +26,30 @@
   gap: 14px;
 }
 
+.floor-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.floor-tools button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid oklch(1 0 0 / 0.055);
+  border-radius: 6px;
+  background: oklch(1 0 0 / 0.025);
+  color: var(--fg-3);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.floor-tools button:hover,
+.floor-tools button[data-active="true"] {
+  border-color: oklch(1 0 0 / 0.12);
+  background: oklch(1 0 0 / 0.055);
+  color: var(--fg-0);
+}
+
 .floor-plan-header h1 {
   margin: 2px 0 0;
   color: var(--fg-0);
@@ -68,6 +92,14 @@
     linear-gradient(90deg, oklch(1 0 0 / 0.025) 1px, transparent 1px),
     oklch(1 0 0 / 0.015);
   background-size: 48px 48px;
+}
+
+.floor-canvas[data-editing="true"] {
+  border-color: oklch(1 0 0 / 0.12);
+  background:
+    linear-gradient(oklch(1 0 0 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(1 0 0 / 0.04) 1px, transparent 1px),
+    oklch(1 0 0 / 0.02);
 }
 
 .floor-room {
@@ -129,6 +161,14 @@
   border-color: oklch(1 0 0 / 0.18);
   background: oklch(0.23 0.006 250 / 0.96);
   color: var(--fg-0);
+}
+
+.floor-device-node[data-editing="true"] {
+  cursor: grab;
+}
+
+.floor-device-node[data-editing="true"]:active {
+  cursor: grabbing;
 }
 
 .floor-device-node[data-offline="true"],
@@ -226,6 +266,10 @@
   border-color: oklch(1 0 0 / 0.12);
   background: oklch(1 0 0 / 0.045);
   color: var(--fg-0);
+}
+
+.floor-unplaced-device[draggable="true"] {
+  cursor: grab;
 }
 
 .floor-unplaced-device span {

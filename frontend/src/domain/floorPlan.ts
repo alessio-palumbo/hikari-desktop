@@ -174,7 +174,12 @@ export function placeDeviceOnFloor(
         ...location,
         activeFloorId: cleanFloorId || location.activeFloorId,
         floors: location.floors.map((floor) => {
-          if (floor.id !== cleanFloorId) return floor;
+          if (floor.id !== cleanFloorId) {
+            if (!floor.devices[cleanSerial]) return floor;
+            const devices = { ...floor.devices };
+            delete devices[cleanSerial];
+            return { ...floor, devices };
+          }
           return {
             ...floor,
             devices: {
@@ -182,6 +187,35 @@ export function placeDeviceOnFloor(
               [cleanSerial]: normalizePlacement(placement),
             },
           };
+        }),
+      },
+    },
+  };
+}
+
+export function addRoomToFloor(
+  preferences: FloorPlanPreferences,
+  locationId: string,
+  floorId: string,
+  room: FloorPlanRoom,
+): FloorPlanPreferences {
+  const normalized = ensureLocationFloorPlan(preferences, locationId);
+  const cleanLocationId = cleanId(locationId);
+  const cleanFloorId = cleanId(floorId);
+  const location = normalized.locations[cleanLocationId];
+  const normalizedRoom = normalizeRoom(room);
+  if (!location || !normalizedRoom) return normalized;
+
+  return {
+    ...normalized,
+    locations: {
+      ...normalized.locations,
+      [cleanLocationId]: {
+        ...location,
+        activeFloorId: cleanFloorId || location.activeFloorId,
+        floors: location.floors.map((floor) => {
+          if (floor.id !== cleanFloorId) return floor;
+          return { ...floor, rooms: [...floor.rooms.filter((existing) => existing.id !== normalizedRoom.id), normalizedRoom] };
         }),
       },
     },

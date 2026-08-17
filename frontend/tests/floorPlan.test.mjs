@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_FLOOR_ID,
+  addRoomToFloor,
   createFloorPlanFloor,
   createRectangleRoom,
   emptyFloorPlanPreferences,
@@ -91,6 +92,36 @@ test('places a device immutably on the selected floor', () => {
 
   assert.equal(prefs.locations.home.floors[0].devices.d073d5000001, undefined);
   assert.deepEqual(got.locations.home.floors[0].devices.d073d5000001, { x: 0.25, y: 0.75, roomId: 'living' });
+});
+
+test('moving a device to another floor removes the previous placement', () => {
+  const prefs = {
+    version: 1,
+    locations: {
+      home: {
+        activeFloorId: 'ground',
+        floors: [
+          { ...createFloorPlanFloor('ground', 'Ground'), devices: { d073d5000001: { x: 0.1, y: 0.1 } } },
+          createFloorPlanFloor('upstairs', 'Upstairs'),
+        ],
+      },
+    },
+  };
+
+  const got = placeDeviceOnFloor(prefs, 'home', 'upstairs', 'd073d5000001', { x: 0.8, y: 0.6 });
+
+  assert.equal(got.locations.home.floors[0].devices.d073d5000001, undefined);
+  assert.deepEqual(got.locations.home.floors[1].devices.d073d5000001, { x: 0.8, y: 0.6 });
+});
+
+test('adds a room to a floor without mutating existing layout', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const room = createRectangleRoom('living', 'Living Room', 'living', { x: 0.1, y: 0.2 }, { x: 0.4, y: 0.3 });
+
+  const got = addRoomToFloor(prefs, 'home', DEFAULT_FLOOR_ID, room);
+
+  assert.equal(prefs.locations.home.floors[0].rooms.length, 0);
+  assert.deepEqual(got.locations.home.floors[0].rooms, [room]);
 });
 
 test('loads and saves preferences through a storage boundary', () => {
