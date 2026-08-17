@@ -8,17 +8,18 @@ interface SliderProps {
   value: number;
   onChange: (value: number) => void;
   label?: string;
+  valueLabel?: string;
   disabled?: boolean;
 }
 
-export function Slider({ value, onChange, label, disabled = false }: SliderProps) {
+export function Slider({ value, onChange, label, valueLabel, disabled = false }: SliderProps) {
   const percent = Math.round(value * 100);
   return (
     <label className="slider">
       {label ? (
         <span className="slider-label">
           <span>{label}</span>
-          <span className="mono">{percent}%</span>
+          <span className="mono">{valueLabel ?? `${percent}%`}</span>
         </span>
       ) : null}
       <input

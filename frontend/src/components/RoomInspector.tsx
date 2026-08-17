@@ -25,6 +25,7 @@ export function RoomInspector({ roomName, devices, onClose, onDeviceChange }: Ro
   const [paintColor, setPaintColor] = useState<HslColor>(() => (firstDevice ? initialPaintColor(firstDevice) : { h: 38, s: 0.5, l: 0.55 }));
   const [whiteKelvin, setWhiteKelvin] = useState(() => clampKelvin(firstDevice?.kelvin ?? 3500, kelvinRange.min, kelvinRange.max));
   const avgBrightness = onlineDevices.length ? onlineDevices.reduce((sum, device) => sum + device.brightness, 0) / onlineDevices.length : 0;
+  const allOff = onlineDevices.length > 0 && onlineDevices.every((device) => !device.on);
   const whiteValue = Math.max(0, Math.min(1, (whiteKelvin - kelvinRange.min) / Math.max(1, kelvinRange.max - kelvinRange.min)));
 
   useEffect(() => {
@@ -84,7 +85,7 @@ export function RoomInspector({ roomName, devices, onClose, onDeviceChange }: Ro
         <WhiteScale value={whiteValue} kelvinMin={kelvinRange.min} kelvinMax={kelvinRange.max} onChange={setRoomKelvin} />
       )}
 
-      <Slider label="brightness" disabled={!onlineDevices.length} value={avgBrightness} onChange={setRoomBrightness} />
+      <Slider label="brightness" disabled={!onlineDevices.length} value={avgBrightness} valueLabel={allOff ? 'off' : undefined} onChange={setRoomBrightness} />
     </aside>
   );
 }

@@ -207,7 +207,7 @@ export function Inspector(props: InspectorProps) {
         <WhiteScale value={whiteValue} kelvinMin={kelvinMin} kelvinMax={kelvinMax} onChange={setKelvin} onCommit={commitKelvin} />
       ) : null}
 
-      {isLight && mode !== 'effects' ? <Slider label={props.editing ? 'paint brightness' : 'brightness'} value={brightnessValue} onChange={setBrightness} /> : null}
+      {isLight && mode !== 'effects' ? <Slider label={props.editing ? 'paint brightness' : 'brightness'} value={brightnessValue} valueLabel={!props.editing && !device.on ? 'off' : undefined} onChange={setBrightness} /> : null}
       {props.error && mode !== 'effects' ? <div className="inspector-error">{props.error}</div> : null}
 
       {mode === 'effects' && hasEffects ? (
