@@ -8,6 +8,7 @@ import { FloorPlan } from './components/FloorPlan';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
 import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
+import { RoomInspector } from './components/RoomInspector';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
@@ -38,6 +39,7 @@ export function App() {
   const [centerView, setCenterView] = useState<CenterView>(() => loadCenterViewPreference());
   const [floorPlan, setFloorPlan] = useState<FloorPlanPreferences>(() => loadFloorPlanPreferences(window.localStorage));
   const [floorEditing, setFloorEditing] = useState(false);
+  const [selectedRoomInspector, setSelectedRoomInspector] = useState<{ floorId: string; roomId: string } | undefined>();
   const [selectedSerial, setSelectedSerial] = useState<string | undefined>();
   const [selectedGroupInspectorId, setSelectedGroupInspectorId] = useState<string | undefined>();
   const [query, setQuery] = useState('');
@@ -220,18 +222,27 @@ export function App() {
 
   const selectDevice = (serial: string) => {
     setSelectedGroupInspectorId(undefined);
+    setSelectedRoomInspector(undefined);
     setSelectedSerial((current) => (current === serial ? undefined : serial));
   };
 
   const openGroupInspector = () => {
     if (!currentGroup) return;
     setSelectedSerial(undefined);
+    setSelectedRoomInspector(undefined);
     setSelectedGroupInspectorId((current) => (current === currentGroup.id ? undefined : currentGroup.id));
   };
 
   const closeInspector = () => {
     setSelectedSerial(undefined);
     setSelectedGroupInspectorId(undefined);
+    setSelectedRoomInspector(undefined);
+  };
+
+  const openRoomInspector = (floorId: string, roomId: string) => {
+    setSelectedSerial(undefined);
+    setSelectedGroupInspectorId(undefined);
+    setSelectedRoomInspector((current) => (current?.floorId === floorId && current.roomId === roomId ? undefined : { floorId, roomId }));
   };
 
   const addFloorRoom = () => {
@@ -301,6 +312,12 @@ export function App() {
   const currentLocation = snapshot.locations.find((location) => location.id === locationId);
   const currentLocationGroupIds = new Set(snapshot.groups.filter((group) => group.locationId === locationId).map((group) => group.id));
   const locationDevices = snapshot.devices.filter((device) => currentLocationGroupIds.has(device.groupId));
+  const activeFloor = activeFloorPlanFloor(floorPlan.locations[locationId]);
+  const inspectorFloor = floorPlan.locations[locationId]?.floors.find((floor) => floor.id === selectedRoomInspector?.floorId);
+  const inspectorRoom = inspectorFloor?.rooms.find((room) => room.id === selectedRoomInspector?.roomId);
+  const inspectorRoomDevices = inspectorFloor && inspectorRoom
+    ? locationDevices.filter((device) => inspectorFloor.devices[device.serial]?.roomId === inspectorRoom.id).filter(isLightDevice)
+    : [];
   const inspectorDevice = draft?.draft ?? selectedDevice;
 
   const replaceDevice = (next: Device) => {
@@ -610,11 +627,13 @@ export function App() {
           setLocationId(id);
           setSelectedSerial(undefined);
           setSelectedGroupInspectorId(undefined);
+          setSelectedRoomInspector(undefined);
         }}
         onGroupChange={(id) => {
           setGroupId(id);
           setSelectedSerial(undefined);
           setSelectedGroupInspectorId(undefined);
+          setSelectedRoomInspector(undefined);
           setQuery('');
         }}
         onLocationPower={(id, on) =>
@@ -645,6 +664,7 @@ export function App() {
           layout={floorPlan.locations[locationId]}
           selectedSerial={selectedSerial}
           selectedGroupId={groupId}
+          selectedRoomId={selectedRoomInspector && selectedRoomInspector.floorId === activeFloor?.id ? selectedRoomInspector.roomId : undefined}
           searching={query.trim().length > 0}
           query={query}
           view={centerView}
@@ -660,6 +680,7 @@ export function App() {
           onRemoveRoom={removeFloorRoom}
           onPlaceDevice={placeFloorDevice}
           onSelect={selectDevice}
+          onRoomSelect={openRoomInspector}
           onSurfaceClick={closeInspector}
         />
       ) : (
@@ -737,6 +758,13 @@ export function App() {
           group={inspectorGroup}
           devices={inspectorGroupDevices}
           onClose={() => setSelectedGroupInspectorId(undefined)}
+          onDeviceChange={updateListDevice}
+        />
+      ) : inspectorRoom ? (
+        <RoomInspector
+          roomName={inspectorRoom.label}
+          devices={inspectorRoomDevices}
+          onClose={() => setSelectedRoomInspector(undefined)}
           onDeviceChange={updateListDevice}
         />
       ) : null}

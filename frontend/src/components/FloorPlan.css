@@ -204,6 +204,15 @@
   white-space: nowrap;
 }
 
+.floor-room[data-editing="false"] {
+  cursor: pointer;
+}
+
+.floor-room[data-editing="false"]:hover {
+  border-color: oklch(1 0 0 / 0.18);
+  background-color: oklch(1 0 0 / 0.055);
+}
+
 .floor-room[data-editing="true"] {
   border-color: oklch(1 0 0 / 0.16);
   cursor: grab;

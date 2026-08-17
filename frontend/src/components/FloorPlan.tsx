@@ -13,6 +13,7 @@ interface FloorPlanProps {
   layout?: FloorPlanLocation;
   selectedSerial?: string;
   selectedGroupId?: string;
+  selectedRoomId?: string;
   searching: boolean;
   query: string;
   view: CenterView;
@@ -28,6 +29,7 @@ interface FloorPlanProps {
   onRemoveRoom: (floorId: string, roomId: string) => void;
   onPlaceDevice: (serial: string, placement: FloorPlanDevicePlacement) => void;
   onSelect: (serial: string) => void;
+  onRoomSelect: (floorId: string, roomId: string) => void;
   onSurfaceClick: () => void;
 }
 
@@ -38,6 +40,7 @@ export function FloorPlan({
   layout,
   selectedSerial,
   selectedGroupId,
+  selectedRoomId,
   searching,
   query,
   view,
@@ -53,12 +56,13 @@ export function FloorPlan({
   onRemoveRoom,
   onPlaceDevice,
   onSelect,
+  onRoomSelect,
   onSurfaceClick,
 }: FloorPlanProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
   const floor = activeFloor(layout);
-  const [selectedRoomId, setSelectedRoomId] = useState<string | undefined>();
-  const selectedRoom = floor?.rooms.find((room) => room.id === selectedRoomId);
+  const [editedRoomId, setEditedRoomId] = useState<string | undefined>();
+  const editedRoom = floor?.rooms.find((room) => room.id === editedRoomId);
   const placed = new Set(Object.keys(floor?.devices ?? {}));
   const selectedGroupDevices = selectedGroupId ? new Set(devices.filter((device) => device.groupId === selectedGroupId).map((device) => device.serial)) : undefined;
   const matches = searchMatches(devices, groups, query);
@@ -78,9 +82,9 @@ export function FloorPlan({
   };
 
   useEffect(() => {
-    if (!editing || !selectedRoomId || floor?.rooms.some((room) => room.id === selectedRoomId)) return;
-    setSelectedRoomId(undefined);
-  }, [editing, floor?.id, floor?.rooms, selectedRoomId]);
+    if (!editing || !editedRoomId || floor?.rooms.some((room) => room.id === editedRoomId)) return;
+    setEditedRoomId(undefined);
+  }, [editing, floor?.id, floor?.rooms, editedRoomId]);
 
   return (
     <main
@@ -88,7 +92,7 @@ export function FloorPlan({
       onClick={(event) => {
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest('.floor-device-node, .floor-unplaced-device, .floor-tools, .floor-room, .floor-room-editor, button, select, input')) return;
-        setSelectedRoomId(undefined);
+        setEditedRoomId(undefined);
         onSurfaceClick();
       }}
     >
@@ -128,11 +132,11 @@ export function FloorPlan({
         {editing && floor ? (
           <RoomEditor
             floorId={floor.id}
-            room={selectedRoom}
+            room={editedRoom}
             onUpdateRoom={onUpdateRoom}
             onRemoveRoom={(floorId, roomId) => {
               onRemoveRoom(floorId, roomId);
-              setSelectedRoomId(undefined);
+              setEditedRoomId(undefined);
             }}
           />
         ) : null}
@@ -161,10 +165,13 @@ export function FloorPlan({
               room={room}
               floorId={floor.id}
               editing={editing}
-              selected={room.id === selectedRoomId}
+              selected={editing ? room.id === editedRoomId : room.id === selectedRoomId}
               canvasPoint={canvasPoint}
               floorDevices={floor.devices}
-              onSelectRoom={setSelectedRoomId}
+              onSelectRoom={(roomId) => {
+                if (editing) setEditedRoomId(roomId);
+                else onRoomSelect(floor.id, roomId);
+              }}
               onUpdateRoom={onUpdateRoom}
             />
           ))}
@@ -306,7 +313,6 @@ function RoomShape({
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
       }}
       onClick={(event) => {
-        if (!editing) return;
         event.stopPropagation();
         if (movedRef.current) {
           movedRef.current = false;
