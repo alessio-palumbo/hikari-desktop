@@ -30,8 +30,11 @@ interface FloorPlanProps {
   onPlaceDevice: (serial: string, placement: FloorPlanDevicePlacement) => void;
   onSelect: (serial: string) => void;
   onRoomSelect: (floorId: string, roomId: string) => void;
+  onRoomPower: (floorId: string, roomId: string, on: boolean) => void;
   onSurfaceClick: () => void;
 }
+
+type RoomPowerState = 'empty' | 'off' | 'mixed' | 'on';
 
 export function FloorPlan({
   location,
@@ -57,6 +60,7 @@ export function FloorPlan({
   onPlaceDevice,
   onSelect,
   onRoomSelect,
+  onRoomPower,
   onSurfaceClick,
 }: FloorPlanProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
@@ -107,7 +111,7 @@ export function FloorPlan({
               <span>{floor?.rooms.length ?? 0} room{floor?.rooms.length === 1 ? '' : 's'}</span>
             </div>
             <div className="floor-tools">
-              {editing && layout ? (
+              {layout && (editing || layout.floors.length > 1) ? (
                 <label className="floor-select-wrap">
                   <select value={floor?.id ?? ''} aria-label="Floor" onChange={(event) => onSelectFloor(event.target.value)}>
                     {layout.floors.map((entry) => (
@@ -166,12 +170,14 @@ export function FloorPlan({
               floorId={floor.id}
               editing={editing}
               selected={editing ? room.id === editedRoomId : room.id === selectedRoomId}
+              powerState={roomPowerState(room.id, floor, devices)}
               canvasPoint={canvasPoint}
               floorDevices={floor.devices}
               onSelectRoom={(roomId) => {
                 if (editing) setEditedRoomId(roomId);
                 else onRoomSelect(floor.id, roomId);
               }}
+              onRoomPower={(roomId, on) => onRoomPower(floor.id, roomId, on)}
               onUpdateRoom={onUpdateRoom}
             />
           ))}
@@ -249,18 +255,22 @@ function RoomShape({
   floorId,
   editing,
   selected,
+  powerState,
   canvasPoint,
   floorDevices,
   onSelectRoom,
+  onRoomPower,
   onUpdateRoom,
 }: {
   room: FloorPlanRoom;
   floorId: string;
   editing: boolean;
   selected: boolean;
+  powerState: RoomPowerState;
   canvasPoint: (clientX: number, clientY: number) => FloorPlanPoint | undefined;
   floorDevices: Record<string, FloorPlanDevicePlacement>;
   onSelectRoom: (roomId: string) => void;
+  onRoomPower: (roomId: string, on: boolean) => void;
   onUpdateRoom: (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => void;
 }) {
   const dragRef = useRef<{
@@ -271,58 +281,75 @@ function RoomShape({
   const movedRef = useRef(false);
 
   return (
-    <div
-      className="floor-room"
-      data-type={room.type ?? 'other'}
-      data-editing={editing ? 'true' : 'false'}
-      data-selected={selected ? 'true' : 'false'}
-      style={{
-        clipPath: `polygon(${room.points.map((point) => `${point.x * 100}% ${point.y * 100}%`).join(', ')})`,
-      }}
-      onPointerDown={(event) => {
-        movedRef.current = false;
-        if (!editing) return;
-        const point = canvasPoint(event.clientX, event.clientY);
-        if (!point) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const center = roomCenter(room);
-        dragRef.current = {
-          offset: { x: point.x - center.x, y: point.y - center.y },
-          room,
-          devices: assignedRoomDevices(floorDevices, room.id),
-        };
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }}
-      onPointerMove={(event) => {
-        if (!editing || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
-        const point = canvasPoint(event.clientX, event.clientY);
-        const drag = dragRef.current;
-        if (!point || !drag) return;
-        movedRef.current = true;
-        const points = moveRoomTo(drag.room, { x: point.x - drag.offset.x, y: point.y - drag.offset.y });
-        const delta = roomMoveDelta(drag.room, points);
-        onUpdateRoom(floorId, room.id, { points, devices: moveAssignedDevices(drag.devices, delta) });
-      }}
-      onPointerUp={(event) => {
-        dragRef.current = undefined;
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-      }}
-      onPointerCancel={(event) => {
-        dragRef.current = undefined;
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-      }}
-      onClick={(event) => {
-        event.stopPropagation();
-        if (movedRef.current) {
+    <>
+      <div
+        className="floor-room"
+        data-type={room.type ?? 'other'}
+        data-editing={editing ? 'true' : 'false'}
+        data-selected={selected ? 'true' : 'false'}
+        data-power={powerState}
+        style={{
+          clipPath: `polygon(${room.points.map((point) => `${point.x * 100}% ${point.y * 100}%`).join(', ')})`,
+        }}
+        onPointerDown={(event) => {
           movedRef.current = false;
-          return;
-        }
-        onSelectRoom(room.id);
-      }}
-    >
-      <span style={roomLabelPosition(room)}>{room.label}</span>
-    </div>
+          if (!editing) return;
+          const point = canvasPoint(event.clientX, event.clientY);
+          if (!point) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const center = roomCenter(room);
+          dragRef.current = {
+            offset: { x: point.x - center.x, y: point.y - center.y },
+            room,
+            devices: assignedRoomDevices(floorDevices, room.id),
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (!editing || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          const point = canvasPoint(event.clientX, event.clientY);
+          const drag = dragRef.current;
+          if (!point || !drag) return;
+          movedRef.current = true;
+          const points = moveRoomTo(drag.room, { x: point.x - drag.offset.x, y: point.y - drag.offset.y });
+          const delta = roomMoveDelta(drag.room, points);
+          onUpdateRoom(floorId, room.id, { points, devices: moveAssignedDevices(drag.devices, delta) });
+        }}
+        onPointerUp={(event) => {
+          dragRef.current = undefined;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onPointerCancel={(event) => {
+          dragRef.current = undefined;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (movedRef.current) {
+            movedRef.current = false;
+            return;
+          }
+          onSelectRoom(room.id);
+        }}
+      >
+        <span style={roomLabelPosition(room)}>{room.label}</span>
+      </div>
+      {!editing && powerState !== 'empty' ? (
+        <button
+          type="button"
+          className="floor-room-power"
+          aria-label={powerState === 'off' ? `Turn ${room.label} on` : `Turn ${room.label} off`}
+          style={roomPowerPosition(room)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onRoomPower(room.id, powerState === 'off');
+          }}
+        >
+          <span className="power-dot" data-on={powerState !== 'off' ? 'true' : 'false'} />
+        </button>
+      ) : null}
+    </>
   );
 }
 
@@ -459,6 +486,23 @@ function DeviceSwatch({ device }: { device: Device }) {
 function roomLabelPosition(room: FloorPlanRoom): { left: string; top: string } {
   const center = roomCenter(room);
   return { left: `${center.x * 100}%`, top: `${center.y * 100}%` };
+}
+
+function roomPowerPosition(room: FloorPlanRoom): { left: string; top: string } {
+  const bounds = roomBounds(room.points);
+  return {
+    left: `${Math.max(bounds.left, Math.min(bounds.right, bounds.right - 0.035)) * 100}%`,
+    top: `${Math.max(bounds.top, Math.min(bounds.bottom, bounds.top + 0.035)) * 100}%`,
+  };
+}
+
+function roomPowerState(roomId: string, floor: FloorPlanFloor, devices: Device[]): RoomPowerState {
+  const lights = devices.filter(isLightDevice).filter((device) => floor.devices[device.serial]?.roomId === roomId);
+  const online = lights.filter((device) => device.online);
+  if (!online.length) return 'empty';
+  const onCount = online.filter((device) => device.on).length;
+  if (onCount === 0) return 'off';
+  return onCount === online.length ? 'on' : 'mixed';
 }
 
 function roomCenter(room: FloorPlanRoom): FloorPlanPoint {

@@ -213,6 +213,16 @@
   background-color: oklch(1 0 0 / 0.055);
 }
 
+.floor-room[data-power="on"] {
+  border-color: oklch(0.82 0.08 92 / 0.32);
+  box-shadow: inset 0 0 34px oklch(0.82 0.08 92 / 0.1);
+}
+
+.floor-room[data-power="mixed"] {
+  border-color: oklch(0.72 0.05 92 / 0.24);
+  box-shadow: inset 0 0 24px oklch(0.72 0.05 92 / 0.07);
+}
+
 .floor-room[data-editing="true"] {
   border-color: oklch(1 0 0 / 0.16);
   cursor: grab;
@@ -225,6 +235,29 @@
 
 .floor-room[data-editing="true"]:active {
   cursor: grabbing;
+}
+
+.floor-room-power {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: oklch(0.16 0.005 250 / 0.68);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+}
+
+.floor-room-power:hover {
+  background: oklch(0.21 0.006 250 / 0.92);
+}
+
+.floor-room-power .power-dot {
+  width: 9px;
+  height: 9px;
 }
 
 .floor-room-editor {

@@ -12,7 +12,7 @@ import { RoomInspector } from './components/RoomInspector';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
-import { addFloorToLocation, addRoomToFloor, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, placeDeviceOnFloor, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
+import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, placeDeviceOnFloor, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
@@ -259,13 +259,14 @@ export function App() {
   const addFloor = () => {
     if (!locationId) return;
     const layout = floorPlan.locations[locationId];
-    const index = (layout?.floors.length ?? 0) + 1;
+    const index = (layout?.floors.filter((floor) => floor.id !== DEFAULT_FLOOR_ID).length ?? 0) + 1;
     const floor = createFloorPlanFloor(`floor-${Date.now().toString(36)}-${index}`, `Floor ${index}`);
     setFloorPlan((current) => addFloorToLocation(current, locationId, floor));
   };
 
   const selectFloor = (floorId: string) => {
     if (!locationId) return;
+    setSelectedRoomInspector(undefined);
     setFloorPlan((current) => setActiveFloor(current, locationId, floorId));
   };
 
@@ -295,6 +296,17 @@ export function App() {
     const floor = activeFloorPlanFloor(layout);
     if (!floor) return;
     setFloorPlan((current) => placeDeviceOnFloor(current, locationId, floor.id, serial, placement));
+  };
+
+  const setRoomPower = (floorId: string, roomId: string, on: boolean) => {
+    const floor = floorPlan.locations[locationId]?.floors.find((entry) => entry.id === floorId);
+    if (!floor) return;
+    void Promise.all(
+      locationDevices
+        .filter(isLightDevice)
+        .filter((device) => floor.devices[device.serial]?.roomId === roomId)
+        .map((device) => updateListDevice({ ...device, on })),
+    );
   };
 
   const visibleDevices = useMemo(() => {
@@ -681,6 +693,7 @@ export function App() {
           onPlaceDevice={placeFloorDevice}
           onSelect={selectDevice}
           onRoomSelect={openRoomInspector}
+          onRoomPower={setRoomPower}
           onSurfaceClick={closeInspector}
         />
       ) : (
