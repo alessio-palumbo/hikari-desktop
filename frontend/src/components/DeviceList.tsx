@@ -1,5 +1,6 @@
 import type { DeviceEffectStatus } from '../backend/api';
 import { isLightDevice, type Device, type Group } from '../domain/lifx';
+import { CenterViewToggle, type CenterView } from './CenterViewToggle';
 import { DevicePreview } from './DevicePreview';
 import { PowerDot, RowChevron, Slider } from './primitives';
 import './DeviceList.css';
@@ -14,6 +15,8 @@ interface DeviceListProps {
   refreshing: boolean;
   deviceStatus: Record<string, { loading?: boolean; error?: string }>;
   deviceEffectStatus: Record<string, DeviceEffectStatus & { loading?: boolean }>;
+  view: CenterView;
+  onViewChange: (view: CenterView) => void;
   onSelect: (serial: string) => void;
   onGroupInspect: () => void;
   onSurfaceClick: () => void;
@@ -31,6 +34,8 @@ export function DeviceList({
   refreshing,
   deviceStatus,
   deviceEffectStatus,
+  view,
+  onViewChange,
   onSelect,
   onGroupInspect,
   onSurfaceClick,
@@ -58,6 +63,7 @@ export function DeviceList({
           <header className="group-header">
             <div className="group-title-row">
               <h1>{group?.name.toLowerCase() ?? 'no group'}</h1>
+              <CenterViewToggle view={view} onChange={onViewChange} />
             </div>
             <div className="group-controls">
               <PowerDot disabled={!lightDevices.length} on={onCount > 0} onChange={(next) => onMasterChange(next)} />

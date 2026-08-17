@@ -1,0 +1,26 @@
+.center-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid oklch(1 0 0 / 0.055);
+  border-radius: 7px;
+  background: oklch(1 0 0 / 0.025);
+}
+
+.center-view-toggle button {
+  min-width: 46px;
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg-3);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.center-view-toggle button:hover,
+.center-view-toggle button[data-active="true"] {
+  background: oklch(1 0 0 / 0.06);
+  color: var(--fg-0);
+}

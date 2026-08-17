@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { getCommandEngineSettings, getDeviceSnapshot, getNetworkSettings, interpretCommand, restartDeviceDiscovery, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings } from './backend/api';
+import type { CenterView } from './components/CenterViewToggle';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
+import { FloorPlan } from './components/FloorPlan';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
 import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
+import { ensureLocationFloorPlan, loadFloorPlanPreferences, saveFloorPlanPreferences, type FloorPlanPreferences } from './domain/floorPlan';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
@@ -20,6 +23,7 @@ const INITIAL_DISCOVERY_DELAY_MS = 2000;
 const LOCATION_KEY = 'hikari:selectedLocation';
 const GROUP_KEY = 'hikari:selectedGroup';
 const COMMAND_AUTO_EXECUTE_KEY = 'hikari:commandAutoExecute';
+const CENTER_VIEW_KEY = 'hikari:centerView';
 
 type DeviceStatus = Record<string, { loading?: boolean; error?: string }>;
 type DeviceEffectStates = Record<string, DeviceEffectStatus & { loading?: boolean }>;
@@ -30,6 +34,8 @@ export function App() {
   const [discoveryStartedAt, setDiscoveryStartedAt] = useState(() => Date.now());
   const [locationId, setLocationId] = useState(() => loadPreference(LOCATION_KEY));
   const [groupId, setGroupId] = useState(() => loadPreference(GROUP_KEY));
+  const [centerView, setCenterView] = useState<CenterView>(() => loadCenterViewPreference());
+  const [floorPlan, setFloorPlan] = useState<FloorPlanPreferences>(() => loadFloorPlanPreferences(window.localStorage));
   const [selectedSerial, setSelectedSerial] = useState<string | undefined>();
   const [selectedGroupInspectorId, setSelectedGroupInspectorId] = useState<string | undefined>();
   const [query, setQuery] = useState('');
@@ -148,7 +154,14 @@ export function App() {
 
   useEffect(() => savePreference(LOCATION_KEY, locationId), [locationId]);
   useEffect(() => savePreference(GROUP_KEY, groupId), [groupId]);
+  useEffect(() => savePreference(CENTER_VIEW_KEY, centerView), [centerView]);
+  useEffect(() => saveFloorPlanPreferences(window.localStorage, floorPlan), [floorPlan]);
   useEffect(() => saveBooleanPreference(COMMAND_AUTO_EXECUTE_KEY, commandAutoExecute), [commandAutoExecute]);
+
+  useEffect(() => {
+    if (!locationId) return;
+    setFloorPlan((current) => ensureLocationFloorPlan(current, locationId));
+  }, [locationId]);
 
   const openCommandModal = useCallback(() => {
     setCommandOpen(true);
@@ -231,6 +244,9 @@ export function App() {
   }, [groupId, query, snapshot.devices, snapshot.groups]);
 
   const currentGroup = snapshot.groups.find((group) => group.id === groupId);
+  const currentLocation = snapshot.locations.find((location) => location.id === locationId);
+  const currentLocationGroupIds = new Set(snapshot.groups.filter((group) => group.locationId === locationId).map((group) => group.id));
+  const locationDevices = snapshot.devices.filter((device) => currentLocationGroupIds.has(device.groupId));
   const inspectorDevice = draft?.draft ?? selectedDevice;
 
   const replaceDevice = (next: Device) => {
@@ -567,29 +583,48 @@ export function App() {
         }
       />
 
-      <DeviceList
-        group={currentGroup}
-        groups={snapshot.groups}
-        devices={visibleDevices}
-        selectedSerial={selectedSerial}
-        groupInspecting={selectedGroupInspectorId === currentGroup?.id}
-        searching={query.trim().length > 0}
-        refreshing={refreshing}
-        deviceStatus={deviceStatus}
-        deviceEffectStatus={deviceEffectStatus}
-        onSelect={selectDevice}
-        onGroupInspect={openGroupInspector}
-        onSurfaceClick={closeInspector}
-        onDeviceChange={updateListDevice}
-        onMasterChange={(on, brightness) =>
-          void Promise.all(
-            snapshot.devices
-              .filter(isLightDevice)
-              .filter((device) => device.groupId === groupId)
-              .map((device) => updateListDevice({ ...device, on, brightness: brightness ?? device.brightness })),
-          )
-        }
-      />
+      {centerView === 'floor' ? (
+        <FloorPlan
+          location={currentLocation}
+          groups={snapshot.groups}
+          devices={locationDevices}
+          layout={floorPlan.locations[locationId]}
+          selectedSerial={selectedSerial}
+          selectedGroupId={groupId}
+          searching={query.trim().length > 0}
+          query={query}
+          view={centerView}
+          onViewChange={setCenterView}
+          onSelect={selectDevice}
+          onSurfaceClick={closeInspector}
+        />
+      ) : (
+        <DeviceList
+          group={currentGroup}
+          groups={snapshot.groups}
+          devices={visibleDevices}
+          selectedSerial={selectedSerial}
+          groupInspecting={selectedGroupInspectorId === currentGroup?.id}
+          searching={query.trim().length > 0}
+          refreshing={refreshing}
+          deviceStatus={deviceStatus}
+          deviceEffectStatus={deviceEffectStatus}
+          view={centerView}
+          onViewChange={setCenterView}
+          onSelect={selectDevice}
+          onGroupInspect={openGroupInspector}
+          onSurfaceClick={closeInspector}
+          onDeviceChange={updateListDevice}
+          onMasterChange={(on, brightness) =>
+            void Promise.all(
+              snapshot.devices
+                .filter(isLightDevice)
+                .filter((device) => device.groupId === groupId)
+                .map((device) => updateListDevice({ ...device, on, brightness: brightness ?? device.brightness })),
+            )
+          }
+        />
+      )}
 
       <CommandModal
         open={commandOpen}
@@ -699,6 +734,10 @@ function loadPreference(key: string): string {
     console.warn(`Unable to read preference ${key}`, error);
     return '';
   }
+}
+
+function loadCenterViewPreference(): CenterView {
+  return loadPreference(CENTER_VIEW_KEY) === 'floor' ? 'floor' : 'list';
 }
 
 function savePreference(key: string, value: string) {
