@@ -153,6 +153,16 @@ test('does not remove the last floor', () => {
   assert.equal(got.locations.home.activeFloorId, DEFAULT_FLOOR_ID);
 });
 
+test('removing the active floor selects the previous floor', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const withFloor1 = addFloorToLocation(prefs, 'home', createFloorPlanFloor('floor-1', 'Floor 1'));
+  const withFloor2 = addFloorToLocation(withFloor1, 'home', createFloorPlanFloor('floor-2', 'Floor 2'));
+  const removed = removeFloorFromLocation(withFloor2, 'home', 'floor-2');
+
+  assert.equal(withFloor2.locations.home.activeFloorId, 'floor-2');
+  assert.equal(removed.locations.home.activeFloorId, 'floor-1');
+});
+
 test('updates and moves rooms', () => {
   const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
   const room = createRectangleRoom('living', 'Living Room', 'living', { x: 0.1, y: 0.2 }, { x: 0.4, y: 0.3 });

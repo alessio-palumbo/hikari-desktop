@@ -111,7 +111,7 @@ export function FloorPlan({
         <header className="floor-plan-header">
           <div>
             <span>{location?.name.toLowerCase() ?? 'location'}</span>
-            <h1>{floor?.label.toLowerCase() ?? 'floor plan'}</h1>
+            <h1>{floor?.label ?? 'floor plan'}</h1>
           </div>
           <div className="floor-plan-actions">
             {!editing ? <div className="floor-plan-meta">
@@ -128,23 +128,42 @@ export function FloorPlan({
                   <ChevronDown size={12} aria-hidden="true" />
                 </label>
               ) : null}
-              {editing && floor ? <input value={floor.label} aria-label="Floor label" onChange={(event) => onRenameFloor(floor.id, event.target.value)} /> : null}
-              {editing ? <button type="button" onClick={onAddFloor}><Plus size={12} aria-hidden="true" /> floor</button> : null}
-              {editing && floor && (layout?.floors.length ?? 0) > 1 ? (
-                <button type="button" className="floor-icon-button" aria-label="Delete floor" onClick={() => onRemoveFloor(floor.id)}>
-                  <Trash2 size={13} strokeWidth={1.8} aria-hidden="true" />
-                </button>
+              {editing && floor ? (
+                <span className="floor-tool-cluster">
+                  <input value={floor.label} aria-label="Floor label" onChange={(event) => onRenameFloor(floor.id, event.target.value)} />
+                </span>
               ) : null}
               {editing ? (
                 <button
                   type="button"
+                  className="floor-room-add-button"
                   onClick={() => {
                     const roomId = onAddRoom();
                     if (roomId) setEditedRoomId(roomId);
                   }}
                 >
-                  <Plus size={12} aria-hidden="true" /> room
+                  <Plus size={12} aria-hidden="true" /> add room
                 </button>
+              ) : null}
+              {editing && layout ? (
+                <span className="floor-tool-cluster">
+                  <label className="floor-select-wrap">
+                    <select value={floor?.id ?? ''} aria-label="Floor" onChange={(event) => onSelectFloor(event.target.value)}>
+                      {layout.floors.map((entry) => (
+                        <option key={entry.id} value={entry.id}>{entry.label}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} aria-hidden="true" />
+                  </label>
+                  {floor && layout.floors.length > 1 ? (
+                    <button type="button" className="floor-icon-button" aria-label="Delete selected floor" onClick={() => onRemoveFloor(floor.id)}>
+                      <Trash2 size={13} strokeWidth={1.8} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                  <button type="button" className="floor-icon-button" aria-label="Add floor" onClick={onAddFloor}>
+                    <Plus size={13} strokeWidth={1.9} aria-hidden="true" />
+                  </button>
+                </span>
               ) : null}
               <button type="button" data-active={editing ? 'true' : 'false'} onClick={() => onEditingChange(!editing)}>
                 edit

@@ -177,15 +177,17 @@ export function removeFloorFromLocation(preferences: FloorPlanPreferences, locat
   const location = normalized.locations[cleanLocationId];
   if (!location || location.floors.length <= 1) return normalized;
 
+  const removedIndex = location.floors.findIndex((floor) => floor.id === cleanFloorId);
   const floors = location.floors.filter((floor) => floor.id !== cleanFloorId);
   if (floors.length === location.floors.length) return normalized;
+  const fallbackFloor = floors[Math.max(0, removedIndex - 1)] ?? floors[0];
 
   return {
     ...normalized,
     locations: {
       ...normalized.locations,
       [cleanLocationId]: {
-        activeFloorId: floors.some((floor) => floor.id === location.activeFloorId) ? location.activeFloorId : floors[0].id,
+        activeFloorId: floors.some((floor) => floor.id === location.activeFloorId) ? location.activeFloorId : fallbackFloor.id,
         floors,
       },
     },
