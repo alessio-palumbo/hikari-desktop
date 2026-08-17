@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
 import { FLOOR_PLAN_ROOM_TYPES, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
@@ -20,7 +20,7 @@ interface FloorPlanProps {
   editing: boolean;
   onViewChange: (view: CenterView) => void;
   onEditingChange: (editing: boolean) => void;
-  onAddRoom: () => void;
+  onAddRoom: () => string | undefined;
   onAddFloor: () => void;
   onSelectFloor: (floorId: string) => void;
   onRenameFloor: (floorId: string, label: string) => void;
@@ -67,6 +67,7 @@ export function FloorPlan({
   const floor = activeFloor(layout);
   const [editedRoomId, setEditedRoomId] = useState<string | undefined>();
   const editedRoom = floor?.rooms.find((room) => room.id === editedRoomId);
+  const roomLabelRef = useRef<HTMLInputElement | null>(null);
   const placed = new Set(Object.keys(floor?.devices ?? {}));
   const selectedGroupDevices = selectedGroupId ? new Set(devices.filter((device) => device.groupId === selectedGroupId).map((device) => device.serial)) : undefined;
   const matches = searchMatches(devices, groups, query);
@@ -90,6 +91,12 @@ export function FloorPlan({
     setEditedRoomId(undefined);
   }, [editing, floor?.id, floor?.rooms, editedRoomId]);
 
+  useEffect(() => {
+    if (!editing || !editedRoom) return;
+    roomLabelRef.current?.focus();
+    roomLabelRef.current?.select();
+  }, [editing, editedRoom?.id]);
+
   return (
     <main
       className="center-panel"
@@ -107,11 +114,11 @@ export function FloorPlan({
             <h1>{floor?.label.toLowerCase() ?? 'floor plan'}</h1>
           </div>
           <div className="floor-plan-actions">
-            <div className="floor-plan-meta">
+            {!editing ? <div className="floor-plan-meta">
               <span>{floor?.rooms.length ?? 0} room{floor?.rooms.length === 1 ? '' : 's'}</span>
-            </div>
+            </div> : null}
             <div className="floor-tools">
-              {layout && (editing || layout.floors.length > 1) ? (
+              {layout && !editing && layout.floors.length > 1 ? (
                 <label className="floor-select-wrap">
                   <select value={floor?.id ?? ''} aria-label="Floor" onChange={(event) => onSelectFloor(event.target.value)}>
                     {layout.floors.map((entry) => (
@@ -122,9 +129,23 @@ export function FloorPlan({
                 </label>
               ) : null}
               {editing && floor ? <input value={floor.label} aria-label="Floor label" onChange={(event) => onRenameFloor(floor.id, event.target.value)} /> : null}
-              {editing ? <button type="button" onClick={onAddFloor}>add floor</button> : null}
-              {editing ? <button type="button" onClick={onAddRoom}>add room</button> : null}
-              {editing && floor && (layout?.floors.length ?? 0) > 1 ? <button type="button" onClick={() => onRemoveFloor(floor.id)}>delete floor</button> : null}
+              {editing ? <button type="button" onClick={onAddFloor}><Plus size={12} aria-hidden="true" /> floor</button> : null}
+              {editing && floor && (layout?.floors.length ?? 0) > 1 ? (
+                <button type="button" className="floor-icon-button" aria-label="Delete floor" onClick={() => onRemoveFloor(floor.id)}>
+                  <Trash2 size={13} strokeWidth={1.8} aria-hidden="true" />
+                </button>
+              ) : null}
+              {editing ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const roomId = onAddRoom();
+                    if (roomId) setEditedRoomId(roomId);
+                  }}
+                >
+                  <Plus size={12} aria-hidden="true" /> room
+                </button>
+              ) : null}
               <button type="button" data-active={editing ? 'true' : 'false'} onClick={() => onEditingChange(!editing)}>
                 edit
               </button>
@@ -137,6 +158,7 @@ export function FloorPlan({
           <RoomEditor
             floorId={floor.id}
             room={editedRoom}
+            labelRef={roomLabelRef}
             onUpdateRoom={onUpdateRoom}
             onRemoveRoom={(floorId, roomId) => {
               onRemoveRoom(floorId, roomId);
@@ -356,11 +378,13 @@ function RoomShape({
 function RoomEditor({
   floorId,
   room,
+  labelRef,
   onUpdateRoom,
   onRemoveRoom,
 }: {
   floorId: string;
   room?: FloorPlanRoom;
+  labelRef: RefObject<HTMLInputElement | null>;
   onUpdateRoom: (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => void;
   onRemoveRoom: (floorId: string, roomId: string) => void;
 }) {
@@ -381,6 +405,7 @@ function RoomEditor({
         <>
           <span>room</span>
           <input
+            ref={labelRef}
             value={label}
             aria-label={`${room.label} room label`}
             onChange={(event) => setLabel(event.target.value)}

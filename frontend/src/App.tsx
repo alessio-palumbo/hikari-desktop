@@ -246,14 +246,15 @@ export function App() {
   };
 
   const addFloorRoom = () => {
-    if (!locationId) return;
+    if (!locationId) return undefined;
     const layout = floorPlan.locations[locationId];
     const floor = activeFloorPlanFloor(layout);
-    if (!floor) return;
+    if (!floor) return undefined;
     const index = floor.rooms.length + 1;
     const offset = (floor.rooms.length % 6) * 0.055;
     const room = createRectangleRoom(`room-${Date.now().toString(36)}-${index}`, `Room ${index}`, 'other', { x: 0.12 + offset, y: 0.12 + offset }, { x: 0.36, y: 0.28 });
     setFloorPlan((current) => addRoomToFloor(current, locationId, floor.id, room));
+    return room.id;
   };
 
   const addFloor = () => {

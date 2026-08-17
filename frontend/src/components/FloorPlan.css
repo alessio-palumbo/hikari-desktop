@@ -49,6 +49,18 @@
   cursor: pointer;
 }
 
+.floor-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.floor-tools .floor-icon-button {
+  width: 28px;
+  justify-content: center;
+  padding: 0;
+}
+
 .floor-tools input {
   width: 92px;
   outline: 0;
