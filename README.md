@@ -2,7 +2,7 @@
 
 hikari is a Wails desktop app for controlling LIFX devices on the local network.
 
-The app is in active development, but it is ready to try with real LAN devices. It currently has a real `lifxlan-go` transport for LAN discovery and direct device control, plus a mock transport for UI development. Scenes, effects, presets, full installer packaging, signing, and notarization are not implemented yet.
+The app is in active development, but it is ready to try with real LAN devices. It currently has a real `lifxlan-go` transport for LAN discovery and direct device control, plus a mock transport for UI development. Scenes, presets, full installer packaging, signing, and notarization are not implemented yet.
 
 ## Current Scope
 
@@ -11,6 +11,8 @@ The app is in active development, but it is ready to try with real LAN devices. 
 - Multizone and matrix global power, brightness, color, and white temperature control.
 - Multizone and matrix draft editing with brush, fill, picker, and gradient tools.
 - Matrix custom grids and orientation-aware preview/apply behavior.
+- Device and firmware effects for supported multizone and matrix lights.
+- Floor-plan view with multiple floors, editable rooms, draggable light placement, room power controls, and local layout persistence.
 - Periodic refresh with pending-state reconciliation to avoid stale device updates fighting recent UI changes.
 - Optional local text commands through the rule-only `lifx-command-engine` sidecar.
 
@@ -179,8 +181,8 @@ Release builds are intended to be produced natively on each platform through Git
 
 - `main.go` and `app.go`: Wails entry point and app binding.
 - `internal/backend`: device transport interface, LIFX transport, optional command-engine sidecar service, mock transport, DTOs, and backend tests.
-- `frontend/src/domain`: typed frontend device models, draft editor state, and refresh reconciliation.
-- `frontend/src/components`: React UI components for the shell, device list, previews, and inspector.
+- `frontend/src/domain`: typed frontend device models, draft editor state, floor-plan preferences, and refresh reconciliation.
+- `frontend/src/components`: React UI components for the shell, device list, floor plan, previews, and inspector.
 - `frontend/src/styles`: global styles and design tokens.
 
 The frontend calls:
