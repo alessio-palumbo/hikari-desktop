@@ -411,7 +411,7 @@ func matrixEffectSupported(device Device, effect DeviceEffect) bool {
 }
 
 func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, req StartDeviceEffectRequest) (DeviceEffectStatus, error) {
-	if req.Device.Kind != DeviceKindMatrix {
+	if req.Device.Kind != DeviceKindMatrix && !(req.Device.Kind == DeviceKindMultizone && req.Effect == DeviceEffectFlow) {
 		err := fmt.Errorf("effect %q is only supported for matrix devices", req.Effect)
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
@@ -517,7 +517,7 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 			Palette:        appEffectWavePalette(previous),
 			Axis:           lifxeffects.FlowAxisDiagonal,
 			BrightnessMode: lifxeffects.FlowBrightnessConstant,
-			Period:         appEffectPeriod(req.SpeedMS, 2*time.Second),
+			Period:         appEffectPeriod(req.SpeedMS, 4*time.Second),
 		}), nil
 	default:
 		return nil, fmt.Errorf("effect %q is not supported as an app effect", req.Effect)
@@ -596,7 +596,7 @@ func appEffectPrimaryColor(device Device) lifxeffects.Color {
 }
 
 func appEffectPalette(device Device) []lifxeffects.Color {
-	colors := representativePaletteColors(nonDarkPaletteColors(visibleMatrixPixels(device.Chain)), 6)
+	colors := representativePaletteColors(nonDarkPaletteColors(visibleAppEffectColors(device)), 6)
 	if len(colors) == 0 {
 		if device.Color != nil {
 			return []lifxeffects.Color{hslColorToEffectColor(*device.Color, device.Brightness, device.Kelvin, device.Capability)}
@@ -612,6 +612,13 @@ func appEffectPalette(device Device) []lifxeffects.Color {
 		palette = append(palette, hslColorToEffectColor(color, device.Brightness, device.Kelvin, device.Capability))
 	}
 	return palette
+}
+
+func visibleAppEffectColors(device Device) []HSLColor {
+	if len(device.Zones) > 0 {
+		return append([]HSLColor(nil), device.Zones...)
+	}
+	return visibleMatrixPixels(device.Chain)
 }
 
 func appEffectWavePalette(device Device) lifxeffects.Palette {

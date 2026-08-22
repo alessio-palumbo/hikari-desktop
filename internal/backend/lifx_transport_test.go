@@ -1239,6 +1239,27 @@ func TestLifxTransportStartDeviceEffectDefaultsMultizoneMove(t *testing.T) {
 	}
 }
 
+func TestLifxTransportStartDeviceEffectRunsMultizoneFlow(t *testing.T) {
+	lifx := testLifxDevice(t, "d073d501a2c3", "Strip", "Home", "Desk")
+	lifx.SetProductInfo(31)
+	lifx.MultizoneProperties.Zones = []packets.LightHsbk{testHSBK(20), testHSBK(120), testHSBK(220)}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}, sent: make(chan sentMessage, 4)}
+	transport := NewLifxTransportWithController(controller)
+	device := mapLifxDevice(lifx, "desk")
+
+	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectFlow, SpeedMS: 2000})
+	if err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	if status.Effect != string(DeviceEffectFlow) || !status.Running {
+		t.Fatalf("status = %#v, want running flow", status)
+	}
+	payload := waitForMultizoneSetColors(t, controller.sent)
+	if payload.Index != 0 || payload.ColorsCount != 3 {
+		t.Fatalf("multizone index/count = %d/%d, want 0/3", payload.Index, payload.ColorsCount)
+	}
+}
+
 func TestLifxTransportStartDeviceEffectSendsMatrixFlame(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)
@@ -2000,6 +2021,22 @@ func waitForTileSet64(t *testing.T, sent <-chan sentMessage) *packets.TileSet64 
 			}
 		case <-deadline:
 			t.Fatal("timed out waiting for TileSet64")
+			return nil
+		}
+	}
+}
+
+func waitForMultizoneSetColors(t *testing.T, sent <-chan sentMessage) *packets.MultiZoneExtendedSetColorZones {
+	t.Helper()
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case msg := <-sent:
+			if payload, ok := msg.msg.Payload.(*packets.MultiZoneExtendedSetColorZones); ok {
+				return payload
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for MultiZoneExtendedSetColorZones")
 			return nil
 		}
 	}

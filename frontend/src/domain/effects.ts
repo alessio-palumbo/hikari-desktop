@@ -113,10 +113,10 @@ export const deviceEffects: DeviceEffectDefinition[] = [
   {
     id: 'flow',
     label: 'Flow',
-    description: 'Scrolling matrix color flow',
+    description: 'Scrolling color flow',
     source: 'app',
-    deviceKinds: [DeviceKind.Matrix],
-    speed: { minMs: 1000, maxMs: 30000, defaultMs: 2000 },
+    deviceKinds: [DeviceKind.Multizone, DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 4000 },
   },
 ];
 

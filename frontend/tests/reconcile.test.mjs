@@ -356,7 +356,7 @@ test('firmware effect catalogue filters by device kind and firmware', () => {
   const oldMatrix = { ...matrixDevice(), firmware: '4.7' };
   const newMatrix = { ...matrixDevice(), firmware: '4.8' };
 
-  assert.deepEqual(supportedFirmwareEffects(multizone).map((effect) => effect.id), ['move']);
+  assert.deepEqual(supportedFirmwareEffects(multizone).map((effect) => effect.id), ['move', 'flow']);
   assert.deepEqual(supportedFirmwareEffects(oldMatrix).map((effect) => effect.id), ['flame', 'morph', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow']);
   assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow']);
 });
@@ -389,7 +389,7 @@ test('firmware effect speed helpers expose defaults and ranges', () => {
   assert.deepEqual(waterfall, { minMs: 1000, maxMs: 30000, defaultMs: 1000 });
   assert.deepEqual(wave, { minMs: 1000, maxMs: 30000, defaultMs: 1000 });
   assert.deepEqual(ring, { minMs: 1000, maxMs: 30000, defaultMs: 2000 });
-  assert.deepEqual(flow, { minMs: 1000, maxMs: 30000, defaultMs: 2000 });
+  assert.deepEqual(flow, { minMs: 1000, maxMs: 30000, defaultMs: 4000 });
   assert.equal(unitToSpeedMs(0, morph), 1000);
   assert.equal(unitToSpeedMs(0.5, morph), 13000);
   assert.equal(speedToUnit(13000, morph), 0.5);
