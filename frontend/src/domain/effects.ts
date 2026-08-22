@@ -1,6 +1,6 @@
 import { DeviceKind, type Device } from './lifx.js';
 
-export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets' | 'wave' | 'ring';
+export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets' | 'wave' | 'ring' | 'flow';
 
 export type DeviceEffectSource = 'firmware' | 'app';
 
@@ -106,6 +106,14 @@ export const deviceEffects: DeviceEffectDefinition[] = [
     id: 'ring',
     label: 'Ring',
     description: 'Expanding matrix ring',
+    source: 'app',
+    deviceKinds: [DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 2000 },
+  },
+  {
+    id: 'flow',
+    label: 'Flow',
+    description: 'Scrolling matrix color flow',
     source: 'app',
     deviceKinds: [DeviceKind.Matrix],
     speed: { minMs: 1000, maxMs: 30000, defaultMs: 2000 },

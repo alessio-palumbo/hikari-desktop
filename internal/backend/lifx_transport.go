@@ -511,6 +511,14 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 			Palette:      appEffectWavePalette(previous),
 			Period:       appEffectPeriod(req.SpeedMS, 2*time.Second),
 		}), nil
+	case DeviceEffectFlow:
+		return lifxeffects.NewFlow(lifxeffects.FlowConfig{
+			Capabilities:   caps,
+			Palette:        appEffectWavePalette(previous),
+			Axis:           lifxeffects.FlowAxisDiagonal,
+			BrightnessMode: lifxeffects.FlowBrightnessConstant,
+			Period:         appEffectPeriod(req.SpeedMS, 2*time.Second),
+		}), nil
 	default:
 		return nil, fmt.Errorf("effect %q is not supported as an app effect", req.Effect)
 	}
@@ -701,7 +709,7 @@ func lifxDeviceBySerial(devices []lifxdevice.Device, serial lifxdevice.Serial) (
 
 func isAppEffect(effect DeviceEffect) bool {
 	switch effect {
-	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave, DeviceEffectRing:
+	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave, DeviceEffectRing, DeviceEffectFlow:
 		return true
 	default:
 		return false

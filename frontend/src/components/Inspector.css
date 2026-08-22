@@ -360,6 +360,24 @@
   box-shadow: 0 0 0 4px oklch(0.76 0.14 230 / 0.18);
 }
 
+.effect-swatch[data-effect="flow"] {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      oklch(0.77 0.14 190) 0 8px,
+      oklch(0.76 0.15 255) 8px 16px,
+      oklch(0.78 0.14 315) 16px 24px
+    );
+  background-size: 46px 46px;
+}
+
+.effect-swatch[data-effect="flow"]::before {
+  inset: 6px;
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, oklch(1 0 0 / 0.16), transparent 42% 58%, oklch(0 0 0 / 0.18));
+}
+
 .effect-option[data-active="true"] .effect-swatch[data-effect="move"] {
   animation: fx-move 1.6s linear infinite;
 }
@@ -400,6 +418,10 @@
 
 .effect-option[data-active="true"] .effect-swatch[data-effect="ring"]::before {
   animation: fx-ring 1.2s ease-out infinite;
+}
+
+.effect-option[data-active="true"] .effect-swatch[data-effect="flow"] {
+  animation: fx-flow 1.35s linear infinite;
 }
 
 .effect-action {
@@ -537,6 +559,15 @@
   to {
     opacity: 0.38;
     transform: scale(1.25);
+  }
+}
+
+@keyframes fx-flow {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 46px 46px;
   }
 }
 
