@@ -1463,6 +1463,53 @@ func TestLifxTransportStartDeviceEffectMorphUsesFullPaletteBrightness(t *testing
 	assertPayloadBrightness(t, payload.Settings.Palette[:int(payload.Settings.PaletteCount)], 100)
 }
 
+func TestAppEffectPaletteDerivesVariationFromSingleColor(t *testing.T) {
+	device := Device{
+		Kind:       DeviceKindMultizone,
+		Brightness: 0.6,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Zones: []HSLColor{
+			{H: 210, S: 0.8, L: 0.6, Kelvin: 3500},
+			{H: 210, S: 0.8, L: 0.6, Kelvin: 3500},
+			{H: 210, S: 0.8, L: 0.6, Kelvin: 3500},
+		},
+	}
+
+	palette := appEffectPalette(device)
+
+	if len(palette) < 3 {
+		t.Fatalf("palette = %#v, want derived color variation", palette)
+	}
+	if palette[0].Hue == palette[1].Hue || palette[1].Hue == palette[2].Hue {
+		t.Fatalf("palette hues = %#v, want varied hues", palette)
+	}
+}
+
+func TestAppEffectPaletteDerivesKelvinVariationFromSingleWhite(t *testing.T) {
+	device := Device{
+		Kind:       DeviceKindMultizone,
+		Brightness: 0.6,
+		Kelvin:     3500,
+		Capability: DeviceCapability{HasColor: false, KelvinMin: 2500, KelvinMax: 6500},
+		Zones: []HSLColor{
+			{S: 0, L: 0.6, Kelvin: 3500},
+			{S: 0, L: 0.6, Kelvin: 3500},
+		},
+	}
+
+	palette := appEffectPalette(device)
+
+	if len(palette) < 3 {
+		t.Fatalf("palette = %#v, want derived kelvin variation", palette)
+	}
+	if palette[0].Saturation != 0 || palette[1].Saturation != 0 || palette[2].Saturation != 0 {
+		t.Fatalf("palette = %#v, want white palette", palette)
+	}
+	if palette[0].Kelvin >= palette[1].Kelvin || palette[1].Kelvin >= palette[2].Kelvin {
+		t.Fatalf("palette kelvin = %#v, want increasing kelvin variation", palette)
+	}
+}
+
 func TestLifxTransportStartDeviceEffectMorphOnlySendsEffect(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := NewLifxTransportWithController(controller)

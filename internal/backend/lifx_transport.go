@@ -599,19 +599,87 @@ func appEffectPalette(device Device) []lifxeffects.Color {
 	colors := representativePaletteColors(nonDarkPaletteColors(visibleAppEffectColors(device)), 6)
 	if len(colors) == 0 {
 		if device.Color != nil {
-			return []lifxeffects.Color{hslColorToEffectColor(*device.Color, device.Brightness, device.Kelvin, device.Capability)}
+			colors = []HSLColor{*device.Color}
+		} else {
+			colors = []HSLColor{
+				{H: 28, S: 0.75, L: 0.65},
+				{H: 200, S: 0.7, L: 0.62},
+				{H: 285, S: 0.62, L: 0.6},
+			}
 		}
-		colors = []HSLColor{
-			{H: 28, S: 0.75, L: 0.65},
-			{H: 200, S: 0.7, L: 0.62},
-			{H: 285, S: 0.62, L: 0.6},
-		}
+	}
+	if !paletteHasVariation(colors) {
+		colors = derivedAppEffectPalette(colors[0])
 	}
 	palette := make([]lifxeffects.Color, 0, len(colors))
 	for _, color := range colors {
 		palette = append(palette, hslColorToEffectColor(color, device.Brightness, device.Kelvin, device.Capability))
 	}
 	return palette
+}
+
+func paletteHasVariation(colors []HSLColor) bool {
+	if len(colors) < 2 {
+		return false
+	}
+	first := colors[0]
+	for _, color := range colors[1:] {
+		if math.Abs(first.S-color.S) > 0.08 || math.Abs(first.L-color.L) > 0.08 || hueDistance(first.H, color.H) > 12 {
+			return true
+		}
+		if first.Kelvin > 0 && color.Kelvin > 0 && absInt(first.Kelvin-color.Kelvin) > 250 {
+			return true
+		}
+	}
+	return false
+}
+
+func derivedAppEffectPalette(color HSLColor) []HSLColor {
+	if color.Kelvin > 0 && color.S <= 0.005 {
+		return derivedKelvinPalette(color)
+	}
+	saturation := math.Max(color.S, 0.35)
+	lightness := color.L
+	if lightness <= 0 {
+		lightness = 0.55
+	}
+	return []HSLColor{
+		{H: wrapHue(color.H - 28), S: clamp(saturation*0.9, 0, 1), L: lightness, Kelvin: color.Kelvin},
+		{H: wrapHue(color.H), S: clamp(saturation, 0, 1), L: lightness, Kelvin: color.Kelvin},
+		{H: wrapHue(color.H + 28), S: clamp(saturation*1.05, 0, 1), L: lightness, Kelvin: color.Kelvin},
+	}
+}
+
+func derivedKelvinPalette(color HSLColor) []HSLColor {
+	kelvin := color.Kelvin
+	if kelvin <= 0 {
+		kelvin = 3500
+	}
+	lightness := color.L
+	if lightness <= 0 {
+		lightness = 0.55
+	}
+	return []HSLColor{
+		{S: 0, L: lightness, Kelvin: clampInt(kelvin-700, 1500, 9000)},
+		{S: 0, L: lightness, Kelvin: clampInt(kelvin, 1500, 9000)},
+		{S: 0, L: lightness, Kelvin: clampInt(kelvin+700, 1500, 9000)},
+	}
+}
+
+func wrapHue(hue float64) float64 {
+	wrapped := math.Mod(hue, 360)
+	if wrapped < 0 {
+		wrapped += 360
+	}
+	return wrapped
+}
+
+func hueDistance(a, b float64) float64 {
+	distance := math.Abs(wrapHue(a) - wrapHue(b))
+	if distance > 180 {
+		return 360 - distance
+	}
+	return distance
 }
 
 func visibleAppEffectColors(device Device) []HSLColor {
@@ -1835,6 +1903,13 @@ func clampInt(value int, minValue int, maxValue int) int {
 	}
 	if value > maxValue {
 		return maxValue
+	}
+	return value
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
 	}
 	return value
 }
