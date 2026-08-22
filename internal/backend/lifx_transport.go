@@ -422,7 +422,7 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	}
 	previous := t.stopAppEffect(req.Device.Serial)
 	captured := captureAppEffectState(req.Device, previous, t.cachedDevice(req.Device.Serial))
-	effect, err := newAppEffect(req.Effect, lifxDevice, captured)
+	effect, err := newAppEffect(req, lifxDevice, captured)
 	if err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
@@ -467,9 +467,9 @@ func (t *LifxTransport) runAppDeviceEffect(ctx context.Context, serial string, e
 	t.clearAppEffect(serial, effect)
 }
 
-func newAppEffect(effect DeviceEffect, lifxDevice lifxdevice.Device, previous Device) (lifxeffects.Effect, error) {
+func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, previous Device) (lifxeffects.Effect, error) {
 	caps := appEffectCapabilities(lifxDevice)
-	switch effect {
+	switch req.Effect {
 	case DeviceEffectSnake:
 		color := appEffectPrimaryColor(previous)
 		return lifxeffects.NewSnake(lifxeffects.SnakeConfig{
@@ -505,9 +505,22 @@ func newAppEffect(effect DeviceEffect, lifxDevice lifxdevice.Device, previous De
 			Palette:      appEffectWavePalette(previous),
 			Waves:        2,
 		}), nil
+	case DeviceEffectRing:
+		return lifxeffects.NewRing(lifxeffects.RingConfig{
+			Capabilities: caps,
+			Palette:      appEffectWavePalette(previous),
+			Period:       appEffectPeriod(req.SpeedMS, 2*time.Second),
+		}), nil
 	default:
-		return nil, fmt.Errorf("effect %q is not supported as an app effect", effect)
+		return nil, fmt.Errorf("effect %q is not supported as an app effect", req.Effect)
 	}
+}
+
+func appEffectPeriod(speedMS int, fallback time.Duration) time.Duration {
+	if speedMS <= 0 {
+		return fallback
+	}
+	return time.Duration(speedMS) * time.Millisecond
 }
 
 func appEffectCapabilities(device lifxdevice.Device) lifxeffects.Capabilities {
@@ -688,7 +701,7 @@ func lifxDeviceBySerial(devices []lifxdevice.Device, serial lifxdevice.Serial) (
 
 func isAppEffect(effect DeviceEffect) bool {
 	switch effect {
-	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave:
+	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave, DeviceEffectRing:
 		return true
 	default:
 		return false

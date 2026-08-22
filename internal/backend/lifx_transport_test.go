@@ -1632,6 +1632,7 @@ func TestLifxTransportStartDeviceEffectRunsHikariMatrixEffects(t *testing.T) {
 		DeviceEffectWaterfall,
 		DeviceEffectRockets,
 		DeviceEffectWave,
+		DeviceEffectRing,
 	}
 	for _, effect := range effects {
 		t.Run(string(effect), func(t *testing.T) {

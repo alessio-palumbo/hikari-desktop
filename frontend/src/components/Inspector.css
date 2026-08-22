@@ -347,6 +347,19 @@
   background-size: 100% 100%;
 }
 
+.effect-swatch[data-effect="ring"] {
+  background:
+    radial-gradient(circle at 50% 50%, oklch(0.14 0.018 245) 0 23%, transparent 24%),
+    linear-gradient(180deg, oklch(0.18 0.02 245), oklch(0.12 0.015 245));
+}
+
+.effect-swatch[data-effect="ring"]::before {
+  inset: 8px;
+  border: 2px solid oklch(0.82 0.13 190);
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px oklch(0.76 0.14 230 / 0.18);
+}
+
 .effect-option[data-active="true"] .effect-swatch[data-effect="move"] {
   animation: fx-move 1.6s linear infinite;
 }
@@ -383,6 +396,10 @@
 
 .effect-option[data-active="true"] .effect-swatch[data-effect="wave"]::before {
   animation: fx-wave 1s ease-in-out infinite alternate;
+}
+
+.effect-option[data-active="true"] .effect-swatch[data-effect="ring"]::before {
+  animation: fx-ring 1.2s ease-out infinite;
 }
 
 .effect-action {
@@ -509,6 +526,17 @@
   }
   to {
     transform: translateY(-3px);
+  }
+}
+
+@keyframes fx-ring {
+  from {
+    opacity: 0.95;
+    transform: scale(0.48);
+  }
+  to {
+    opacity: 0.38;
+    transform: scale(1.25);
   }
 }
 
