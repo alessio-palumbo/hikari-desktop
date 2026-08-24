@@ -142,6 +142,9 @@ const (
 	DeviceEffectWave      DeviceEffect = "wave"
 	DeviceEffectRing      DeviceEffect = "ring"
 	DeviceEffectFlow      DeviceEffect = "flow"
+	DeviceEffectComet     DeviceEffect = "comet"
+	DeviceEffectSparkle   DeviceEffect = "sparkle"
+	DeviceEffectScanner   DeviceEffect = "scanner"
 )
 
 func emptyDeviceSnapshot() DeviceSnapshot {

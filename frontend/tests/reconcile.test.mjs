@@ -356,16 +356,24 @@ test('firmware effect catalogue filters by device kind and firmware', () => {
   const oldMatrix = { ...matrixDevice(), firmware: '4.7' };
   const newMatrix = { ...matrixDevice(), firmware: '4.8' };
 
-  assert.deepEqual(supportedFirmwareEffects(multizone).map((effect) => effect.id), ['move', 'flow']);
-  assert.deepEqual(supportedFirmwareEffects(oldMatrix).map((effect) => effect.id), ['flame', 'morph', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow']);
-  assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow']);
+  assert.deepEqual(supportedFirmwareEffects(multizone).map((effect) => effect.id), ['move', 'flow', 'comet', 'sparkle', 'scanner']);
+  assert.deepEqual(supportedFirmwareEffects(oldMatrix).map((effect) => effect.id), ['flame', 'morph', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow', 'sparkle', 'scanner']);
+  assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow', 'sparkle', 'scanner']);
+});
+
+test('effect catalogue can override speed defaults by device kind', () => {
+  const multizone = { ...base.devices[0], kind: DeviceKind.Multizone };
+  const matrix = { ...matrixDevice(), firmware: '4.8' };
+
+  assert.equal(supportedDeviceEffects(multizone).find((effect) => effect.id === 'scanner').speed.defaultMs, 4000);
+  assert.equal(supportedDeviceEffects(matrix).find((effect) => effect.id === 'scanner').speed.defaultMs, 2000);
 });
 
 test('effect catalogue separates firmware and hikari-rendered effects', () => {
   const effects = supportedDeviceEffects({ ...matrixDevice(), firmware: '4.8' });
 
   assert.deepEqual(effects.filter((effect) => effect.source === 'firmware').map((effect) => effect.id), ['flame', 'morph', 'clouds']);
-  assert.deepEqual(effects.filter((effect) => effect.source === 'app').map((effect) => effect.id), ['snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow']);
+  assert.deepEqual(effects.filter((effect) => effect.source === 'app').map((effect) => effect.id), ['snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow', 'sparkle', 'scanner']);
 });
 
 test('firmware effect speed helpers expose defaults and ranges', () => {
@@ -379,6 +387,8 @@ test('firmware effect speed helpers expose defaults and ranges', () => {
   const wave = effects.find((effect) => effect.id === 'wave').speed;
   const ring = effects.find((effect) => effect.id === 'ring').speed;
   const flow = effects.find((effect) => effect.id === 'flow').speed;
+  const sparkle = effects.find((effect) => effect.id === 'sparkle').speed;
+  const scanner = effects.find((effect) => effect.id === 'scanner').speed;
 
   assert.equal(defaultEffectSpeedMs(effects), 3000);
   assert.deepEqual(flame, { minMs: 1000, maxMs: 25000, defaultMs: 3000 });
@@ -390,6 +400,8 @@ test('firmware effect speed helpers expose defaults and ranges', () => {
   assert.deepEqual(wave, { minMs: 1000, maxMs: 30000, defaultMs: 1000 });
   assert.deepEqual(ring, { minMs: 1000, maxMs: 30000, defaultMs: 2000 });
   assert.deepEqual(flow, { minMs: 1000, maxMs: 30000, defaultMs: 4000 });
+  assert.deepEqual(sparkle, { minMs: 1000, maxMs: 30000, defaultMs: 2000 });
+  assert.deepEqual(scanner, { minMs: 1000, maxMs: 30000, defaultMs: 2000 });
   assert.equal(unitToSpeedMs(0, morph), 1000);
   assert.equal(unitToSpeedMs(0.5, morph), 13000);
   assert.equal(speedToUnit(13000, morph), 0.5);

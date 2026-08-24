@@ -63,9 +63,15 @@ export function App() {
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
   const [deviceEffectStatus, setDeviceEffectStatus] = useState<DeviceEffectStates>({});
   const [pendingState, setPendingState] = useState<PendingDeviceStates>({});
+  const snapshotRef = useRef<DeviceSnapshot>(snapshot);
   const draftRef = useRef<DeviceDraft | undefined>(undefined);
   const pendingStateRef = useRef<PendingDeviceStates>({});
+  const deviceCommandRef = useRef<Record<string, Promise<void>>>({});
   const networkRecoveryRef = useRef(false);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
   useEffect(() => {
     draftRef.current = draft;
@@ -339,6 +345,7 @@ export function App() {
   const inspectorDevice = draft?.draft ?? selectedDevice;
 
   const replaceDevice = (next: Device) => {
+    snapshotRef.current = { ...snapshotRef.current, devices: snapshotRef.current.devices.map((device) => (device.serial === next.serial ? next : device)) };
     setSnapshot((prev) => ({ ...prev, devices: prev.devices.map((device) => (device.serial === next.serial ? next : device)) }));
   };
 
@@ -421,21 +428,33 @@ export function App() {
   };
 
   const updateListDevice = async (next: Device) => {
-    const previous = snapshot.devices.find((device) => device.serial === next.serial);
+    const previous = snapshotRef.current.devices.find((device) => device.serial === next.serial);
     const intent = commandIntent(next, previous);
     const command = prepareDeviceCommand(next, previous);
     replaceDevice(command);
     recordPendingState(command, previous);
     setDeviceLoading(command.serial, true);
+
+    const priorOperation = deviceCommandRef.current[command.serial] ?? Promise.resolve();
+    const operation = priorOperation.catch(() => undefined).then(async () => {
+      try {
+        const committed = await setDeviceState(command, true, intent);
+        replaceDevice(committed);
+        setDeviceLoading(command.serial, false);
+      } catch (error) {
+        clearPendingState(command.serial);
+        if (handleRecoverableNetworkError(error)) return;
+        if (previous) replaceDevice(previous);
+        setDeviceLoading(command.serial, false, errorMessage(error));
+      }
+    });
+    deviceCommandRef.current[command.serial] = operation;
     try {
-      const committed = await setDeviceState(command, true, intent);
-      replaceDevice(committed);
-      setDeviceLoading(command.serial, false);
-    } catch (error) {
-      clearPendingState(command.serial);
-      if (handleRecoverableNetworkError(error)) return;
-      if (previous) replaceDevice(previous);
-      setDeviceLoading(command.serial, false, errorMessage(error));
+      await operation;
+    } finally {
+      if (deviceCommandRef.current[command.serial] === operation) {
+        delete deviceCommandRef.current[command.serial];
+      }
     }
   };
 
@@ -454,32 +473,52 @@ export function App() {
 
   const applyDraft = async () => {
     if (!draft) return;
+    const serial = draft.draft.serial;
     setSaving(true);
-    setDeviceLoading(draft.draft.serial, true);
+    setDeviceLoading(serial, true);
+
+    const priorOperation = deviceCommandRef.current[serial] ?? Promise.resolve();
+    const operation = priorOperation.catch(() => undefined).then(async () => {
+      try {
+        const committed = await setDeviceState(draft.draft, false, draftIntent(draft.draft));
+        recordPendingState(committed, draft.base);
+        replaceDevice(committed);
+        setDraft(commitDraft(draft, committed));
+        setDeviceLoading(serial, false);
+      } catch (error) {
+        clearPendingState(serial);
+        if (handleRecoverableNetworkError(error)) return;
+        setDeviceLoading(serial, false, errorMessage(error));
+      } finally {
+        setSaving(false);
+      }
+    });
+    deviceCommandRef.current[serial] = operation;
     try {
-      const committed = await setDeviceState(draft.draft, false, draftIntent(draft.draft));
-      recordPendingState(committed, draft.base);
-      replaceDevice(committed);
-      setDraft(commitDraft(draft, committed));
-      setDeviceLoading(draft.draft.serial, false);
-    } catch (error) {
-      clearPendingState(draft.draft.serial);
-      if (handleRecoverableNetworkError(error)) return;
-      setDeviceLoading(draft.draft.serial, false, errorMessage(error));
+      await operation;
     } finally {
-      setSaving(false);
+      if (deviceCommandRef.current[serial] === operation) {
+        delete deviceCommandRef.current[serial];
+      }
     }
   };
 
   const startInspectorEffect = async (device: Device, effect: DeviceEffect, speedMs: number) => {
     setDeviceEffectLoading(device.serial, true);
     try {
-      const status = await startDeviceEffect(device, { effect, speedMs });
-      setDeviceEffectStatus((prev) => ({ ...prev, [device.serial]: { ...status, loading: false } }));
+      await deviceCommandRef.current[device.serial];
+      const current = latestEffectDevice(device);
+      const status = await startDeviceEffect(current, { effect, speedMs });
+      setDeviceEffectStatus((prev) => ({ ...prev, [current.serial]: { ...status, loading: false } }));
     } catch (error) {
       if (handleRecoverableNetworkError(error)) return;
       setDeviceEffectLoading(device.serial, false, errorMessage(error));
     }
+  };
+
+  const latestEffectDevice = (device: Device): Device => {
+    if (draftRef.current?.draft.serial === device.serial) return draftRef.current.draft;
+    return snapshotRef.current.devices.find((entry) => entry.serial === device.serial) ?? device;
   };
 
   const stopInspectorEffect = async (device: Device) => {

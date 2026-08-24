@@ -1239,24 +1239,126 @@ func TestLifxTransportStartDeviceEffectDefaultsMultizoneMove(t *testing.T) {
 	}
 }
 
-func TestLifxTransportStartDeviceEffectRunsMultizoneFlow(t *testing.T) {
+func TestLifxTransportStartDeviceEffectRunsMultizoneAppEffects(t *testing.T) {
+	effects := []DeviceEffect{DeviceEffectFlow, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner}
+	for _, effect := range effects {
+		t.Run(string(effect), func(t *testing.T) {
+			lifx := testLifxDevice(t, "d073d501a2c3", "Strip", "Home", "Desk")
+			lifx.SetProductInfo(31)
+			lifx.MultizoneProperties.Zones = []packets.LightHsbk{testHSBK(20), testHSBK(120), testHSBK(220)}
+			controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}, sent: make(chan sentMessage, 4)}
+			transport := NewLifxTransportWithController(controller)
+			device := mapLifxDevice(lifx, "desk")
+
+			status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: effect, SpeedMS: 2000})
+			if err != nil {
+				t.Fatalf("StartDeviceEffect returned error: %v", err)
+			}
+			if status.Effect != string(effect) || !status.Running {
+				t.Fatalf("status = %#v, want running %s", status, effect)
+			}
+			payload := waitForMultizoneSetColors(t, controller.sent)
+			if payload.Index != 0 || payload.ColorsCount != 3 {
+				t.Fatalf("multizone index/count = %d/%d, want 0/3", payload.Index, payload.ColorsCount)
+			}
+			transport.stopAllAppEffects()
+		})
+	}
+}
+
+func TestLifxTransportStartDeviceEffectUsesCachedAppliedState(t *testing.T) {
 	lifx := testLifxDevice(t, "d073d501a2c3", "Strip", "Home", "Desk")
 	lifx.SetProductInfo(31)
-	lifx.MultizoneProperties.Zones = []packets.LightHsbk{testHSBK(20), testHSBK(120), testHSBK(220)}
-	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}, sent: make(chan sentMessage, 4)}
+	lifx.MultizoneProperties.Zones = []packets.LightHsbk{testHSBK(20), testHSBK(20), testHSBK(20)}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}, sent: make(chan sentMessage, 8)}
 	transport := NewLifxTransportWithController(controller)
-	device := mapLifxDevice(lifx, "desk")
 
-	status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectFlow, SpeedMS: 2000})
-	if err != nil {
+	stale := mapLifxDevice(lifx, "desk")
+	applied := stale
+	applied.Color = &HSLColor{H: 120, S: 0.5, L: 0.5}
+	applied.Zones = []HSLColor{{H: 120, S: 0.5, L: 0.5}, {H: 120, S: 0.5, L: 0.5}, {H: 120, S: 0.5, L: 0.5}}
+	transport.storeCachedDevice(applied)
+
+	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: stale, Effect: DeviceEffectComet, SpeedMS: 2000}); err != nil {
 		t.Fatalf("StartDeviceEffect returned error: %v", err)
 	}
-	if status.Effect != string(DeviceEffectFlow) || !status.Running {
-		t.Fatalf("status = %#v, want running flow", status)
+	waitForMultizoneSetColors(t, controller.sent)
+	controller.sends = nil
+
+	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: stale}); err != nil {
+		t.Fatalf("StopDeviceEffect returned error: %v", err)
 	}
-	payload := waitForMultizoneSetColors(t, controller.sent)
-	if payload.Index != 0 || payload.ColorsCount != 3 {
-		t.Fatalf("multizone index/count = %d/%d, want 0/3", payload.Index, payload.ColorsCount)
+
+	var restored *packets.MultiZoneExtendedSetColorZones
+	for index := range controller.sends {
+		if payload, ok := controller.sends[index].msg.Payload.(*packets.MultiZoneExtendedSetColorZones); ok {
+			restored = payload
+		}
+	}
+	if restored == nil {
+		t.Fatalf("stop sends = %d, want multizone restore payload", len(controller.sends))
+	}
+	color := lifxdevice.NewColor(restored.Colors[0])
+	if color.Hue != 120 {
+		t.Fatalf("restored hue = %v, want cached applied hue 120", color.Hue)
+	}
+}
+
+func TestAppEffectCometPaletteKeepsSingleColorBackgroundAndContrastingHead(t *testing.T) {
+	device := Device{
+		Kind:       DeviceKindMultizone,
+		On:         true,
+		Brightness: 0.5,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Color:      &HSLColor{H: 120, S: 0.5, L: 0.5, Kelvin: 3500},
+		Zones:      []HSLColor{{H: 120, S: 0.5, L: 0.5, Kelvin: 3500}, {H: 120, S: 0.5, L: 0.5, Kelvin: 3500}},
+		Kelvin:     3500,
+	}
+
+	palette := appEffectCometPalette(device)
+	if len(palette.Backgrounds) != 1 {
+		t.Fatalf("backgrounds = %d, want 1", len(palette.Backgrounds))
+	}
+	if palette.Backgrounds[0].Hue != 120 {
+		t.Fatalf("background hue = %v, want original hue 120", palette.Backgrounds[0].Hue)
+	}
+	if len(palette.Base) != 1 || palette.Base[0].Hue == palette.Backgrounds[0].Hue {
+		t.Fatalf("base palette = %#v, want derived tail color away from background", palette.Base)
+	}
+	if len(palette.Accents) != 1 || palette.Accents[0].Hue == palette.Backgrounds[0].Hue {
+		t.Fatalf("accents = %#v, want contrasting comet head", palette.Accents)
+	}
+	if palette.Accents[0].Brightness <= palette.Backgrounds[0].Brightness {
+		t.Fatalf("accent brightness = %v, background = %v, want brighter head", palette.Accents[0].Brightness, palette.Backgrounds[0].Brightness)
+	}
+}
+
+func TestAppEffectMotionPaletteDerivesVisibleSingleColorVariation(t *testing.T) {
+	device := Device{
+		Kind:       DeviceKindMultizone,
+		On:         true,
+		Brightness: 0.5,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Color:      &HSLColor{H: 120, S: 0.35, L: 0.5, Kelvin: 3500},
+		Zones:      []HSLColor{{H: 120, S: 0.35, L: 0.5, Kelvin: 3500}, {H: 120, S: 0.35, L: 0.5, Kelvin: 3500}},
+		Kelvin:     3500,
+	}
+
+	palette := appEffectMotionPalette(device)
+	if len(palette.Backgrounds) != 1 {
+		t.Fatalf("backgrounds = %d, want 1", len(palette.Backgrounds))
+	}
+	if palette.Backgrounds[0].Hue != 120 {
+		t.Fatalf("background hue = %v, want original hue 120", palette.Backgrounds[0].Hue)
+	}
+	if len(palette.Accents) == 0 {
+		t.Fatal("accents is empty")
+	}
+	if hueDistance(palette.Backgrounds[0].Hue, palette.Accent().Hue) < 45 {
+		t.Fatalf("accent hue = %v, background hue = %v, want visible variation", palette.Accent().Hue, palette.Backgrounds[0].Hue)
+	}
+	if palette.Accent().Saturation < 70 {
+		t.Fatalf("accent saturation = %v, want boosted single-color variation", palette.Accent().Saturation)
 	}
 }
 
@@ -1615,6 +1717,27 @@ func TestLifxTransportStartDeviceEffectRejectsUnsupportedDevice(t *testing.T) {
 	}
 }
 
+func TestLifxTransportStartDeviceEffectRejectsMatrixStripEffects(t *testing.T) {
+	controller := &fakeLifxController{}
+	transport := NewLifxTransportWithController(controller)
+	device := Device{Serial: "d073d501a2c3", Kind: DeviceKindMatrix}
+
+	for _, effect := range []DeviceEffect{DeviceEffectComet} {
+		t.Run(string(effect), func(t *testing.T) {
+			status, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: effect})
+			if err == nil {
+				t.Fatal("StartDeviceEffect returned nil error, want unsupported effect error")
+			}
+			if status.Running || status.Error == "" {
+				t.Fatalf("status = %#v, want stopped error status", status)
+			}
+			if len(controller.sends) != 0 {
+				t.Fatalf("sent %d messages, want 0", len(controller.sends))
+			}
+		})
+	}
+}
+
 func TestLifxTransportStartDeviceEffectRunsSnakeAcrossMatrixChain(t *testing.T) {
 	lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
 	lifx.SetProductInfo(55)
@@ -1665,6 +1788,15 @@ func TestLifxTransportSnakeSpeedControlsRunnerStep(t *testing.T) {
 	}
 }
 
+func TestLifxTransportScannerDefaultPeriodDependsOnDeviceKind(t *testing.T) {
+	if got := appEffectScannerPeriod(DeviceKindMultizone); got != 4*time.Second {
+		t.Fatalf("multizone scanner period = %s, want 4s", got)
+	}
+	if got := appEffectScannerPeriod(DeviceKindMatrix); got != 2*time.Second {
+		t.Fatalf("matrix scanner period = %s, want 2s", got)
+	}
+}
+
 func TestLifxTransportStartDeviceEffectPowersOnOffMatrix(t *testing.T) {
 	lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
 	lifx.PoweredOn = false
@@ -1702,6 +1834,8 @@ func TestLifxTransportStartDeviceEffectRunsHikariMatrixEffects(t *testing.T) {
 		DeviceEffectWave,
 		DeviceEffectRing,
 		DeviceEffectFlow,
+		DeviceEffectSparkle,
+		DeviceEffectScanner,
 	}
 	for _, effect := range effects {
 		t.Run(string(effect), func(t *testing.T) {

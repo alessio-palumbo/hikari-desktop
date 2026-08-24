@@ -1,6 +1,6 @@
 import { DeviceKind, type Device } from './lifx.js';
 
-export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets' | 'wave' | 'ring' | 'flow';
+export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets' | 'wave' | 'ring' | 'flow' | 'comet' | 'sparkle' | 'scanner';
 
 export type DeviceEffectSource = 'firmware' | 'app';
 
@@ -12,6 +12,7 @@ export interface DeviceEffectDefinition {
   deviceKinds: Device['kind'][];
   minFirmware?: string;
   speed: EffectSpeedDefinition;
+  speedByKind?: Partial<Record<Device['kind'], EffectSpeedDefinition>>;
 }
 
 export interface EffectSpeedDefinition {
@@ -118,10 +119,39 @@ export const deviceEffects: DeviceEffectDefinition[] = [
     deviceKinds: [DeviceKind.Multizone, DeviceKind.Matrix],
     speed: { minMs: 1000, maxMs: 30000, defaultMs: 4000 },
   },
+  {
+    id: 'comet',
+    label: 'Comet',
+    description: 'Bright trailing sweep',
+    source: 'app',
+    deviceKinds: [DeviceKind.Multizone],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 4000 },
+  },
+  {
+    id: 'sparkle',
+    label: 'Sparkle',
+    description: 'Scattered fading highlights',
+    source: 'app',
+    deviceKinds: [DeviceKind.Multizone, DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 2000 },
+  },
+  {
+    id: 'scanner',
+    label: 'Scanner',
+    description: 'Soft side-to-side band',
+    source: 'app',
+    deviceKinds: [DeviceKind.Multizone, DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 2000 },
+    speedByKind: {
+      [DeviceKind.Multizone]: { minMs: 1000, maxMs: 30000, defaultMs: 4000 },
+    },
+  },
 ];
 
 export function supportedDeviceEffects(device: Device): DeviceEffectDefinition[] {
-  return deviceEffects.filter((effect) => effect.deviceKinds.includes(device.kind) && firmwareSupported(device.firmware, effect.minFirmware));
+  return deviceEffects
+    .filter((effect) => effect.deviceKinds.includes(device.kind) && firmwareSupported(device.firmware, effect.minFirmware))
+    .map((effect) => ({ ...effect, speed: effect.speedByKind?.[device.kind] ?? effect.speed }));
 }
 
 export function supportedFirmwareEffects(device: Device): DeviceEffectDefinition[] {

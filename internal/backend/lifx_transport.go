@@ -293,6 +293,7 @@ func (t *LifxTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEf
 	if err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
+	req.Device = t.effectRequestDevice(req.Device)
 	if isAppEffect(req.Effect) {
 		return t.startAppDeviceEffect(ctx, ctrl, serial, req)
 	}
@@ -411,8 +412,8 @@ func matrixEffectSupported(device Device, effect DeviceEffect) bool {
 }
 
 func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, req StartDeviceEffectRequest) (DeviceEffectStatus, error) {
-	if req.Device.Kind != DeviceKindMatrix && !(req.Device.Kind == DeviceKindMultizone && req.Effect == DeviceEffectFlow) {
-		err := fmt.Errorf("effect %q is only supported for matrix devices", req.Effect)
+	if !appEffectSupportedForDevice(req.Effect, req.Device.Kind) {
+		err := fmt.Errorf("effect %q is not supported for %s devices", req.Effect, req.Device.Kind)
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
 	lifxDevice, ok := lifxDeviceBySerial(ctrl.GetDevices(), serial)
@@ -502,22 +503,55 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 	case DeviceEffectWave:
 		return lifxeffects.NewWave(lifxeffects.WaveConfig{
 			Capabilities: caps,
-			Palette:      appEffectWavePalette(previous),
+			Palette:      appEffectMotionPalette(previous),
 			Waves:        2,
 		}), nil
 	case DeviceEffectRing:
 		return lifxeffects.NewRing(lifxeffects.RingConfig{
 			Capabilities: caps,
-			Palette:      appEffectWavePalette(previous),
+			Palette:      appEffectMotionPalette(previous),
 			Period:       appEffectPeriod(req.SpeedMS, 2*time.Second),
 		}), nil
 	case DeviceEffectFlow:
 		return lifxeffects.NewFlow(lifxeffects.FlowConfig{
 			Capabilities:   caps,
-			Palette:        appEffectWavePalette(previous),
+			Palette:        appEffectMotionPalette(previous),
 			Axis:           lifxeffects.FlowAxisDiagonal,
 			BrightnessMode: lifxeffects.FlowBrightnessConstant,
+			Sampling:       lifxeffects.FlowSamplingInterpolate,
 			Period:         appEffectPeriod(req.SpeedMS, 4*time.Second),
+		}), nil
+	case DeviceEffectComet:
+		return lifxeffects.NewComet(lifxeffects.CometConfig{
+			Capabilities:               caps,
+			Palette:                    appEffectCometPalette(previous),
+			Axis:                       lifxeffects.FlowAxisHorizontal,
+			TailSize:                   5,
+			BackgroundBrightnessFactor: 1.0,
+			PeakBrightnessFactor:       1.5,
+			TailCurve:                  3.0,
+			TailSaturationFactor:       0.25,
+			Period:                     appEffectPeriod(req.SpeedMS, 4*time.Second),
+		}), nil
+	case DeviceEffectSparkle:
+		return lifxeffects.NewSparkle(lifxeffects.SparkleConfig{
+			Capabilities:         caps,
+			Palette:              appEffectMotionPalette(previous),
+			Density:              0.18,
+			Decay:                1.2,
+			BackgroundFloor:      0.55,
+			PeakBrightnessFactor: 1.5,
+			Period:               appEffectPeriod(req.SpeedMS, 2*time.Second),
+			Seed:                 1,
+		}), nil
+	case DeviceEffectScanner:
+		return lifxeffects.NewScanner(lifxeffects.ScannerConfig{
+			Capabilities:               caps,
+			Palette:                    appEffectMotionPalette(previous),
+			Axis:                       lifxeffects.FlowAxisHorizontal,
+			BackgroundBrightnessFactor: 1.0,
+			PeakBrightnessFactor:       1.5,
+			Period:                     appEffectPeriod(req.SpeedMS, appEffectScannerPeriod(req.Device.Kind)),
 		}), nil
 	default:
 		return nil, fmt.Errorf("effect %q is not supported as an app effect", req.Effect)
@@ -529,6 +563,13 @@ func appEffectPeriod(speedMS int, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return time.Duration(speedMS) * time.Millisecond
+}
+
+func appEffectScannerPeriod(kind DeviceKind) time.Duration {
+	if kind == DeviceKindMultizone {
+		return 4 * time.Second
+	}
+	return 2 * time.Second
 }
 
 func appEffectCapabilities(device lifxdevice.Device) lifxeffects.Capabilities {
@@ -638,15 +679,15 @@ func derivedAppEffectPalette(color HSLColor) []HSLColor {
 	if color.Kelvin > 0 && color.S <= 0.005 {
 		return derivedKelvinPalette(color)
 	}
-	saturation := math.Max(color.S, 0.35)
+	saturation := math.Max(color.S, 0.72)
 	lightness := color.L
 	if lightness <= 0 {
 		lightness = 0.55
 	}
 	return []HSLColor{
-		{H: wrapHue(color.H - 28), S: clamp(saturation*0.9, 0, 1), L: lightness, Kelvin: color.Kelvin},
-		{H: wrapHue(color.H), S: clamp(saturation, 0, 1), L: lightness, Kelvin: color.Kelvin},
-		{H: wrapHue(color.H + 28), S: clamp(saturation*1.05, 0, 1), L: lightness, Kelvin: color.Kelvin},
+		{H: wrapHue(color.H - 55), S: clamp(saturation*0.95, 0, 1), L: lightness},
+		{H: wrapHue(color.H + 65), S: clamp(saturation, 0, 1), L: lightness},
+		{H: wrapHue(color.H + 140), S: clamp(saturation*0.9, 0, 1), L: lightness},
 	}
 }
 
@@ -689,7 +730,7 @@ func visibleAppEffectColors(device Device) []HSLColor {
 	return visibleMatrixPixels(device.Chain)
 }
 
-func appEffectWavePalette(device Device) lifxeffects.Palette {
+func appEffectMotionPalette(device Device) lifxeffects.Palette {
 	colors := appEffectPalette(device)
 	if len(colors) == 0 {
 		return lifxeffects.Palette{}
@@ -698,12 +739,72 @@ func appEffectWavePalette(device Device) lifxeffects.Palette {
 	palette := lifxeffects.Palette{
 		Name:        "hikari-device",
 		Base:        append([]lifxeffects.Color(nil), colors[:midpoint]...),
-		Backgrounds: []lifxeffects.Color{colors[0]},
+		Backgrounds: []lifxeffects.Color{appEffectBackgroundColor(device, colors[0])},
 	}
 	if midpoint < len(colors) {
 		palette.Accents = append([]lifxeffects.Color(nil), colors[midpoint:]...)
 	}
 	return palette
+}
+
+func appEffectCometPalette(device Device) lifxeffects.Palette {
+	background := appEffectBackgroundColor(device, appEffectPrimaryColor(device))
+	base := appEffectCometBaseColor(background)
+	accent := appEffectCometAccentColor(device, background)
+	return lifxeffects.Palette{
+		Name:        "hikari-comet",
+		Base:        []lifxeffects.Color{base},
+		Accents:     []lifxeffects.Color{accent},
+		Backgrounds: []lifxeffects.Color{background},
+	}
+}
+
+func appEffectBackgroundColor(device Device, fallback lifxeffects.Color) lifxeffects.Color {
+	colors := representativePaletteColors(nonDarkPaletteColors(visibleAppEffectColors(device)), 1)
+	if len(colors) > 0 {
+		return hslColorToEffectColor(colors[0], device.Brightness, device.Kelvin, device.Capability)
+	}
+	if device.Color != nil {
+		return hslColorToEffectColor(*device.Color, device.Brightness, device.Kelvin, device.Capability)
+	}
+	return fallback
+}
+
+func appEffectCometBaseColor(background lifxeffects.Color) lifxeffects.Color {
+	base := background
+	base.Hue = wrapHue(base.Hue - 50)
+	base.Saturation = math.Max(base.Saturation, 85)
+	base.Brightness = clamp(math.Max(base.Brightness*0.35, 5), 0, 100)
+	return base
+}
+
+func appEffectCometAccentColor(device Device, background lifxeffects.Color) lifxeffects.Color {
+	accent, ok := contrastingAppEffectColor(device, background)
+	if !ok {
+		accent = background
+		accent.Hue = wrapHue(background.Hue + 125)
+	}
+	accent.Saturation = math.Max(accent.Saturation, 85)
+	accent.Brightness = clamp(math.Max(accent.Brightness, math.Max(background.Brightness+25, 55)), 0, 100)
+	return accent
+}
+
+func contrastingAppEffectColor(device Device, background lifxeffects.Color) (lifxeffects.Color, bool) {
+	colors := representativePaletteColors(nonDarkPaletteColors(visibleAppEffectColors(device)), 6)
+	var best HSLColor
+	bestScore := 0.0
+	for _, color := range colors {
+		candidate := hslColorToEffectColor(color, device.Brightness, device.Kelvin, device.Capability)
+		score := hueDistance(background.Hue, candidate.Hue) + math.Abs(background.Saturation-candidate.Saturation)*0.5 + math.Abs(background.Brightness-candidate.Brightness)*0.25
+		if score > bestScore {
+			best = color
+			bestScore = score
+		}
+	}
+	if bestScore <= 35 {
+		return lifxeffects.Color{}, false
+	}
+	return hslColorToEffectColor(best, device.Brightness, device.Kelvin, device.Capability), true
 }
 
 func hslColorToEffectColor(color HSLColor, brightness float64, kelvin int, capability DeviceCapability) lifxeffects.Color {
@@ -723,6 +824,13 @@ func captureAppEffectState(requested Device, previous *Device, cached *Device) D
 		return *previous
 	}
 	if cached != nil {
+		return *cached
+	}
+	return requested
+}
+
+func (t *LifxTransport) effectRequestDevice(requested Device) Device {
+	if cached := t.cachedDevice(requested.Serial); cached != nil {
 		return *cached
 	}
 	return requested
@@ -784,8 +892,22 @@ func lifxDeviceBySerial(devices []lifxdevice.Device, serial lifxdevice.Serial) (
 
 func isAppEffect(effect DeviceEffect) bool {
 	switch effect {
-	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave, DeviceEffectRing, DeviceEffectFlow:
+	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave, DeviceEffectRing, DeviceEffectFlow, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner:
 		return true
+	default:
+		return false
+	}
+}
+
+func appEffectSupportedForDevice(effect DeviceEffect, kind DeviceKind) bool {
+	if !isAppEffect(effect) {
+		return false
+	}
+	switch kind {
+	case DeviceKindMatrix:
+		return effect != DeviceEffectComet
+	case DeviceKindMultizone:
+		return effect == DeviceEffectFlow || effect == DeviceEffectComet || effect == DeviceEffectSparkle || effect == DeviceEffectScanner
 	default:
 		return false
 	}
