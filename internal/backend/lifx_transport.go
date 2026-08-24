@@ -74,10 +74,12 @@ type LifxTransport struct {
 }
 
 type runningAppEffect struct {
-	effect   DeviceEffect
-	cancel   context.CancelFunc
-	done     <-chan struct{}
-	previous Device
+	effect    DeviceEffect
+	speedMS   int
+	direction string
+	cancel    context.CancelFunc
+	done      <-chan struct{}
+	previous  Device
 }
 
 type runningFirmwareEffect struct {
@@ -276,11 +278,24 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 	}
 
 	intent := normalizeDeviceCommandIntent(req.Intent, req.Device)
+	restart, wasRunning := t.stopAppEffectForStateChange(req.Device.Serial)
 	if err := sendDeviceState(ctx, ctrl, serial, req.Device, req.Preview, intent, current); err != nil {
 		log.Printf("hikari: set device state failed for %s: %v", req.Device.Serial, err)
 		return req.Device, err
 	}
 	t.storeCachedDevice(req.Device)
+	if wasRunning {
+		restartReq := StartDeviceEffectRequest{
+			Device:    req.Device,
+			Effect:    restart.effect,
+			SpeedMS:   restart.speedMS,
+			Direction: restart.direction,
+		}
+		if _, err := t.startAppDeviceEffect(ctx, ctrl, serial, restartReq); err != nil {
+			log.Printf("hikari: restart app effect failed for %s: %v", req.Device.Serial, err)
+			return req.Device, fmt.Errorf("restart app effect: %w", err)
+		}
+	}
 	return req.Device, nil
 }
 
@@ -455,7 +470,7 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	active := captured
 	active.On = true
 	t.storeCachedDevice(active)
-	t.storeAppEffect(req.Device.Serial, runningAppEffect{effect: req.Effect, cancel: cancel, done: done, previous: captured})
+	t.storeAppEffect(req.Device.Serial, runningAppEffect{effect: req.Effect, speedMS: req.SpeedMS, direction: req.Direction, cancel: cancel, done: done, previous: captured})
 	go t.runAppDeviceEffect(runCtx, req.Device.Serial, req.Effect, lifxeffects.NewRunner(effect, renderer, step), done)
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(req.Effect)}, nil
 }
@@ -1439,6 +1454,21 @@ func (t *LifxTransport) stopAppEffect(serial string) *Device {
 	waitForAppEffectStop(effect)
 	previous := effect.previous
 	return &previous
+}
+
+func (t *LifxTransport) stopAppEffectForStateChange(serial string) (runningAppEffect, bool) {
+	t.mu.Lock()
+	effect, ok := t.effects[serial]
+	if ok {
+		delete(t.effects, serial)
+	}
+	t.mu.Unlock()
+	if !ok {
+		return runningAppEffect{}, false
+	}
+	effect.cancel()
+	waitForAppEffectStop(effect)
+	return effect, true
 }
 
 func (t *LifxTransport) stopAllAppEffects() {

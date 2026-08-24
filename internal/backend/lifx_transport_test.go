@@ -1304,6 +1304,91 @@ func TestLifxTransportStartDeviceEffectUsesCachedAppliedState(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSetDeviceStateWhileAppEffectRunningUpdatesRestoreColor(t *testing.T) {
+	lifx := testLifxDevice(t, "d073d501a2c3", "Strip", "Home", "Desk")
+	lifx.SetProductInfo(31)
+	lifx.MultizoneProperties.Zones = []packets.LightHsbk{testHSBK(20), testHSBK(20), testHSBK(20)}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}, sent: make(chan sentMessage, 16)}
+	transport := NewLifxTransportWithController(controller)
+	device := mapLifxDevice(lifx, "desk")
+	transport.storeCachedDevice(device)
+
+	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectComet, SpeedMS: 2000}); err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	waitForMultizoneSetColors(t, controller.sent)
+
+	changed := device
+	changed.Color = &HSLColor{H: 220, S: 0.8, L: 0.5}
+	changed.Zones = []HSLColor{{H: 220, S: 0.8, L: 0.5}, {H: 220, S: 0.8, L: 0.5}, {H: 220, S: 0.8, L: 0.5}}
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: changed, Preview: true, Intent: DeviceCommandColor}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	waitForMultizoneSetColors(t, controller.sent)
+
+	controller.sends = nil
+	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: changed}); err != nil {
+		t.Fatalf("StopDeviceEffect returned error: %v", err)
+	}
+
+	var restored *packets.MultiZoneExtendedSetColorZones
+	for index := range controller.sends {
+		if payload, ok := controller.sends[index].msg.Payload.(*packets.MultiZoneExtendedSetColorZones); ok {
+			restored = payload
+		}
+	}
+	if restored == nil {
+		t.Fatalf("stop sends = %d, want multizone restore payload", len(controller.sends))
+	}
+	color := lifxdevice.NewColor(restored.Colors[0])
+	if color.Hue != 220 {
+		t.Fatalf("restored hue = %v, want changed hue 220", color.Hue)
+	}
+}
+
+func TestLifxTransportSetDeviceStateWhileAppEffectRunningUpdatesRestoreBrightness(t *testing.T) {
+	lifx := testLifxDevice(t, "d073d501a2c3", "Strip", "Home", "Desk")
+	lifx.SetProductInfo(31)
+	lifx.MultizoneProperties.Zones = []packets.LightHsbk{testHSBK(20), testHSBK(20), testHSBK(20)}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}, sent: make(chan sentMessage, 16)}
+	transport := NewLifxTransportWithController(controller)
+	device := mapLifxDevice(lifx, "desk")
+	transport.storeCachedDevice(device)
+
+	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectComet, SpeedMS: 2000}); err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	waitForMultizoneSetColors(t, controller.sent)
+
+	changed := device
+	changed.Brightness = 0.8
+	changed.Color = &HSLColor{H: 20, S: 0.5, L: 0.8}
+	changed.Zones = []HSLColor{{H: 20, S: 0.5, L: 0.8}, {H: 20, S: 0.5, L: 0.8}, {H: 20, S: 0.5, L: 0.8}}
+	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: changed, Preview: true, Intent: DeviceCommandBrightness}); err != nil {
+		t.Fatalf("SetDeviceState returned error: %v", err)
+	}
+	waitForMultizoneSetColors(t, controller.sent)
+
+	controller.sends = nil
+	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: changed}); err != nil {
+		t.Fatalf("StopDeviceEffect returned error: %v", err)
+	}
+
+	var restored *packets.MultiZoneExtendedSetColorZones
+	for index := range controller.sends {
+		if payload, ok := controller.sends[index].msg.Payload.(*packets.MultiZoneExtendedSetColorZones); ok {
+			restored = payload
+		}
+	}
+	if restored == nil {
+		t.Fatalf("stop sends = %d, want multizone restore payload", len(controller.sends))
+	}
+	color := lifxdevice.NewColor(restored.Colors[0])
+	if math.Abs(color.Brightness-80) > 0.1 {
+		t.Fatalf("restored brightness = %v, want 80", color.Brightness)
+	}
+}
+
 func TestAppEffectCometPaletteKeepsSingleColorBackgroundAndContrastingHead(t *testing.T) {
 	device := Device{
 		Kind:       DeviceKindMultizone,
