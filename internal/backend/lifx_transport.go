@@ -518,19 +518,19 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 	case DeviceEffectWave:
 		return lifxeffects.NewWave(lifxeffects.WaveConfig{
 			Capabilities: caps,
-			Palette:      appEffectMotionPalette(previous),
+			Palette:      appEffectFlowPalette(previous),
 			Waves:        2,
 		}), nil
 	case DeviceEffectRing:
 		return lifxeffects.NewRing(lifxeffects.RingConfig{
 			Capabilities: caps,
-			Palette:      appEffectMotionPalette(previous),
+			Palette:      appEffectFlowPalette(previous),
 			Period:       appEffectPeriod(req.SpeedMS, 2*time.Second),
 		}), nil
 	case DeviceEffectFlow:
 		return lifxeffects.NewFlow(lifxeffects.FlowConfig{
 			Capabilities:   caps,
-			Palette:        appEffectMotionPalette(previous),
+			Palette:        appEffectFlowPalette(previous),
 			Axis:           lifxeffects.FlowAxisDiagonal,
 			BrightnessMode: lifxeffects.FlowBrightnessConstant,
 			Sampling:       lifxeffects.FlowSamplingInterpolate,
@@ -551,7 +551,7 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 	case DeviceEffectSparkle:
 		return lifxeffects.NewSparkle(lifxeffects.SparkleConfig{
 			Capabilities:         caps,
-			Palette:              appEffectMotionPalette(previous),
+			Palette:              appEffectSparklePalette(previous),
 			Density:              0.18,
 			Decay:                1.2,
 			BackgroundFloor:      0.55,
@@ -562,10 +562,10 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 	case DeviceEffectScanner:
 		return lifxeffects.NewScanner(lifxeffects.ScannerConfig{
 			Capabilities:               caps,
-			Palette:                    appEffectMotionPalette(previous),
+			Palette:                    appEffectScannerPalette(previous),
 			Axis:                       lifxeffects.FlowAxisHorizontal,
-			BackgroundBrightnessFactor: 1.0,
-			PeakBrightnessFactor:       1.5,
+			BackgroundBrightnessFactor: 0.8,
+			PeakBrightnessFactor:       1.55,
 			Period:                     appEffectPeriod(req.SpeedMS, appEffectScannerPeriod(req.Device.Kind)),
 		}), nil
 	default:
@@ -746,6 +746,10 @@ func visibleAppEffectColors(device Device) []HSLColor {
 }
 
 func appEffectMotionPalette(device Device) lifxeffects.Palette {
+	return appEffectFlowPalette(device)
+}
+
+func appEffectFlowPalette(device Device) lifxeffects.Palette {
 	colors := appEffectPalette(device)
 	if len(colors) == 0 {
 		return lifxeffects.Palette{}
@@ -760,6 +764,44 @@ func appEffectMotionPalette(device Device) lifxeffects.Palette {
 		palette.Accents = append([]lifxeffects.Color(nil), colors[midpoint:]...)
 	}
 	return palette
+}
+
+func appEffectSparklePalette(device Device) lifxeffects.Palette {
+	palette := appEffectFlowPalette(device)
+	palette.Name = "hikari-sparkle"
+	background := appEffectBackgroundColor(device, appEffectPrimaryColor(device))
+	palette.Backgrounds = []lifxeffects.Color{scaledEffectColor(background, 0.85, 1.0)}
+
+	if len(palette.Accents) == 0 {
+		palette.Accents = []lifxeffects.Color{
+			derivedEffectAccent(background, 145, 1.25),
+			derivedEffectAccent(background, 215, 1.35),
+		}
+		return palette
+	}
+	for index := range palette.Accents {
+		palette.Accents[index] = vividEffectAccent(palette.Accents[index], background, 1.25)
+	}
+	return palette
+}
+
+func appEffectScannerPalette(device Device) lifxeffects.Palette {
+	background := appEffectBackgroundColor(device, appEffectPrimaryColor(device))
+	background = scaledEffectColor(background, 0.85, 1.0)
+
+	accent, ok := contrastingAppEffectColor(device, background)
+	if ok {
+		accent = vividEffectAccent(accent, background, 1.45)
+	} else {
+		accent = derivedEffectAccent(background, 180, 1.45)
+	}
+
+	return lifxeffects.Palette{
+		Name:        "hikari-scanner",
+		Base:        []lifxeffects.Color{background},
+		Accents:     []lifxeffects.Color{accent},
+		Backgrounds: []lifxeffects.Color{background},
+	}
 }
 
 func appEffectCometPalette(device Device) lifxeffects.Palette {
@@ -785,23 +827,84 @@ func appEffectBackgroundColor(device Device, fallback lifxeffects.Color) lifxeff
 	return fallback
 }
 
+func scaledEffectColor(color lifxeffects.Color, brightnessFactor float64, saturationFactor float64) lifxeffects.Color {
+	color.Brightness = clamp(color.Brightness*brightnessFactor, 0, 100)
+	color.Saturation = clamp(color.Saturation*saturationFactor, 0, 100)
+	return color
+}
+
+func vividEffectAccent(color lifxeffects.Color, background lifxeffects.Color, brightnessFactor float64) lifxeffects.Color {
+	if hueDistance(color.Hue, background.Hue) < 45 {
+		color.Hue = wrapHue(background.Hue + 180)
+	}
+	color.Saturation = math.Max(color.Saturation, 85)
+	color.Brightness = clamp(math.Max(color.Brightness*brightnessFactor, math.Max(background.Brightness+25, 60)), 0, 100)
+	return color
+}
+
+func derivedEffectAccent(background lifxeffects.Color, hueOffset float64, brightnessFactor float64) lifxeffects.Color {
+	accent := background
+	accent.Hue = wrapHue(background.Hue + hueOffset)
+	accent.Saturation = math.Max(background.Saturation, 85)
+	accent.Brightness = clamp(math.Max(background.Brightness*brightnessFactor, math.Max(background.Brightness+25, 60)), 0, 100)
+	accent.Kelvin = 3500
+	return accent
+}
+
 func appEffectCometBaseColor(background lifxeffects.Color) lifxeffects.Color {
 	base := background
-	base.Hue = wrapHue(base.Hue - 50)
-	base.Saturation = math.Max(base.Saturation, 85)
+	base.Hue = wrapHue(base.Hue + 180)
+	base.Saturation = math.Max(base.Saturation*0.75, 60)
 	base.Brightness = clamp(math.Max(base.Brightness*0.35, 5), 0, 100)
+	base.Kelvin = 5000
 	return base
 }
 
 func appEffectCometAccentColor(device Device, background lifxeffects.Color) lifxeffects.Color {
-	accent, ok := contrastingAppEffectColor(device, background)
-	if !ok {
-		accent = background
-		accent.Hue = wrapHue(background.Hue + 125)
+	accent := warmCometHeadColor(background)
+	if existing, ok := warmExistingAppEffectColor(device, background); ok {
+		accent = existing
 	}
-	accent.Saturation = math.Max(accent.Saturation, 85)
-	accent.Brightness = clamp(math.Max(accent.Brightness, math.Max(background.Brightness+25, 55)), 0, 100)
+	accent.Saturation = math.Max(accent.Saturation, 80)
+	accent.Brightness = clamp(math.Max(accent.Brightness, math.Max(background.Brightness+30, 65)), 0, 100)
+	accent.Kelvin = 2800
 	return accent
+}
+
+func warmCometHeadColor(background lifxeffects.Color) lifxeffects.Color {
+	accent := background
+	switch {
+	case hueDistance(background.Hue, 35) <= 70:
+		accent.Hue = wrapHue(background.Hue + 24)
+	case hueDistance(background.Hue, 0) <= 40:
+		accent.Hue = 35
+	case hueDistance(background.Hue, 55) <= 35:
+		accent.Hue = 28
+	default:
+		accent.Hue = 32
+	}
+	return accent
+}
+
+func warmExistingAppEffectColor(device Device, background lifxeffects.Color) (lifxeffects.Color, bool) {
+	colors := representativePaletteColors(nonDarkPaletteColors(visibleAppEffectColors(device)), 6)
+	var best HSLColor
+	bestScore := 0.0
+	for _, color := range colors {
+		candidate := hslColorToEffectColor(color, device.Brightness, device.Kelvin, device.Capability)
+		warmScore := 90 - hueDistance(candidate.Hue, 32)
+		contrastScore := hueDistance(background.Hue, candidate.Hue) * 0.15
+		brightnessScore := candidate.Brightness * 0.15
+		score := warmScore + contrastScore + brightnessScore
+		if score > bestScore && warmScore > 20 {
+			best = color
+			bestScore = score
+		}
+	}
+	if bestScore <= 0 {
+		return lifxeffects.Color{}, false
+	}
+	return hslColorToEffectColor(best, device.Brightness, device.Kelvin, device.Capability), true
 }
 
 func contrastingAppEffectColor(device Device, background lifxeffects.Color) (lifxeffects.Color, bool) {

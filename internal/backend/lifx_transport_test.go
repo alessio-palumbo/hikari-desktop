@@ -1413,6 +1413,12 @@ func TestAppEffectCometPaletteKeepsSingleColorBackgroundAndContrastingHead(t *te
 	if len(palette.Accents) != 1 || palette.Accents[0].Hue == palette.Backgrounds[0].Hue {
 		t.Fatalf("accents = %#v, want contrasting comet head", palette.Accents)
 	}
+	if hueDistance(palette.Accents[0].Hue, 32) > 70 {
+		t.Fatalf("accent hue = %v, want warm comet head", palette.Accents[0].Hue)
+	}
+	if hueDistance(palette.Base[0].Hue, palette.Accents[0].Hue) < 90 {
+		t.Fatalf("tail hue = %v, head hue = %v, want cool tail away from warm head", palette.Base[0].Hue, palette.Accents[0].Hue)
+	}
 	if palette.Accents[0].Brightness <= palette.Backgrounds[0].Brightness {
 		t.Fatalf("accent brightness = %v, background = %v, want brighter head", palette.Accents[0].Brightness, palette.Backgrounds[0].Brightness)
 	}
@@ -1444,6 +1450,61 @@ func TestAppEffectMotionPaletteDerivesVisibleSingleColorVariation(t *testing.T) 
 	}
 	if palette.Accent().Saturation < 70 {
 		t.Fatalf("accent saturation = %v, want boosted single-color variation", palette.Accent().Saturation)
+	}
+}
+
+func TestAppEffectScannerPaletteBuildsHighContrastSingleColorAccent(t *testing.T) {
+	device := Device{
+		Kind:       DeviceKindMultizone,
+		On:         true,
+		Brightness: 0.45,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Color:      &HSLColor{H: 210, S: 0.6, L: 0.45, Kelvin: 3500},
+		Zones:      []HSLColor{{H: 210, S: 0.6, L: 0.45, Kelvin: 3500}, {H: 210, S: 0.6, L: 0.45, Kelvin: 3500}},
+		Kelvin:     3500,
+	}
+
+	palette := appEffectScannerPalette(device)
+	if len(palette.Backgrounds) != 1 || len(palette.Accents) != 1 {
+		t.Fatalf("palette = %#v, want one background and one accent", palette)
+	}
+	background := palette.Backgrounds[0]
+	accent := palette.Accents[0]
+	if hueDistance(background.Hue, accent.Hue) < 120 {
+		t.Fatalf("accent hue = %v, background hue = %v, want high contrast", accent.Hue, background.Hue)
+	}
+	if accent.Brightness <= background.Brightness+20 {
+		t.Fatalf("accent brightness = %v, background = %v, want visible scanner head", accent.Brightness, background.Brightness)
+	}
+	if background.Brightness >= 45 {
+		t.Fatalf("background brightness = %v, want slightly reduced background", background.Brightness)
+	}
+}
+
+func TestAppEffectSparklePaletteAddsVariedAccentsForSingleColor(t *testing.T) {
+	device := Device{
+		Kind:       DeviceKindMatrix,
+		On:         true,
+		Brightness: 0.4,
+		Capability: DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000},
+		Color:      &HSLColor{H: 30, S: 0.5, L: 0.4, Kelvin: 3500},
+		Chain: []Matrix{{
+			Pixels: []HSLColor{{H: 30, S: 0.5, L: 0.4, Kelvin: 3500}, {H: 30, S: 0.5, L: 0.4, Kelvin: 3500}},
+		}},
+		Kelvin: 3500,
+	}
+
+	palette := appEffectSparklePalette(device)
+	if len(palette.Backgrounds) != 1 || len(palette.Accents) == 0 {
+		t.Fatalf("palette = %#v, want background and accents", palette)
+	}
+	for _, accent := range palette.Accents {
+		if hueDistance(palette.Backgrounds[0].Hue, accent.Hue) < 45 {
+			t.Fatalf("accent hue = %v, background hue = %v, want visible sparkle variation", accent.Hue, palette.Backgrounds[0].Hue)
+		}
+		if accent.Brightness <= palette.Backgrounds[0].Brightness {
+			t.Fatalf("accent brightness = %v, background = %v, want brighter sparkle", accent.Brightness, palette.Backgrounds[0].Brightness)
+		}
 	}
 }
 
