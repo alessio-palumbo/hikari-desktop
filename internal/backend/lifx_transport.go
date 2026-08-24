@@ -445,8 +445,6 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	if err := ctx.Err(); err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
-	runCtx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
 	renderer := lifxeffectadapters.NewRendererForDevice(lifxDevice, func(msg *protocol.Message) error {
 		logLifxSend(serial, req.Device, "app-effect-frame", msg)
 		return ctrl.Send(serial, msg)
@@ -470,6 +468,10 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	active := captured
 	active.On = true
 	t.storeCachedDevice(active)
+	// Created only once the effect is certain to start: every path above returns
+	// without a runner to cancel.
+	runCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	t.storeAppEffect(req.Device.Serial, runningAppEffect{effect: req.Effect, speedMS: req.SpeedMS, direction: req.Direction, cancel: cancel, done: done, previous: captured})
 	go t.runAppDeviceEffect(runCtx, req.Device.Serial, req.Effect, lifxeffects.NewRunner(effect, renderer, step), done)
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(req.Effect)}, nil
@@ -1187,6 +1189,14 @@ func normalizePaletteBrightness(colors []HSLColor, brightness float64) []HSLColo
 func samplePaletteColors(colors []HSLColor, limit int) []HSLColor {
 	if len(colors) <= limit {
 		return append([]HSLColor(nil), colors...)
+	}
+	if limit <= 0 {
+		return nil
+	}
+	// A single stop has no span to walk, and the index below would divide by
+	// limit-1: the resulting NaN converts to a huge negative int on amd64.
+	if limit == 1 {
+		return []HSLColor{colors[0]}
 	}
 	sampled := make([]HSLColor, 0, limit)
 	for i := 0; i < limit; i++ {
