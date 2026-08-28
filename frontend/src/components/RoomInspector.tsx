@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { Info, X } from 'lucide-react';
 import type { Device, HslColor } from '../domain/lifx';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl } from '../domain/paint';
 import { ColorWheel, Slider } from './primitives';
@@ -24,6 +24,7 @@ export function RoomInspector({ roomName, devices, onClose, onDeviceChange }: Ro
   const [mode, setMode] = useState<PaintMode>(hasColor ? 'color' : 'white');
   const [paintColor, setPaintColor] = useState<HslColor>(() => (firstDevice ? initialPaintColor(firstDevice) : { h: 38, s: 0.5, l: 0.55 }));
   const [whiteKelvin, setWhiteKelvin] = useState(() => clampKelvin(firstDevice?.kelvin ?? 3500, kelvinRange.min, kelvinRange.max));
+  const [showInfo, setShowInfo] = useState(false);
   const avgBrightness = onlineDevices.length ? onlineDevices.reduce((sum, device) => sum + device.brightness, 0) / onlineDevices.length : 0;
   const allOff = onlineDevices.length > 0 && onlineDevices.every((device) => !device.on);
   const whiteValue = Math.max(0, Math.min(1, (whiteKelvin - kelvinRange.min) / Math.max(1, kelvinRange.max - kelvinRange.min)));
@@ -69,7 +70,12 @@ export function RoomInspector({ roomName, devices, onClose, onDeviceChange }: Ro
 
       <div className="inspector-meta">
         <span>room controls</span>
+        <button className="info-toggle" type="button" aria-label="Room devices" aria-expanded={showInfo} data-active={showInfo ? 'true' : 'false'} onClick={() => setShowInfo((value) => !value)}>
+          <Info size={13} />
+        </button>
       </div>
+
+      {showInfo ? <RoomDeviceInfo devices={devices} /> : null}
 
       <ModeToggle value={mode} hasColor={hasColor} onChange={(value) => {
         if (value !== 'effects') setMode(value);
@@ -87,6 +93,19 @@ export function RoomInspector({ roomName, devices, onClose, onDeviceChange }: Ro
 
       <Slider label="brightness" disabled={!onlineDevices.length} value={avgBrightness} valueLabel={allOff ? 'off' : undefined} onChange={setRoomBrightness} />
     </aside>
+  );
+}
+
+function RoomDeviceInfo({ devices }: { devices: Device[] }) {
+  return (
+    <dl className="device-info room-device-info">
+      {devices.map((device) => (
+        <div key={device.serial}>
+          <dt>{device.name}</dt>
+          <dd>{device.model || 'unknown'}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

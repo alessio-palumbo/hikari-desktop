@@ -95,6 +95,17 @@
   text-align: right;
 }
 
+.room-device-info dt,
+.room-device-info dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-device-info dd {
+  font-family: inherit;
+}
+
 .control-section {
   display: grid;
   gap: 12px;
