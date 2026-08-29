@@ -172,6 +172,10 @@
     oklch(1 0 0 / 0.02);
 }
 
+.floor-canvas[data-editing="true"][data-drop-active="true"] {
+  border-color: oklch(0.86 0.08 92 / 0.28);
+}
+
 .floor-room {
   position: absolute;
   inset: 0;
@@ -223,6 +227,7 @@
   position: absolute;
   color: var(--fg-2);
   font-size: 12px;
+  cursor: pointer;
   transform: translate(-50%, -50%);
   white-space: nowrap;
 }
@@ -273,6 +278,14 @@
   filter: drop-shadow(0 0 5px oklch(0.88 0.08 92 / 0.22));
 }
 
+.floor-room[data-editing="true"][data-drop-target="true"] {
+  border-color: oklch(0.9 0.11 92 / 0.9);
+  box-shadow:
+    inset 0 0 0 1px oklch(0.9 0.11 92 / 0.42),
+    inset 0 0 34px oklch(0.9 0.11 92 / 0.11);
+  filter: drop-shadow(0 0 8px oklch(0.9 0.11 92 / 0.26));
+}
+
 .floor-room[data-editing="true"]:active {
   cursor: grabbing;
 }
@@ -319,15 +332,22 @@
   width: 28px;
   height: 28px;
   place-items: center;
-  border: 0;
+  border: 1px solid oklch(1 0 0 / 0.08);
   border-radius: 999px;
   background: oklch(0.16 0.005 250 / 0.68);
   cursor: pointer;
+  outline: 1px solid transparent;
   transform: translate(-50%, -50%);
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    outline-color 0.16s ease;
 }
 
 .floor-room-power:hover {
+  border-color: oklch(0.9 0.11 92 / 0.32);
   background: oklch(0.21 0.006 250 / 0.92);
+  outline-color: oklch(0.9 0.11 92 / 0.18);
 }
 
 .floor-room-power .power-dot {
@@ -636,6 +656,10 @@
 
 .floor-unplaced-device[draggable="true"] {
   cursor: grab;
+}
+
+.floor-unplaced-device[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .floor-unplaced-device span {

@@ -73,6 +73,7 @@ export function FloorPlan({
   const floor = activeFloor(layout);
   const [editedRoomId, setEditedRoomId] = useState<string | undefined>();
   const [roomEditMode, setRoomEditMode] = useState<RoomEditMode>('resize');
+  const [dropTargetRoomId, setDropTargetRoomId] = useState<string | undefined>();
   const editedRoom = floor?.rooms.find((room) => room.id === editedRoomId);
   const roomLabelRef = useRef<HTMLInputElement | null>(null);
   const placed = new Set(Object.keys(floor?.devices ?? {}));
@@ -100,6 +101,11 @@ export function FloorPlan({
   }, [editing, floor?.id, floor?.rooms, editedRoomId]);
 
   useEffect(() => setRoomEditMode('resize'), [editing, editedRoomId]);
+
+  useEffect(() => {
+    if (editing) return;
+    setDropTargetRoomId(undefined);
+  }, [editing]);
 
   useEffect(() => {
     if (!editing || !editedRoom) return;
@@ -202,15 +208,23 @@ export function FloorPlan({
           ref={canvasRef}
           className="floor-canvas"
           data-editing={editing ? 'true' : 'false'}
+          data-drop-active={dropTargetRoomId !== undefined ? 'true' : 'false'}
           aria-label={`${floor?.label ?? 'Floor'} floor plan`}
           onDragOver={(event) => {
             if (!editing) return;
             event.preventDefault();
+            const point = canvasPoint(event.clientX, event.clientY);
+            setDropTargetRoomId(point && floor ? roomAtPoint(floor.rooms, point)?.id : undefined);
+          }}
+          onDragLeave={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget instanceof Node ? event.relatedTarget : null)) return;
+            setDropTargetRoomId(undefined);
           }}
           onDrop={(event) => {
             if (!editing) return;
             const serial = event.dataTransfer.getData('application/x-hikari-device');
             const point = canvasPoint(event.clientX, event.clientY);
+            setDropTargetRoomId(undefined);
             if (!serial || !point) return;
             event.preventDefault();
             placeDevice(serial, point);
@@ -224,6 +238,7 @@ export function FloorPlan({
               editing={editing}
               selected={editing ? room.id === editedRoomId : room.id === selectedRoomId}
               shapeEditing={roomEditMode === 'shape'}
+              dropTarget={dropTargetRoomId === room.id}
               powerState={roomPowerState(room.id, floor, devices)}
               canvasPoint={canvasPoint}
               floorDevices={floor.devices}
@@ -275,6 +290,7 @@ export function FloorPlan({
             matches={matches}
             selectedGroupDevices={selectedGroupDevices}
             onSelect={onSelect}
+            onDragEnd={() => setDropTargetRoomId(undefined)}
           />
         </section>
       </div>
@@ -297,6 +313,7 @@ function DeviceSourceList({
   matches,
   selectedGroupDevices,
   onSelect,
+  onDragEnd,
 }: {
   title: string;
   empty: string;
@@ -307,6 +324,7 @@ function DeviceSourceList({
   matches: Set<string>;
   selectedGroupDevices?: Set<string>;
   onSelect: (serial: string) => void;
+  onDragEnd: () => void;
 }) {
   return (
     <div className="floor-device-source">
@@ -329,6 +347,7 @@ function DeviceSourceList({
                 event.dataTransfer.setData('application/x-hikari-device', device.serial);
                 event.dataTransfer.effectAllowed = 'move';
               }}
+              onDragEnd={onDragEnd}
               onClick={() => onSelect(device.serial)}
             >
               <DeviceSwatch device={device} />
@@ -349,6 +368,7 @@ function RoomShape({
   editing,
   selected,
   shapeEditing,
+  dropTarget,
   powerState,
   canvasPoint,
   floorDevices,
@@ -361,6 +381,7 @@ function RoomShape({
   editing: boolean;
   selected: boolean;
   shapeEditing: boolean;
+  dropTarget: boolean;
   powerState: RoomPowerState;
   canvasPoint: (clientX: number, clientY: number) => FloorPlanPoint | undefined;
   floorDevices: Record<string, FloorPlanDevicePlacement>;
@@ -392,6 +413,7 @@ function RoomShape({
         data-type={room.type ?? 'other'}
         data-editing={editing ? 'true' : 'false'}
         data-selected={selected ? 'true' : 'false'}
+        data-drop-target={dropTarget ? 'true' : 'false'}
         data-power={powerState}
         style={{
           clipPath: `polygon(${room.points.map((point) => `${point.x * 100}% ${point.y * 100}%`).join(', ')})`,
