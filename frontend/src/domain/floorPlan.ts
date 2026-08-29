@@ -420,7 +420,11 @@ export function normalizePoint(point: FloorPlanPoint): FloorPlanPoint {
 }
 
 export function roomAtPoint(rooms: FloorPlanRoom[], point: FloorPlanPoint): FloorPlanRoom | undefined {
-  return rooms.find((room) => pointInRoom(point, room));
+  for (let index = rooms.length - 1; index >= 0; index -= 1) {
+    const room = rooms[index];
+    if (pointInRoom(point, room)) return room;
+  }
+  return undefined;
 }
 
 export function pointInRoom(point: FloorPlanPoint, room: FloorPlanRoom): boolean {

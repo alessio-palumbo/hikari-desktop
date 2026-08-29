@@ -244,6 +244,13 @@ test('finds rooms using polygon hit testing', () => {
   assert.equal(roomAtPoint([living, kitchen], { x: 0.9, y: 0.9 }), undefined);
 });
 
+test('selects the topmost room when room polygons overlap', () => {
+  const lower = createRectangleRoom('lower', 'Lower', 'living', { x: 0.1, y: 0.1 }, { x: 0.5, y: 0.5 });
+  const upper = createRectangleRoom('upper', 'Upper', 'office', { x: 0.3, y: 0.3 }, { x: 0.5, y: 0.5 });
+
+  assert.equal(roomAtPoint([lower, upper], { x: 0.4, y: 0.4 })?.id, 'upper');
+});
+
 test('detects points inside shaped rooms', () => {
   const room = {
     id: 'l-room',
