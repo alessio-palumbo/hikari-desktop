@@ -738,6 +738,7 @@ export function App() {
           onPlaceDevice={placeFloorDevice}
           onRemoveDevice={removeFloorDevice}
           onSelect={selectDevice}
+          onDeviceChange={updateListDevice}
           onRoomSelect={openRoomInspector}
           onRoomPower={setRoomPower}
           onSurfaceClick={closeInspector}

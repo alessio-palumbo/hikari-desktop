@@ -30,6 +30,7 @@ interface FloorPlanProps {
   onPlaceDevice: (serial: string, placement: FloorPlanDevicePlacement) => void;
   onRemoveDevice: (serial: string) => void;
   onSelect: (serial: string) => void;
+  onDeviceChange: (device: Device) => void;
   onRoomSelect: (floorId: string, roomId: string) => void;
   onRoomPower: (floorId: string, roomId: string, on: boolean) => void;
   onSurfaceClick: () => void;
@@ -61,6 +62,7 @@ export function FloorPlan({
   onPlaceDevice,
   onRemoveDevice,
   onSelect,
+  onDeviceChange,
   onRoomSelect,
   onRoomPower,
   onSurfaceClick,
@@ -234,7 +236,6 @@ export function FloorPlan({
                 key={device.serial}
                 device={device}
                 selected={device.serial === selectedSerial}
-                dimmed={shouldDim(device, searching, matches, selectedGroupDevices)}
                 x={placement.x}
                 y={placement.y}
                 editing={editing}
@@ -242,6 +243,7 @@ export function FloorPlan({
                 onMove={placeDevice}
                 onRemove={onRemoveDevice}
                 onSelect={onSelect}
+                onPowerToggle={(device) => onDeviceChange({ ...device, on: !device.on })}
               />
             );
           })}
@@ -501,7 +503,6 @@ function RoomEditor({
 function DeviceNode({
   device,
   selected,
-  dimmed,
   x,
   y,
   editing,
@@ -509,10 +510,10 @@ function DeviceNode({
   onMove,
   onRemove,
   onSelect,
+  onPowerToggle,
 }: {
   device: Device;
   selected: boolean;
-  dimmed: boolean;
   x: number;
   y: number;
   editing: boolean;
@@ -520,6 +521,7 @@ function DeviceNode({
   onMove: (serial: string, point: FloorPlanPoint) => void;
   onRemove: (serial: string) => void;
   onSelect: (serial: string) => void;
+  onPowerToggle: (device: Device) => void;
 }) {
   const movedRef = useRef(false);
   return (
@@ -528,8 +530,8 @@ function DeviceNode({
       tabIndex={0}
       className="floor-device-node"
       data-selected={selected}
+      data-on={device.on && isLightDevice(device) ? 'true' : 'false'}
       data-offline={!device.online ? 'true' : 'false'}
-      data-dimmed={dimmed ? 'true' : 'false'}
       data-editing={editing ? 'true' : 'false'}
       style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
       onPointerDown={(event) => {
@@ -565,7 +567,22 @@ function DeviceNode({
         onSelect(device.serial);
       }}
     >
-      <DeviceSwatch device={device} />
+      <button
+        type="button"
+        className="floor-device-swatch-button"
+        aria-label={device.on ? `Turn ${device.name} off` : `Turn ${device.name} on`}
+        disabled={!isLightDevice(device) || editing || !device.online}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+        }}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onPowerToggle(device);
+        }}
+      >
+        <DeviceSwatch device={device} />
+      </button>
       <span>{device.name}</span>
       {editing ? (
         <i
@@ -599,7 +616,7 @@ function DeviceNode({
 function DeviceSwatch({ device }: { device: Device }) {
   if (!isLightDevice(device)) return <i className="floor-device-swatch" data-switch="true" />;
   const color = deviceColor(device);
-  return <i className="floor-device-swatch" style={{ background: hsl(color, previewLightness(color, device.brightness, device.on)), opacity: previewOpacity(device.on) }} />;
+  return <i className="floor-device-swatch" data-on={device.on ? 'true' : 'false'} style={{ background: hsl(color, previewLightness(color, device.brightness, device.on)), opacity: previewOpacity(device.on) }} />;
 }
 
 function roomLabelPosition(room: FloorPlanRoom): { left: string; top: string } {
