@@ -466,7 +466,7 @@ function RoomShape({
                 const shape = shapeRef.current;
                 if (!point || !shape) return;
                 const points = moveRoomPoint(shape.room, shape.index, point);
-                onUpdateRoom(floorId, room.id, { points, devices: shape.devices });
+                onUpdateRoom(floorId, room.id, { points, devices: keepAssignedDevicesInsideRoom({ ...shape.room, points }, shape.devices) });
               }}
               onPointerUp={(event) => {
                 shapeRef.current = undefined;
@@ -505,7 +505,7 @@ function RoomShape({
                 const resize = resizeRef.current;
                 if (!point || !resize) return;
                 const points = resizeRectangleRoom(resize.room, resize.handle, point);
-                onUpdateRoom(floorId, room.id, { points, devices: resize.devices });
+                onUpdateRoom(floorId, room.id, { points, devices: keepAssignedDevicesInsideRoom({ ...resize.room, points }, resize.devices) });
               }}
               onPointerUp={(event) => {
                 resizeRef.current = undefined;
@@ -835,6 +835,17 @@ function moveAssignedDevices(devices: Record<string, FloorPlanDevicePlacement>, 
       serial,
       { ...placement, x: clampUnit(placement.x + delta.x), y: clampUnit(placement.y + delta.y) },
     ]),
+  );
+}
+
+function keepAssignedDevicesInsideRoom(room: FloorPlanRoom, devices: Record<string, FloorPlanDevicePlacement>): Record<string, FloorPlanDevicePlacement> {
+  return Object.fromEntries(
+    Object.entries(devices).map(([serial, placement]) => {
+      const point = { x: placement.x, y: placement.y };
+      if (pointInPolygon(point, room.points)) return [serial, placement];
+      const next = roomInteriorPoint(room, point);
+      return [serial, { ...placement, x: next.x, y: next.y, roomId: room.id }];
+    }),
   );
 }
 
