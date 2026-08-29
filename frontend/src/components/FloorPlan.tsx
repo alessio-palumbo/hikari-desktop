@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { ChevronDown, Plus, Trash2, X } from 'lucide-react';
+import { Bath, BedDouble, BriefcaseBusiness, Car, ChevronDown, DoorOpen, Plus, Sofa, Square, Trash2, Trees, Utensils, Wrench, X, type LucideIcon } from 'lucide-react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
 import { FLOOR_PLAN_ROOM_TYPES, keepRoomDevicesInsideShape, roomAtPoint, roomCenter, roomInteriorPoint, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
@@ -465,7 +465,10 @@ function RoomShape({
           onSelectRoom(room.id);
         }}
       >
-        <span style={roomLabelPosition(room)}>{room.label}</span>
+        <span className="floor-room-label" style={roomLabelPosition(room)}>
+          <RoomTypeIcon type={room.type} />
+          {room.label}
+        </span>
       </div>
       {editing && selected && shapeEditing ? (
         <>
@@ -950,4 +953,35 @@ function shouldDim(device: Device, searching: boolean, matches: Set<string>, sel
 
 function roomTypeLabel(type: FloorPlanRoomType): string {
   return type.replace('-', ' ');
+}
+
+function RoomTypeIcon({ type }: { type?: FloorPlanRoomType }) {
+  const Icon = roomTypeIcon(type);
+  return <Icon size={12} strokeWidth={1.8} aria-hidden="true" />;
+}
+
+function roomTypeIcon(type?: FloorPlanRoomType): LucideIcon {
+  switch (type) {
+    case 'bedroom':
+      return BedDouble;
+    case 'living':
+      return Sofa;
+    case 'kitchen':
+      return Utensils;
+    case 'bathroom':
+      return Bath;
+    case 'office':
+      return BriefcaseBusiness;
+    case 'hallway':
+      return DoorOpen;
+    case 'garage':
+      return Car;
+    case 'outdoor':
+      return Trees;
+    case 'utility':
+      return Wrench;
+    case 'other':
+    default:
+      return Square;
+  }
 }

@@ -223,13 +223,24 @@
   background: oklch(1 0 0 / 0.035);
 }
 
-.floor-room span {
+.floor-room-label {
   position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 42%;
   color: var(--fg-2);
   font-size: 12px;
   cursor: pointer;
   transform: translate(-50%, -50%);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.floor-room-label svg {
+  flex: 0 0 auto;
+  color: var(--fg-3);
 }
 
 .floor-room[data-editing="false"] {
