@@ -277,7 +277,8 @@
   cursor: grabbing;
 }
 
-.floor-room-resize-handle {
+.floor-room-resize-handle,
+.floor-room-shape-handle {
   position: absolute;
   z-index: 4;
   width: 11px;
@@ -290,7 +291,8 @@
   transform: translate(-50%, -50%);
 }
 
-.floor-room-resize-handle:hover {
+.floor-room-resize-handle:hover,
+.floor-room-shape-handle:hover {
   border-color: oklch(0.92 0.12 92 / 0.92);
   background: oklch(0.92 0.12 92 / 0.92);
   box-shadow: 0 3px 10px oklch(0 0 0 / 0.34);
@@ -304,6 +306,10 @@
 .floor-room-resize-handle[data-handle="ne"],
 .floor-room-resize-handle[data-handle="sw"] {
   cursor: nesw-resize;
+}
+
+.floor-room-shape-handle {
+  cursor: move;
 }
 
 .floor-room-power {
@@ -337,7 +343,7 @@
 
 .floor-room-editor {
   display: grid;
-  grid-template-columns: auto 170px 118px 26px;
+  grid-template-columns: auto 170px 118px 54px 26px;
   align-items: center;
   gap: 8px;
   min-height: 38px;
@@ -376,6 +382,16 @@
 .floor-room-editor input {
   padding: 0 7px;
   outline: 0;
+}
+
+.floor-shape-button {
+  padding: 0 8px;
+}
+
+.floor-shape-button[data-active="true"] {
+  border-color: oklch(0.9 0.11 92 / 0.28);
+  background: oklch(0.9 0.11 92 / 0.1);
+  color: var(--fg-0);
 }
 
 .floor-room-editor button {

@@ -38,6 +38,7 @@ interface FloorPlanProps {
 
 type RoomPowerState = 'empty' | 'off' | 'mixed' | 'on';
 type RoomResizeHandle = 'nw' | 'ne' | 'se' | 'sw';
+type RoomEditMode = 'resize' | 'shape';
 
 export function FloorPlan({
   location,
@@ -71,6 +72,7 @@ export function FloorPlan({
   const canvasRef = useRef<HTMLElement | null>(null);
   const floor = activeFloor(layout);
   const [editedRoomId, setEditedRoomId] = useState<string | undefined>();
+  const [roomEditMode, setRoomEditMode] = useState<RoomEditMode>('resize');
   const editedRoom = floor?.rooms.find((room) => room.id === editedRoomId);
   const roomLabelRef = useRef<HTMLInputElement | null>(null);
   const placed = new Set(Object.keys(floor?.devices ?? {}));
@@ -96,6 +98,8 @@ export function FloorPlan({
     if (!editing || !editedRoomId || floor?.rooms.some((room) => room.id === editedRoomId)) return;
     setEditedRoomId(undefined);
   }, [editing, floor?.id, floor?.rooms, editedRoomId]);
+
+  useEffect(() => setRoomEditMode('resize'), [editing, editedRoomId]);
 
   useEffect(() => {
     if (!editing || !editedRoom) return;
@@ -183,7 +187,9 @@ export function FloorPlan({
           <RoomEditor
             floorId={floor.id}
             room={editedRoom}
+            shapeEditing={roomEditMode === 'shape'}
             labelRef={roomLabelRef}
+            onShapeEditingChange={(shapeEditing) => setRoomEditMode(shapeEditing ? 'shape' : 'resize')}
             onUpdateRoom={onUpdateRoom}
             onRemoveRoom={(floorId, roomId) => {
               onRemoveRoom(floorId, roomId);
@@ -217,6 +223,7 @@ export function FloorPlan({
               floorId={floor.id}
               editing={editing}
               selected={editing ? room.id === editedRoomId : room.id === selectedRoomId}
+              shapeEditing={roomEditMode === 'shape'}
               powerState={roomPowerState(room.id, floor, devices)}
               canvasPoint={canvasPoint}
               floorDevices={floor.devices}
@@ -341,6 +348,7 @@ function RoomShape({
   floorId,
   editing,
   selected,
+  shapeEditing,
   powerState,
   canvasPoint,
   floorDevices,
@@ -352,6 +360,7 @@ function RoomShape({
   floorId: string;
   editing: boolean;
   selected: boolean;
+  shapeEditing: boolean;
   powerState: RoomPowerState;
   canvasPoint: (clientX: number, clientY: number) => FloorPlanPoint | undefined;
   floorDevices: Record<string, FloorPlanDevicePlacement>;
@@ -366,6 +375,11 @@ function RoomShape({
   } | undefined>(undefined);
   const resizeRef = useRef<{
     handle: RoomResizeHandle;
+    room: FloorPlanRoom;
+    devices: Record<string, FloorPlanDevicePlacement>;
+  } | undefined>(undefined);
+  const shapeRef = useRef<{
+    index: number;
     room: FloorPlanRoom;
     devices: Record<string, FloorPlanDevicePlacement>;
   } | undefined>(undefined);
@@ -384,7 +398,7 @@ function RoomShape({
         }}
         onPointerDown={(event) => {
           movedRef.current = false;
-          if (!editing) return;
+          if (!editing || shapeEditing) return;
           const point = canvasPoint(event.clientX, event.clientY);
           if (!point) return;
           event.preventDefault();
@@ -398,7 +412,7 @@ function RoomShape({
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
-          if (!editing || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          if (!editing || shapeEditing || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
           const point = canvasPoint(event.clientX, event.clientY);
           const drag = dragRef.current;
           if (!point || !drag) return;
@@ -410,11 +424,13 @@ function RoomShape({
         onPointerUp={(event) => {
           dragRef.current = undefined;
           resizeRef.current = undefined;
+          shapeRef.current = undefined;
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
         }}
         onPointerCancel={(event) => {
           dragRef.current = undefined;
           resizeRef.current = undefined;
+          shapeRef.current = undefined;
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
         }}
         onClick={(event) => {
@@ -428,7 +444,43 @@ function RoomShape({
       >
         <span style={roomLabelPosition(room)}>{room.label}</span>
       </div>
-      {editing && selected && isRectangleRoom(room) ? (
+      {editing && selected && shapeEditing ? (
+        <>
+          {room.points.map((point, index) => (
+            <button
+              key={`${room.id}-${index}`}
+              type="button"
+              className="floor-room-shape-handle"
+              aria-label={`Move ${room.label} point ${index + 1}`}
+              style={roomPointPosition(point)}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                movedRef.current = true;
+                shapeRef.current = { index, room, devices: assignedRoomDevices(floorDevices, room.id) };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                const point = canvasPoint(event.clientX, event.clientY);
+                const shape = shapeRef.current;
+                if (!point || !shape) return;
+                const points = moveRoomPoint(shape.room, shape.index, point);
+                onUpdateRoom(floorId, room.id, { points, devices: shape.devices });
+              }}
+              onPointerUp={(event) => {
+                shapeRef.current = undefined;
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+              onPointerCancel={(event) => {
+                shapeRef.current = undefined;
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+            />
+          ))}
+        </>
+      ) : null}
+      {editing && selected && !shapeEditing && isRectangleRoom(room) ? (
         <>
           {(['nw', 'ne', 'se', 'sw'] as RoomResizeHandle[]).map((handle) => (
             <button
@@ -488,13 +540,17 @@ function RoomShape({
 function RoomEditor({
   floorId,
   room,
+  shapeEditing,
   labelRef,
+  onShapeEditingChange,
   onUpdateRoom,
   onRemoveRoom,
 }: {
   floorId: string;
   room?: FloorPlanRoom;
+  shapeEditing: boolean;
   labelRef: RefObject<HTMLInputElement | null>;
+  onShapeEditingChange: (shapeEditing: boolean) => void;
   onUpdateRoom: (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => void;
   onRemoveRoom: (floorId: string, roomId: string) => void;
 }) {
@@ -536,6 +592,9 @@ function RoomEditor({
             </select>
             <ChevronDown size={12} aria-hidden="true" />
           </label>
+          <button type="button" className="floor-shape-button" data-active={shapeEditing ? 'true' : 'false'} aria-pressed={shapeEditing} onClick={() => onShapeEditingChange(!shapeEditing)}>
+            shape
+          </button>
           <button type="button" className="floor-icon-button" aria-label={`Delete ${room.label}`} onClick={() => onRemoveRoom(floorId, room.id)}>
             <Trash2 size={13} strokeWidth={1.8} aria-hidden="true" />
           </button>
@@ -669,16 +728,16 @@ function DeviceSwatch({ device }: { device: Device }) {
 }
 
 function roomLabelPosition(room: FloorPlanRoom): { left: string; top: string } {
-  const center = roomCenter(room);
-  return { left: `${center.x * 100}%`, top: `${center.y * 100}%` };
+  return roomAnchorStyle(roomInteriorPoint(room, roomCenter(room)));
 }
 
 function roomPowerPosition(room: FloorPlanRoom): { left: string; top: string } {
   const bounds = roomBounds(room.points);
-  return {
-    left: `${Math.max(bounds.left, Math.min(bounds.right, bounds.right - 0.035)) * 100}%`,
-    top: `${Math.max(bounds.top, Math.min(bounds.bottom, bounds.top + 0.035)) * 100}%`,
+  const ideal = {
+    x: Math.max(bounds.left, Math.min(bounds.right, bounds.right - Math.max(0.025, (bounds.right - bounds.left) * 0.12))),
+    y: Math.max(bounds.top, Math.min(bounds.bottom, bounds.top + Math.max(0.025, (bounds.bottom - bounds.top) * 0.12))),
   };
+  return roomAnchorStyle(roomInteriorPoint(room, ideal));
 }
 
 function roomResizeHandlePosition(room: FloorPlanRoom, handle: RoomResizeHandle): { left: string; top: string } {
@@ -686,6 +745,14 @@ function roomResizeHandlePosition(room: FloorPlanRoom, handle: RoomResizeHandle)
   const x = handle.includes('w') ? bounds.left : bounds.right;
   const y = handle.includes('n') ? bounds.top : bounds.bottom;
   return { left: `${x * 100}%`, top: `${y * 100}%` };
+}
+
+function roomPointPosition(point: FloorPlanPoint): { left: string; top: string } {
+  return { left: `${point.x * 100}%`, top: `${point.y * 100}%` };
+}
+
+function roomAnchorStyle(point: FloorPlanPoint): { left: string; top: string } {
+  return { left: `${point.x * 100}%`, top: `${point.y * 100}%` };
 }
 
 function roomPowerState(roomId: string, floor: FloorPlanFloor, devices: Device[]): RoomPowerState {
@@ -748,6 +815,10 @@ function resizeRectangleRoom(room: FloorPlanRoom, handle: RoomResizeHandle, poin
   ];
 }
 
+function moveRoomPoint(room: FloorPlanRoom, index: number, point: FloorPlanPoint): FloorPlanPoint[] {
+  return room.points.map((entry, entryIndex) => (entryIndex === index ? { x: clampUnit(point.x), y: clampUnit(point.y) } : entry));
+}
+
 function roomMoveDelta(room: FloorPlanRoom, points: FloorPlanPoint[]): FloorPlanPoint {
   const before = roomCenter(room);
   const after = pointsCenter(points);
@@ -777,6 +848,34 @@ function roomBounds(points: FloorPlanPoint[]) {
     }),
     { left: 1, right: 0, top: 1, bottom: 0 },
   );
+}
+
+function roomInteriorPoint(room: FloorPlanRoom, ideal: FloorPlanPoint): FloorPlanPoint {
+  if (pointInPolygon(ideal, room.points)) return ideal;
+  const bounds = roomBounds(room.points);
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  if (width <= 0 || height <= 0) return roomCenter(room);
+
+  const insetX = Math.min(width / 2, Math.max(0.01, width * 0.08));
+  const insetY = Math.min(height / 2, Math.max(0.01, height * 0.08));
+  const candidates: FloorPlanPoint[] = [];
+  const steps = 8;
+  for (let yIndex = 0; yIndex <= steps; yIndex += 1) {
+    for (let xIndex = 0; xIndex <= steps; xIndex += 1) {
+      candidates.push({
+        x: bounds.left + insetX + (Math.max(0, width - insetX * 2) * xIndex) / steps,
+        y: bounds.top + insetY + (Math.max(0, height - insetY * 2) * yIndex) / steps,
+      });
+    }
+  }
+  return candidates
+    .filter((candidate) => pointInPolygon(candidate, room.points))
+    .sort((a, b) => squaredDistance(a, ideal) - squaredDistance(b, ideal))[0] ?? roomCenter(room);
+}
+
+function squaredDistance(a: FloorPlanPoint, b: FloorPlanPoint): number {
+  return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 }
 
 function isRectangleRoom(room: FloorPlanRoom): boolean {
