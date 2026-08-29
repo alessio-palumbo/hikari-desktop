@@ -419,6 +419,53 @@ export function normalizePoint(point: FloorPlanPoint): FloorPlanPoint {
   return { x: clampUnit(point.x), y: clampUnit(point.y) };
 }
 
+export function roomAtPoint(rooms: FloorPlanRoom[], point: FloorPlanPoint): FloorPlanRoom | undefined {
+  return rooms.find((room) => pointInRoom(point, room));
+}
+
+export function pointInRoom(point: FloorPlanPoint, room: FloorPlanRoom): boolean {
+  return pointInPolygon(point, room.points);
+}
+
+export function roomCenter(room: FloorPlanRoom): FloorPlanPoint {
+  return pointsCenter(room.points);
+}
+
+export function roomInteriorPoint(room: FloorPlanRoom, ideal: FloorPlanPoint): FloorPlanPoint {
+  if (pointInRoom(ideal, room)) return ideal;
+  const bounds = roomBounds(room.points);
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  if (width <= 0 || height <= 0) return roomCenter(room);
+
+  const insetX = Math.min(width / 2, Math.max(0.01, width * 0.08));
+  const insetY = Math.min(height / 2, Math.max(0.01, height * 0.08));
+  const candidates: FloorPlanPoint[] = [];
+  const steps = 8;
+  for (let yIndex = 0; yIndex <= steps; yIndex += 1) {
+    for (let xIndex = 0; xIndex <= steps; xIndex += 1) {
+      candidates.push({
+        x: bounds.left + insetX + (Math.max(0, width - insetX * 2) * xIndex) / steps,
+        y: bounds.top + insetY + (Math.max(0, height - insetY * 2) * yIndex) / steps,
+      });
+    }
+  }
+  return candidates
+    .filter((candidate) => pointInRoom(candidate, room))
+    .sort((a, b) => squaredDistance(a, ideal) - squaredDistance(b, ideal))[0] ?? roomCenter(room);
+}
+
+export function keepRoomDevicesInsideShape(room: FloorPlanRoom, devices: Record<string, FloorPlanDevicePlacement>): Record<string, FloorPlanDevicePlacement> {
+  return Object.fromEntries(
+    Object.entries(devices).map(([serial, placement]) => {
+      const point = { x: placement.x, y: placement.y };
+      if (pointInRoom(point, room)) return [serial, placement];
+      const next = roomInteriorPoint(room, point);
+      return [serial, { ...placement, x: next.x, y: next.y, roomId: room.id }];
+    }),
+  );
+}
+
 function normalizeFloor(value: unknown): FloorPlanFloor | undefined {
   if (!isRecord(value)) return undefined;
   const id = cleanId(value.id);
@@ -470,6 +517,35 @@ function pointsCenter(points: FloorPlanPoint[]): FloorPlanPoint {
     x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
     y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
   };
+}
+
+function roomBounds(points: FloorPlanPoint[]) {
+  return points.reduce(
+    (bounds, point) => ({
+      left: Math.min(bounds.left, point.x),
+      right: Math.max(bounds.right, point.x),
+      top: Math.min(bounds.top, point.y),
+      bottom: Math.max(bounds.bottom, point.y),
+    }),
+    { left: 1, right: 0, top: 1, bottom: 0 },
+  );
+}
+
+function squaredDistance(a: FloorPlanPoint, b: FloorPlanPoint): number {
+  return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+}
+
+function pointInPolygon(point: FloorPlanPoint, polygon: FloorPlanPoint[]): boolean {
+  let inside = false;
+  for (let current = 0, previous = polygon.length - 1; current < polygon.length; previous = current, current += 1) {
+    const currentPoint = polygon[current];
+    const previousPoint = polygon[previous];
+    const crosses = currentPoint.y > point.y !== previousPoint.y > point.y;
+    if (!crosses) continue;
+    const x = ((previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)) / (previousPoint.y - currentPoint.y) + currentPoint.x;
+    if (point.x < x) inside = !inside;
+  }
+  return inside;
 }
 
 function updateFloor(

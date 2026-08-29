@@ -12,13 +12,17 @@ import {
   normalizeFloorPlanPreferences,
   parseFloorPlanPreferences,
   placeDeviceOnFloor,
+  pointInRoom,
   removeDeviceFromFloorPlan,
   removeFloorFromLocation,
   removeRoomFromFloor,
+  roomAtPoint,
+  roomInteriorPoint,
   saveFloorPlanPreferences,
   setActiveFloor,
   updateFloorLabel,
   updateRoomInFloor,
+  keepRoomDevicesInsideShape,
 } from '../dist-test/domain/floorPlan.js';
 
 test('creates a default floor for a location without existing layout', () => {
@@ -229,6 +233,68 @@ test('removing rooms unassigns devices from the floor', () => {
 
   assert.equal(removed.locations.home.floors[0].rooms.length, 0);
   assert.equal(removed.locations.home.floors[0].devices.d073d5000001, undefined);
+});
+
+test('finds rooms using polygon hit testing', () => {
+  const living = createRectangleRoom('living', 'Living Room', 'living', { x: 0.1, y: 0.1 }, { x: 0.3, y: 0.3 });
+  const kitchen = createRectangleRoom('kitchen', 'Kitchen', 'kitchen', { x: 0.5, y: 0.1 }, { x: 0.3, y: 0.3 });
+
+  assert.equal(roomAtPoint([living, kitchen], { x: 0.2, y: 0.2 })?.id, 'living');
+  assert.equal(roomAtPoint([living, kitchen], { x: 0.6, y: 0.2 })?.id, 'kitchen');
+  assert.equal(roomAtPoint([living, kitchen], { x: 0.9, y: 0.9 }), undefined);
+});
+
+test('detects points inside shaped rooms', () => {
+  const room = {
+    id: 'l-room',
+    label: 'L Room',
+    points: [
+      { x: 0.1, y: 0.1 },
+      { x: 0.7, y: 0.1 },
+      { x: 0.7, y: 0.3 },
+      { x: 0.3, y: 0.3 },
+      { x: 0.3, y: 0.7 },
+      { x: 0.1, y: 0.7 },
+    ],
+  };
+
+  assert.equal(pointInRoom({ x: 0.2, y: 0.2 }, room), true);
+  assert.equal(pointInRoom({ x: 0.2, y: 0.6 }, room), true);
+  assert.equal(pointInRoom({ x: 0.55, y: 0.55 }, room), false);
+});
+
+test('keeps room devices inside a shaped room without moving valid placements', () => {
+  const room = {
+    id: 'l-room',
+    label: 'L Room',
+    points: [
+      { x: 0.1, y: 0.1 },
+      { x: 0.7, y: 0.1 },
+      { x: 0.7, y: 0.3 },
+      { x: 0.3, y: 0.3 },
+      { x: 0.3, y: 0.7 },
+      { x: 0.1, y: 0.7 },
+    ],
+  };
+  const devices = {
+    inside: { x: 0.2, y: 0.2, roomId: 'l-room' },
+    escaped: { x: 0.55, y: 0.55, roomId: 'l-room' },
+  };
+
+  const got = keepRoomDevicesInsideShape(room, devices);
+
+  assert.deepEqual(got.inside, devices.inside);
+  assert.equal(got.escaped.roomId, 'l-room');
+  assert.equal(pointInRoom(got.escaped, room), true);
+});
+
+test('returns an interior room point near the requested point', () => {
+  const room = createRectangleRoom('living', 'Living Room', 'living', { x: 0.2, y: 0.2 }, { x: 0.4, y: 0.4 });
+  const got = roomInteriorPoint(room, { x: 0.95, y: 0.95 });
+
+  assert.equal(pointInRoom(got, room), true);
+  assert.ok(got.x > 0.4);
+  assert.ok(got.y > 0.4);
 });
 
 test('loads and saves preferences through a storage boundary', () => {

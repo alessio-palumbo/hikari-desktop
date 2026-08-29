@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { ChevronDown, Plus, Trash2, X } from 'lucide-react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
-import { FLOOR_PLAN_ROOM_TYPES, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
+import { FLOOR_PLAN_ROOM_TYPES, keepRoomDevicesInsideShape, roomAtPoint, roomCenter, roomInteriorPoint, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
 import { CenterViewToggle, type CenterView } from './CenterViewToggle';
 import './FloorPlan.css';
 
@@ -119,6 +119,7 @@ export function FloorPlan({
       onClick={(event) => {
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest('.floor-device-node, .floor-unplaced-device, .floor-tools, .floor-room, .floor-room-editor, button, select, input')) return;
+        if (editing) return;
         setEditedRoomId(undefined);
         onSurfaceClick();
       }}
@@ -479,7 +480,7 @@ function RoomShape({
                 event.preventDefault();
                 event.stopPropagation();
                 const points = insertRoomPoint(room, index, midpoint(point, room.points[(index + 1) % room.points.length]));
-                onUpdateRoom(floorId, room.id, { points, devices: keepAssignedDevicesInsideRoom({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
+                onUpdateRoom(floorId, room.id, { points, devices: keepRoomDevicesInsideShape({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
               }}
             >
               <Plus size={9} strokeWidth={2.1} aria-hidden="true" />
@@ -505,7 +506,7 @@ function RoomShape({
                 const shape = shapeRef.current;
                 if (!point || !shape) return;
                 const points = moveRoomPoint(shape.room, shape.index, point);
-                onUpdateRoom(floorId, room.id, { points, devices: keepAssignedDevicesInsideRoom({ ...shape.room, points }, shape.devices) });
+                onUpdateRoom(floorId, room.id, { points, devices: keepRoomDevicesInsideShape({ ...shape.room, points }, shape.devices) });
               }}
               onPointerUp={(event) => {
                 shapeRef.current = undefined;
@@ -520,14 +521,14 @@ function RoomShape({
                 event.preventDefault();
                 event.stopPropagation();
                 const points = removeRoomPoint(room, index);
-                onUpdateRoom(floorId, room.id, { points, devices: keepAssignedDevicesInsideRoom({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
+                onUpdateRoom(floorId, room.id, { points, devices: keepRoomDevicesInsideShape({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
               }}
               onKeyDown={(event) => {
                 if (room.points.length <= 3 || (event.key !== 'Backspace' && event.key !== 'Delete')) return;
                 event.preventDefault();
                 event.stopPropagation();
                 const points = removeRoomPoint(room, index);
-                onUpdateRoom(floorId, room.id, { points, devices: keepAssignedDevicesInsideRoom({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
+                onUpdateRoom(floorId, room.id, { points, devices: keepRoomDevicesInsideShape({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
               }}
             />
           ))}
@@ -558,7 +559,7 @@ function RoomShape({
                 const resize = resizeRef.current;
                 if (!point || !resize) return;
                 const points = resizeRectangleRoom(resize.room, resize.handle, point);
-                onUpdateRoom(floorId, room.id, { points, devices: keepAssignedDevicesInsideRoom({ ...resize.room, points }, resize.devices) });
+                onUpdateRoom(floorId, room.id, { points, devices: keepRoomDevicesInsideShape({ ...resize.room, points }, resize.devices) });
               }}
               onPointerUp={(event) => {
                 resizeRef.current = undefined;
@@ -817,12 +818,6 @@ function roomPowerState(roomId: string, floor: FloorPlanFloor, devices: Device[]
   return onCount === online.length ? 'on' : 'mixed';
 }
 
-function roomCenter(room: FloorPlanRoom): FloorPlanPoint {
-  const x = room.points.reduce((sum, point) => sum + point.x, 0) / room.points.length;
-  const y = room.points.reduce((sum, point) => sum + point.y, 0) / room.points.length;
-  return { x, y };
-}
-
 function moveRoomTo(room: FloorPlanRoom, center: FloorPlanPoint): FloorPlanPoint[] {
   const current = roomCenter(room);
   const bounds = roomBounds(room.points);
@@ -906,17 +901,6 @@ function moveAssignedDevices(devices: Record<string, FloorPlanDevicePlacement>, 
   );
 }
 
-function keepAssignedDevicesInsideRoom(room: FloorPlanRoom, devices: Record<string, FloorPlanDevicePlacement>): Record<string, FloorPlanDevicePlacement> {
-  return Object.fromEntries(
-    Object.entries(devices).map(([serial, placement]) => {
-      const point = { x: placement.x, y: placement.y };
-      if (pointInPolygon(point, room.points)) return [serial, placement];
-      const next = roomInteriorPoint(room, point);
-      return [serial, { ...placement, x: next.x, y: next.y, roomId: room.id }];
-    }),
-  );
-}
-
 function roomBounds(points: FloorPlanPoint[]) {
   return points.reduce(
     (bounds, point) => ({
@@ -927,34 +911,6 @@ function roomBounds(points: FloorPlanPoint[]) {
     }),
     { left: 1, right: 0, top: 1, bottom: 0 },
   );
-}
-
-function roomInteriorPoint(room: FloorPlanRoom, ideal: FloorPlanPoint): FloorPlanPoint {
-  if (pointInPolygon(ideal, room.points)) return ideal;
-  const bounds = roomBounds(room.points);
-  const width = bounds.right - bounds.left;
-  const height = bounds.bottom - bounds.top;
-  if (width <= 0 || height <= 0) return roomCenter(room);
-
-  const insetX = Math.min(width / 2, Math.max(0.01, width * 0.08));
-  const insetY = Math.min(height / 2, Math.max(0.01, height * 0.08));
-  const candidates: FloorPlanPoint[] = [];
-  const steps = 8;
-  for (let yIndex = 0; yIndex <= steps; yIndex += 1) {
-    for (let xIndex = 0; xIndex <= steps; xIndex += 1) {
-      candidates.push({
-        x: bounds.left + insetX + (Math.max(0, width - insetX * 2) * xIndex) / steps,
-        y: bounds.top + insetY + (Math.max(0, height - insetY * 2) * yIndex) / steps,
-      });
-    }
-  }
-  return candidates
-    .filter((candidate) => pointInPolygon(candidate, room.points))
-    .sort((a, b) => squaredDistance(a, ideal) - squaredDistance(b, ideal))[0] ?? roomCenter(room);
-}
-
-function squaredDistance(a: FloorPlanPoint, b: FloorPlanPoint): number {
-  return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 }
 
 function isRectangleRoom(room: FloorPlanRoom): boolean {
@@ -994,21 +950,4 @@ function shouldDim(device: Device, searching: boolean, matches: Set<string>, sel
 
 function roomTypeLabel(type: FloorPlanRoomType): string {
   return type.replace('-', ' ');
-}
-
-function roomAtPoint(rooms: FloorPlanRoom[], point: FloorPlanPoint): FloorPlanRoom | undefined {
-  return rooms.find((room) => pointInPolygon(point, room.points));
-}
-
-function pointInPolygon(point: FloorPlanPoint, polygon: FloorPlanPoint[]): boolean {
-  let inside = false;
-  for (let current = 0, previous = polygon.length - 1; current < polygon.length; previous = current, current += 1) {
-    const currentPoint = polygon[current];
-    const previousPoint = polygon[previous];
-    const crosses = currentPoint.y > point.y !== previousPoint.y > point.y;
-    if (!crosses) continue;
-    const x = ((previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)) / (previousPoint.y - currentPoint.y) + currentPoint.x;
-    if (point.x < x) inside = !inside;
-  }
-  return inside;
 }
