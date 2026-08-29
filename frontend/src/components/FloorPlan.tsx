@@ -39,6 +39,7 @@ interface FloorPlanProps {
 type RoomPowerState = 'empty' | 'off' | 'mixed' | 'on';
 type RoomResizeHandle = 'nw' | 'ne' | 'se' | 'sw';
 type RoomEditMode = 'resize' | 'shape';
+const roomDragThresholdPx = 4;
 
 export function FloorPlan({
   location,
@@ -100,7 +101,13 @@ export function FloorPlan({
     setEditedRoomId(undefined);
   }, [editing, floor?.id, floor?.rooms, editedRoomId]);
 
-  useEffect(() => setRoomEditMode('resize'), [editing, editedRoomId]);
+  useEffect(() => {
+    if (!editing) {
+      setRoomEditMode('resize');
+      return;
+    }
+    setRoomEditMode(editedRoom && !isRectangleRoom(editedRoom) ? 'shape' : 'resize');
+  }, [editing, editedRoom?.id]);
 
   useEffect(() => {
     if (editing) return;
@@ -392,6 +399,7 @@ function RoomShape({
 }) {
   const dragRef = useRef<{
     offset: FloorPlanPoint;
+    pointerStart: FloorPlanPoint;
     room: FloorPlanRoom;
     devices: Record<string, FloorPlanDevicePlacement>;
   } | undefined>(undefined);
@@ -429,6 +437,7 @@ function RoomShape({
           const center = roomCenter(room);
           dragRef.current = {
             offset: { x: point.x - center.x, y: point.y - center.y },
+            pointerStart: point,
             room,
             devices: assignedRoomDevices(floorDevices, room.id),
           };
@@ -439,6 +448,9 @@ function RoomShape({
           const point = canvasPoint(event.clientX, event.clientY);
           const drag = dragRef.current;
           if (!point || !drag) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          const movedPx = Math.hypot((point.x - drag.pointerStart.x) * rect.width, (point.y - drag.pointerStart.y) * rect.height);
+          if (movedPx < roomDragThresholdPx) return;
           movedRef.current = true;
           const points = moveRoomTo(drag.room, { x: point.x - drag.offset.x, y: point.y - drag.offset.y });
           const delta = roomMoveDelta(drag.room, points);
@@ -957,7 +969,7 @@ function roomTypeLabel(type: FloorPlanRoomType): string {
 
 function RoomTypeIcon({ type }: { type?: FloorPlanRoomType }) {
   const Icon = roomTypeIcon(type);
-  return <Icon size={12} strokeWidth={1.8} aria-hidden="true" />;
+  return <Icon size={14} strokeWidth={1.85} aria-hidden="true" />;
 }
 
 function roomTypeIcon(type?: FloorPlanRoomType): LucideIcon {

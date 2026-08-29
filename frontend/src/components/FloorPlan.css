@@ -184,39 +184,39 @@
 }
 
 .floor-room[data-type="bedroom"] {
-  background: oklch(0.58 0.08 285 / 0.1);
+  background: oklch(0.62 0.09 292 / 0.16);
 }
 
 .floor-room[data-type="living"] {
-  background: oklch(0.7 0.08 105 / 0.1);
+  background: oklch(0.72 0.1 128 / 0.15);
 }
 
 .floor-room[data-type="kitchen"] {
-  background: oklch(0.76 0.08 72 / 0.1);
+  background: oklch(0.78 0.12 78 / 0.16);
 }
 
 .floor-room[data-type="bathroom"] {
-  background: oklch(0.7 0.07 210 / 0.1);
+  background: oklch(0.72 0.1 218 / 0.16);
 }
 
 .floor-room[data-type="office"] {
-  background: oklch(0.67 0.08 160 / 0.1);
+  background: oklch(0.66 0.1 176 / 0.15);
 }
 
 .floor-room[data-type="hallway"] {
-  background: oklch(0.73 0.06 95 / 0.09);
+  background: oklch(0.76 0.08 96 / 0.13);
 }
 
 .floor-room[data-type="garage"] {
-  background: oklch(0.58 0.03 245 / 0.11);
+  background: oklch(0.58 0.05 248 / 0.17);
 }
 
 .floor-room[data-type="outdoor"] {
-  background: oklch(0.72 0.08 135 / 0.1);
+  background: oklch(0.7 0.12 145 / 0.16);
 }
 
 .floor-room[data-type="utility"] {
-  background: oklch(0.64 0.05 35 / 0.1);
+  background: oklch(0.64 0.08 38 / 0.16);
 }
 
 .floor-room[data-type="other"] {
@@ -227,7 +227,7 @@
   position: absolute;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   max-width: 42%;
   color: var(--fg-2);
   font-size: 12px;
@@ -241,6 +241,42 @@
 .floor-room-label svg {
   flex: 0 0 auto;
   color: var(--fg-3);
+}
+
+.floor-room[data-type="bedroom"] .floor-room-label svg {
+  color: oklch(0.78 0.08 292);
+}
+
+.floor-room[data-type="living"] .floor-room-label svg {
+  color: oklch(0.8 0.09 128);
+}
+
+.floor-room[data-type="kitchen"] .floor-room-label svg {
+  color: oklch(0.84 0.1 78);
+}
+
+.floor-room[data-type="bathroom"] .floor-room-label svg {
+  color: oklch(0.8 0.09 218);
+}
+
+.floor-room[data-type="office"] .floor-room-label svg {
+  color: oklch(0.78 0.09 176);
+}
+
+.floor-room[data-type="hallway"] .floor-room-label svg {
+  color: oklch(0.82 0.07 96);
+}
+
+.floor-room[data-type="garage"] .floor-room-label svg {
+  color: oklch(0.74 0.05 248);
+}
+
+.floor-room[data-type="outdoor"] .floor-room-label svg {
+  color: oklch(0.78 0.1 145);
+}
+
+.floor-room[data-type="utility"] .floor-room-label svg {
+  color: oklch(0.76 0.08 38);
 }
 
 .floor-room[data-editing="false"] {
@@ -281,12 +317,29 @@
 }
 
 .floor-room[data-editing="true"][data-selected="true"] {
-  border-width: 2px;
   border-color: oklch(0.88 0.08 92 / 0.9);
   box-shadow:
     inset 0 0 0 1px oklch(0.88 0.08 92 / 0.38),
     inset 0 0 30px oklch(0.88 0.08 92 / 0.08);
   filter: drop-shadow(0 0 5px oklch(0.88 0.08 92 / 0.22));
+}
+
+.floor-room[data-selected="true"][data-power="on"] {
+  border-color: oklch(0.92 0.12 92 / 0.86);
+  box-shadow:
+    inset 0 0 0 1px oklch(0.92 0.12 92 / 0.42),
+    inset 0 0 32px oklch(0.92 0.12 92 / 0.08),
+    0 0 0 1px oklch(0.92 0.12 92 / 0.26);
+  filter: drop-shadow(0 0 9px oklch(0.92 0.12 92 / 0.3));
+}
+
+.floor-room[data-selected="true"][data-power="mixed"] {
+  border-color: oklch(0.84 0.09 92 / 0.68);
+  box-shadow:
+    inset 0 0 0 1px oklch(0.84 0.09 92 / 0.3),
+    inset 0 0 28px oklch(0.84 0.09 92 / 0.06),
+    0 0 0 1px oklch(0.84 0.09 92 / 0.18);
+  filter: drop-shadow(0 0 7px oklch(0.84 0.09 92 / 0.22));
 }
 
 .floor-room[data-editing="true"][data-drop-target="true"] {
