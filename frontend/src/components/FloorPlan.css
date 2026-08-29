@@ -277,6 +277,35 @@
   cursor: grabbing;
 }
 
+.floor-room-resize-handle {
+  position: absolute;
+  z-index: 4;
+  width: 11px;
+  height: 11px;
+  border: 1px solid oklch(0.9 0.11 92 / 0.82);
+  border-radius: 999px;
+  background: oklch(0.9 0.11 92 / 0.78);
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.28);
+  padding: 0;
+  transform: translate(-50%, -50%);
+}
+
+.floor-room-resize-handle:hover {
+  border-color: oklch(0.92 0.12 92 / 0.92);
+  background: oklch(0.92 0.12 92 / 0.92);
+  box-shadow: 0 3px 10px oklch(0 0 0 / 0.34);
+}
+
+.floor-room-resize-handle[data-handle="nw"],
+.floor-room-resize-handle[data-handle="se"] {
+  cursor: nwse-resize;
+}
+
+.floor-room-resize-handle[data-handle="ne"],
+.floor-room-resize-handle[data-handle="sw"] {
+  cursor: nesw-resize;
+}
+
 .floor-room-power {
   position: absolute;
   z-index: 3;

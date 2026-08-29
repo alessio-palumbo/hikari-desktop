@@ -37,6 +37,7 @@ interface FloorPlanProps {
 }
 
 type RoomPowerState = 'empty' | 'off' | 'mixed' | 'on';
+type RoomResizeHandle = 'nw' | 'ne' | 'se' | 'sw';
 
 export function FloorPlan({
   location,
@@ -363,6 +364,11 @@ function RoomShape({
     room: FloorPlanRoom;
     devices: Record<string, FloorPlanDevicePlacement>;
   } | undefined>(undefined);
+  const resizeRef = useRef<{
+    handle: RoomResizeHandle;
+    room: FloorPlanRoom;
+    devices: Record<string, FloorPlanDevicePlacement>;
+  } | undefined>(undefined);
   const movedRef = useRef(false);
 
   return (
@@ -403,10 +409,12 @@ function RoomShape({
         }}
         onPointerUp={(event) => {
           dragRef.current = undefined;
+          resizeRef.current = undefined;
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
         }}
         onPointerCancel={(event) => {
           dragRef.current = undefined;
+          resizeRef.current = undefined;
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
         }}
         onClick={(event) => {
@@ -420,6 +428,45 @@ function RoomShape({
       >
         <span style={roomLabelPosition(room)}>{room.label}</span>
       </div>
+      {editing && selected && isRectangleRoom(room) ? (
+        <>
+          {(['nw', 'ne', 'se', 'sw'] as RoomResizeHandle[]).map((handle) => (
+            <button
+              key={handle}
+              type="button"
+              className="floor-room-resize-handle"
+              data-handle={handle}
+              aria-label={`Resize ${room.label}`}
+              style={roomResizeHandlePosition(room, handle)}
+              onPointerDown={(event) => {
+                const point = canvasPoint(event.clientX, event.clientY);
+                if (!point) return;
+                event.preventDefault();
+                event.stopPropagation();
+                movedRef.current = true;
+                resizeRef.current = { handle, room, devices: assignedRoomDevices(floorDevices, room.id) };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                const point = canvasPoint(event.clientX, event.clientY);
+                const resize = resizeRef.current;
+                if (!point || !resize) return;
+                const points = resizeRectangleRoom(resize.room, resize.handle, point);
+                onUpdateRoom(floorId, room.id, { points, devices: resize.devices });
+              }}
+              onPointerUp={(event) => {
+                resizeRef.current = undefined;
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+              onPointerCancel={(event) => {
+                resizeRef.current = undefined;
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+            />
+          ))}
+        </>
+      ) : null}
       {!editing && powerState !== 'empty' ? (
         <button
           type="button"
@@ -555,6 +602,7 @@ function DeviceNode({
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
       }}
       onClick={() => {
+        if (editing) return;
         if (movedRef.current) {
           movedRef.current = false;
           return;
@@ -562,6 +610,7 @@ function DeviceNode({
         onSelect(device.serial);
       }}
       onKeyDown={(event) => {
+        if (editing) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         onSelect(device.serial);
@@ -632,6 +681,13 @@ function roomPowerPosition(room: FloorPlanRoom): { left: string; top: string } {
   };
 }
 
+function roomResizeHandlePosition(room: FloorPlanRoom, handle: RoomResizeHandle): { left: string; top: string } {
+  const bounds = roomBounds(room.points);
+  const x = handle.includes('w') ? bounds.left : bounds.right;
+  const y = handle.includes('n') ? bounds.top : bounds.bottom;
+  return { left: `${x * 100}%`, top: `${y * 100}%` };
+}
+
 function roomPowerState(roomId: string, floor: FloorPlanFloor, devices: Device[]): RoomPowerState {
   const lights = devices.filter(isLightDevice).filter((device) => floor.devices[device.serial]?.roomId === roomId);
   const online = lights.filter((device) => device.online);
@@ -655,6 +711,41 @@ function moveRoomTo(room: FloorPlanRoom, center: FloorPlanPoint): FloorPlanPoint
   dx = Math.max(-bounds.left, Math.min(1 - bounds.right, dx));
   dy = Math.max(-bounds.top, Math.min(1 - bounds.bottom, dy));
   return room.points.map((point) => ({ x: point.x + dx, y: point.y + dy }));
+}
+
+function resizeRectangleRoom(room: FloorPlanRoom, handle: RoomResizeHandle, point: FloorPlanPoint): FloorPlanPoint[] {
+  const bounds = roomBounds(room.points);
+  const minSize = 0.08;
+  let left = bounds.left;
+  let right = bounds.right;
+  let top = bounds.top;
+  let bottom = bounds.bottom;
+
+  if (handle.includes('w')) left = Math.min(clampUnit(point.x), right - minSize);
+  if (handle.includes('e')) right = Math.max(clampUnit(point.x), left + minSize);
+  if (handle.includes('n')) top = Math.min(clampUnit(point.y), bottom - minSize);
+  if (handle.includes('s')) bottom = Math.max(clampUnit(point.y), top + minSize);
+
+  left = clampUnit(left);
+  right = clampUnit(right);
+  top = clampUnit(top);
+  bottom = clampUnit(bottom);
+
+  if (right - left < minSize) {
+    if (handle.includes('w')) left = Math.max(0, right - minSize);
+    else right = Math.min(1, left + minSize);
+  }
+  if (bottom - top < minSize) {
+    if (handle.includes('n')) top = Math.max(0, bottom - minSize);
+    else bottom = Math.min(1, top + minSize);
+  }
+
+  return [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+  ];
 }
 
 function roomMoveDelta(room: FloorPlanRoom, points: FloorPlanPoint[]): FloorPlanPoint {
@@ -686,6 +777,12 @@ function roomBounds(points: FloorPlanPoint[]) {
     }),
     { left: 1, right: 0, top: 1, bottom: 0 },
   );
+}
+
+function isRectangleRoom(room: FloorPlanRoom): boolean {
+  if (room.points.length !== 4) return false;
+  const bounds = roomBounds(room.points);
+  return room.points.every((point) => (point.x === bounds.left || point.x === bounds.right) && (point.y === bounds.top || point.y === bounds.bottom));
 }
 
 function pointsCenter(points: FloorPlanPoint[]): FloorPlanPoint {
