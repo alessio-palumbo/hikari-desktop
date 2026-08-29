@@ -512,7 +512,8 @@ function RoomShape({
               key={`${room.id}-${index}`}
               type="button"
               className="floor-room-shape-handle"
-              aria-label={`Move ${room.label} point ${index + 1}`}
+              aria-label={room.points.length > 3 ? `Move ${room.label} point ${index + 1}. Double click or press Delete to remove.` : `Move ${room.label} point ${index + 1}`}
+              title={room.points.length > 3 ? 'Double click or press Delete to remove point' : 'Move point'}
               style={roomPointPosition(point)}
               onPointerDown={(event) => {
                 event.preventDefault();
@@ -551,7 +552,9 @@ function RoomShape({
                 const points = removeRoomPoint(room, index);
                 onUpdateRoom(floorId, room.id, { points, devices: keepRoomDevicesInsideShape({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
               }}
-            />
+            >
+              {room.points.length > 3 ? <X size={7} strokeWidth={2.6} aria-hidden="true" /> : null}
+            </button>
           ))}
         </>
       ) : null}

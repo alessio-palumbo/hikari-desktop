@@ -437,7 +437,21 @@
 }
 
 .floor-room-shape-handle {
+  display: grid;
+  place-items: center;
+  color: oklch(0.12 0.01 250 / 0.82);
   cursor: move;
+}
+
+.floor-room-shape-handle svg {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.floor-room-shape-handle:hover svg,
+.floor-room-shape-handle:focus-visible svg {
+  opacity: 1;
 }
 
 .floor-room-add-point-handle {
