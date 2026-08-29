@@ -291,7 +291,8 @@
 }
 
 .floor-room-resize-handle,
-.floor-room-shape-handle {
+.floor-room-shape-handle,
+.floor-room-add-point-handle {
   position: absolute;
   z-index: 4;
   width: 11px;
@@ -305,7 +306,8 @@
 }
 
 .floor-room-resize-handle:hover,
-.floor-room-shape-handle:hover {
+.floor-room-shape-handle:hover,
+.floor-room-add-point-handle:hover {
   border-color: oklch(0.92 0.12 92 / 0.92);
   background: oklch(0.92 0.12 92 / 0.92);
   box-shadow: 0 3px 10px oklch(0 0 0 / 0.34);
@@ -323,6 +325,22 @@
 
 .floor-room-shape-handle {
   cursor: move;
+}
+
+.floor-room-add-point-handle {
+  z-index: 3;
+  width: 14px;
+  height: 14px;
+  border-color: oklch(0.9 0.11 92 / 0.34);
+  background: oklch(0.14 0.006 250 / 0.72);
+  color: oklch(0.9 0.11 92 / 0.78);
+  cursor: copy;
+  opacity: 0.78;
+}
+
+.floor-room-add-point-handle:hover {
+  color: oklch(0.96 0.1 92 / 0.96);
+  opacity: 1;
 }
 
 .floor-room-power {

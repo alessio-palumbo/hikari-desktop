@@ -470,6 +470,23 @@ function RoomShape({
         <>
           {room.points.map((point, index) => (
             <button
+              key={`${room.id}-edge-${index}`}
+              type="button"
+              className="floor-room-add-point-handle"
+              aria-label={`Add ${room.label} shape point`}
+              style={roomPointPosition(midpoint(point, room.points[(index + 1) % room.points.length]))}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const points = insertRoomPoint(room, index, midpoint(point, room.points[(index + 1) % room.points.length]));
+                onUpdateRoom(floorId, room.id, { points, devices: keepAssignedDevicesInsideRoom({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
+              }}
+            >
+              <Plus size={9} strokeWidth={2.1} aria-hidden="true" />
+            </button>
+          ))}
+          {room.points.map((point, index) => (
+            <button
               key={`${room.id}-${index}`}
               type="button"
               className="floor-room-shape-handle"
@@ -497,6 +514,20 @@ function RoomShape({
               onPointerCancel={(event) => {
                 shapeRef.current = undefined;
                 if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+              onDoubleClick={(event) => {
+                if (room.points.length <= 3) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const points = removeRoomPoint(room, index);
+                onUpdateRoom(floorId, room.id, { points, devices: keepAssignedDevicesInsideRoom({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
+              }}
+              onKeyDown={(event) => {
+                if (room.points.length <= 3 || (event.key !== 'Backspace' && event.key !== 'Delete')) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const points = removeRoomPoint(room, index);
+                onUpdateRoom(floorId, room.id, { points, devices: keepAssignedDevicesInsideRoom({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
               }}
             />
           ))}
@@ -839,6 +870,21 @@ function resizeRectangleRoom(room: FloorPlanRoom, handle: RoomResizeHandle, poin
 
 function moveRoomPoint(room: FloorPlanRoom, index: number, point: FloorPlanPoint): FloorPlanPoint[] {
   return room.points.map((entry, entryIndex) => (entryIndex === index ? { x: clampUnit(point.x), y: clampUnit(point.y) } : entry));
+}
+
+function insertRoomPoint(room: FloorPlanRoom, afterIndex: number, point: FloorPlanPoint): FloorPlanPoint[] {
+  const next = [...room.points];
+  next.splice(afterIndex + 1, 0, { x: clampUnit(point.x), y: clampUnit(point.y) });
+  return next;
+}
+
+function removeRoomPoint(room: FloorPlanRoom, index: number): FloorPlanPoint[] {
+  if (room.points.length <= 3) return room.points;
+  return room.points.filter((_, entryIndex) => entryIndex !== index);
+}
+
+function midpoint(a: FloorPlanPoint, b: FloorPlanPoint): FloorPlanPoint {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
 function roomMoveDelta(room: FloorPlanRoom, points: FloorPlanPoint[]): FloorPlanPoint {
