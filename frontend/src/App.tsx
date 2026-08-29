@@ -12,7 +12,7 @@ import { RoomInspector } from './components/RoomInspector';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
-import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
+import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
@@ -290,6 +290,11 @@ export function App() {
   const updateFloorRoom = (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => {
     if (!locationId) return;
     setFloorPlan((current) => updateRoomInFloor(current, locationId, floorId, roomId, patch));
+  };
+
+  const bringFloorRoomToFront = (floorId: string, roomId: string) => {
+    if (!locationId) return;
+    setFloorPlan((current) => bringRoomToFront(current, locationId, floorId, roomId));
   };
 
   const removeFloorRoom = (floorId: string, roomId: string) => {
@@ -734,6 +739,7 @@ export function App() {
           onRenameFloor={renameFloor}
           onRemoveFloor={removeFloor}
           onUpdateRoom={updateFloorRoom}
+          onBringRoomToFront={bringFloorRoomToFront}
           onRemoveRoom={removeFloorRoom}
           onPlaceDevice={placeFloorDevice}
           onRemoveDevice={removeFloorDevice}

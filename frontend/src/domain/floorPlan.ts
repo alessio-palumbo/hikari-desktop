@@ -170,6 +170,25 @@ export function updateFloorLabel(preferences: FloorPlanPreferences, locationId: 
   return updateFloor(preferences, locationId, floorId, (floor) => ({ ...floor, label: cleanLabelValue }));
 }
 
+export function bringRoomToFront(
+  preferences: FloorPlanPreferences,
+  locationId: string,
+  floorId: string,
+  roomId: string,
+): FloorPlanPreferences {
+  const cleanRoomId = cleanId(roomId);
+  if (!cleanRoomId) return normalizeFloorPlanPreferences(preferences);
+
+  return updateFloor(preferences, locationId, floorId, (floor) => {
+    const index = floor.rooms.findIndex((room) => room.id === cleanRoomId);
+    if (index < 0 || index === floor.rooms.length - 1) return floor;
+    const rooms = [...floor.rooms];
+    const [room] = rooms.splice(index, 1);
+    rooms.push(room);
+    return { ...floor, rooms };
+  });
+}
+
 export function removeFloorFromLocation(preferences: FloorPlanPreferences, locationId: string, floorId: string): FloorPlanPreferences {
   const normalized = ensureLocationFloorPlan(preferences, locationId);
   const cleanLocationId = cleanId(locationId);

@@ -26,6 +26,7 @@ interface FloorPlanProps {
   onRenameFloor: (floorId: string, label: string) => void;
   onRemoveFloor: (floorId: string) => void;
   onUpdateRoom: (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => void;
+  onBringRoomToFront: (floorId: string, roomId: string) => void;
   onRemoveRoom: (floorId: string, roomId: string) => void;
   onPlaceDevice: (serial: string, placement: FloorPlanDevicePlacement) => void;
   onRemoveDevice: (serial: string) => void;
@@ -61,6 +62,7 @@ export function FloorPlan({
   onRenameFloor,
   onRemoveFloor,
   onUpdateRoom,
+  onBringRoomToFront,
   onRemoveRoom,
   onPlaceDevice,
   onRemoveDevice,
@@ -251,8 +253,12 @@ export function FloorPlan({
               canvasPoint={canvasPoint}
               floorDevices={floor.devices}
               onSelectRoom={(roomId) => {
-                if (editing) setEditedRoomId(roomId);
-                else onRoomSelect(floor.id, roomId);
+                if (editing) {
+                  setEditedRoomId(roomId);
+                  onBringRoomToFront(floor.id, roomId);
+                } else {
+                  onRoomSelect(floor.id, roomId);
+                }
               }}
               onRoomPower={(roomId, on) => onRoomPower(floor.id, roomId, on)}
               onUpdateRoom={onUpdateRoom}

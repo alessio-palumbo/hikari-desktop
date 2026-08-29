@@ -4,6 +4,7 @@ import {
   DEFAULT_FLOOR_ID,
   addFloorToLocation,
   addRoomToFloor,
+  bringRoomToFront,
   createFloorPlanFloor,
   createRectangleRoom,
   emptyFloorPlanPreferences,
@@ -233,6 +234,28 @@ test('removing rooms unassigns devices from the floor', () => {
 
   assert.equal(removed.locations.home.floors[0].rooms.length, 0);
   assert.equal(removed.locations.home.floors[0].devices.d073d5000001, undefined);
+});
+
+test('brings a room to the front of the layer stack', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const lower = createRectangleRoom('lower', 'Lower', 'living', { x: 0.1, y: 0.1 }, { x: 0.3, y: 0.3 });
+  const middle = createRectangleRoom('middle', 'Middle', 'office', { x: 0.2, y: 0.2 }, { x: 0.3, y: 0.3 });
+  const upper = createRectangleRoom('upper', 'Upper', 'kitchen', { x: 0.3, y: 0.3 }, { x: 0.3, y: 0.3 });
+  const withRooms = [lower, middle, upper].reduce((current, room) => addRoomToFloor(current, 'home', DEFAULT_FLOOR_ID, room), prefs);
+
+  const got = bringRoomToFront(withRooms, 'home', DEFAULT_FLOOR_ID, 'middle');
+  assert.deepEqual(got.locations.home.floors[0].rooms.map((room) => room.id), ['lower', 'upper', 'middle']);
+});
+
+test('keeps room layer unchanged when already frontmost', () => {
+  const prefs = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const lower = createRectangleRoom('lower', 'Lower', 'living', { x: 0.1, y: 0.1 }, { x: 0.3, y: 0.3 });
+  const upper = createRectangleRoom('upper', 'Upper', 'kitchen', { x: 0.3, y: 0.3 }, { x: 0.3, y: 0.3 });
+  const withRooms = [lower, upper].reduce((current, room) => addRoomToFloor(current, 'home', DEFAULT_FLOOR_ID, room), prefs);
+
+  const got = bringRoomToFront(withRooms, 'home', DEFAULT_FLOOR_ID, 'upper');
+
+  assert.deepEqual(got.locations.home.floors[0].rooms.map((room) => room.id), ['lower', 'upper']);
 });
 
 test('finds rooms using polygon hit testing', () => {
