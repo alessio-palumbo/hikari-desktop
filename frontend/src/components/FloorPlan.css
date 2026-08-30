@@ -415,7 +415,6 @@
   cursor: grabbing;
 }
 
-.floor-room-resize-handle,
 .floor-room-shape-handle,
 .floor-room-add-point-handle {
   position: absolute;
@@ -430,22 +429,11 @@
   transform: translate(-50%, -50%);
 }
 
-.floor-room-resize-handle:hover,
 .floor-room-shape-handle:hover,
 .floor-room-add-point-handle:hover {
   border-color: oklch(0.92 0.12 92 / 0.92);
   background: oklch(0.92 0.12 92 / 0.92);
   box-shadow: 0 3px 10px oklch(0 0 0 / 0.34);
-}
-
-.floor-room-resize-handle[data-handle="nw"],
-.floor-room-resize-handle[data-handle="se"] {
-  cursor: nwse-resize;
-}
-
-.floor-room-resize-handle[data-handle="ne"],
-.floor-room-resize-handle[data-handle="sw"] {
-  cursor: nesw-resize;
 }
 
 .floor-room-shape-handle {
@@ -547,16 +535,6 @@
 .floor-room-editor input {
   padding: 0 7px;
   outline: 0;
-}
-
-.floor-shape-button {
-  padding: 0 8px;
-}
-
-.floor-shape-button[data-active="true"] {
-  border-color: oklch(0.9 0.11 92 / 0.28);
-  background: oklch(0.9 0.11 92 / 0.1);
-  color: var(--fg-0);
 }
 
 .floor-room-editor button {
