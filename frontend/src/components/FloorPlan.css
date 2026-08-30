@@ -204,6 +204,10 @@
   background: oklch(0.72 0.1 128 / 0.15);
 }
 
+.floor-room[data-type="dining"] {
+  background: oklch(0.74 0.11 42 / 0.15);
+}
+
 .floor-room[data-type="kitchen"] {
   background: oklch(0.78 0.12 78 / 0.16);
 }
@@ -262,6 +266,10 @@
 
 .floor-room[data-type="living"] .floor-room-label svg {
   color: oklch(0.8 0.09 128);
+}
+
+.floor-room[data-type="dining"] .floor-room-label svg {
+  color: oklch(0.82 0.1 42);
 }
 
 .floor-room[data-type="kitchen"] .floor-room-label svg {
@@ -442,16 +450,34 @@
 
 .floor-room-add-point-handle {
   z-index: 3;
-  width: 8px;
-  height: 8px;
-  border-color: oklch(1 0 0 / 0.16);
-  background: oklch(1 0 0 / 0.08);
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border: 0;
+  background: transparent;
   box-shadow: none;
   cursor: pointer;
+  opacity: 1;
+}
+
+.floor-room-add-point-handle::after {
+  width: 6px;
+  height: 6px;
+  border: 1px solid oklch(1 0 0 / 0.16);
+  border-radius: 999px;
+  background: oklch(1 0 0 / 0.08);
+  content: "";
   opacity: 0.58;
 }
 
 .floor-room-add-point-handle:hover {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.floor-room-add-point-handle:hover::after {
   border-color: oklch(1 0 0 / 0.34);
   background: oklch(1 0 0 / 0.18);
   box-shadow: 0 0 0 3px oklch(1 0 0 / 0.055);

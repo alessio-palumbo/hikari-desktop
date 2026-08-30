@@ -5,6 +5,7 @@ export const DEFAULT_FLOOR_ID = 'floor-ground';
 export type FloorPlanRoomType =
   | 'bedroom'
   | 'living'
+  | 'dining'
   | 'kitchen'
   | 'bathroom'
   | 'office'
@@ -61,6 +62,7 @@ export type FloorPlanRoomPatch = Partial<Pick<FloorPlanRoom, 'label' | 'type' | 
 export const FLOOR_PLAN_ROOM_TYPES: FloorPlanRoomType[] = [
   'bedroom',
   'living',
+  'dining',
   'kitchen',
   'bathroom',
   'office',
@@ -452,6 +454,29 @@ export function pointInRoom(point: FloorPlanPoint, room: FloorPlanRoom): boolean
 
 export function roomCenter(room: FloorPlanRoom): FloorPlanPoint {
   return pointsCenter(room.points);
+}
+
+export function moveRoomEdge(room: FloorPlanRoom, edgeIndex: number, delta: FloorPlanPoint): FloorPlanPoint[] {
+  if (room.points.length < 3 || edgeIndex < 0 || edgeIndex >= room.points.length) return room.points;
+  const nextIndex = (edgeIndex + 1) % room.points.length;
+  const start = room.points[edgeIndex];
+  const end = room.points[nextIndex];
+  const edge = { x: end.x - start.x, y: end.y - start.y };
+  const normal = { x: -edge.y, y: edge.x };
+  const lengthSquared = normal.x * normal.x + normal.y * normal.y;
+  if (lengthSquared === 0) return room.points;
+
+  const scale = (delta.x * normal.x + delta.y * normal.y) / lengthSquared;
+  let dx = normal.x * scale;
+  let dy = normal.y * scale;
+  dx = Math.max(-Math.min(start.x, end.x), Math.min(1 - Math.max(start.x, end.x), dx));
+  dy = Math.max(-Math.min(start.y, end.y), Math.min(1 - Math.max(start.y, end.y), dy));
+
+  return room.points.map((point, index) => (
+    index === edgeIndex || index === nextIndex
+      ? { x: point.x + dx, y: point.y + dy }
+      : point
+  ));
 }
 
 export function roomInteriorPoint(room: FloorPlanRoom, ideal: FloorPlanPoint): FloorPlanPoint {

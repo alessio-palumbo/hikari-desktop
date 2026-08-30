@@ -10,6 +10,7 @@ import {
   emptyFloorPlanPreferences,
   ensureLocationFloorPlan,
   loadFloorPlanPreferences,
+  moveRoomEdge,
   normalizeFloorPlanPreferences,
   parseFloorPlanPreferences,
   placeDeviceOnFloor,
@@ -65,6 +66,30 @@ test('creates rectangle rooms as normalized polygon points', () => {
     { x: 1, y: 0.3 },
     { x: 0.8, y: 0.3 },
   ]);
+});
+
+test('moves a room edge perpendicular to the edge', () => {
+  const room = createRectangleRoom('living', 'Living Room', 'living', { x: 0.1, y: 0.2 }, { x: 0.4, y: 0.3 });
+
+  const points = moveRoomEdge(room, 0, { x: 0.2, y: -0.1 });
+
+  assert.deepEqual(points, [
+    { x: 0.1, y: 0.1 },
+    { x: 0.5, y: 0.1 },
+    { x: 0.5, y: 0.5 },
+    { x: 0.1, y: 0.5 },
+  ]);
+});
+
+test('clamps a dragged room edge to the floor boundary', () => {
+  const room = createRectangleRoom('living', 'Living Room', 'living', { x: 0.1, y: 0.2 }, { x: 0.4, y: 0.3 });
+
+  const points = moveRoomEdge(room, 3, { x: -0.5, y: 0.2 });
+
+  assert.equal(points[0].x, 0);
+  assert.equal(points[3].x, 0);
+  assert.equal(points[0].y, 0.2);
+  assert.equal(points[3].y, 0.5);
 });
 
 test('normalizes invalid persisted values defensively', () => {

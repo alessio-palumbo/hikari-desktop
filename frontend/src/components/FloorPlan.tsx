@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Bath, BedDouble, BriefcaseBusiness, Car, ChevronDown, DoorOpen, Plus, Sofa, Square, Trash2, Trees, Utensils, Wrench, X, type LucideIcon } from 'lucide-react';
+import { Bath, BedDouble, BriefcaseBusiness, Car, ChevronDown, CookingPot, DoorOpen, Plus, Sofa, Square, Trash2, Trees, Utensils, Wrench, X, type LucideIcon } from 'lucide-react';
 import type { Device, Group, Location } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
-import { FLOOR_PLAN_ROOM_TYPES, keepRoomDevicesInsideShape, roomAtPoint, roomCenter, roomInteriorPoint, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
+import { FLOOR_PLAN_ROOM_TYPES, keepRoomDevicesInsideShape, moveRoomEdge, roomAtPoint, roomCenter, roomInteriorPoint, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
 import { CenterViewToggle, type CenterView } from './CenterViewToggle';
 import './FloorPlan.css';
 
@@ -398,6 +398,14 @@ function RoomShape({
     room: FloorPlanRoom;
     devices: Record<string, FloorPlanDevicePlacement>;
   } | undefined>(undefined);
+  const edgeRef = useRef<{
+    index: number;
+    pointerStart: FloorPlanPoint;
+    clientStart: FloorPlanPoint;
+    room: FloorPlanRoom;
+    devices: Record<string, FloorPlanDevicePlacement>;
+  } | undefined>(undefined);
+  const edgeMovedRef = useRef(false);
   const movedRef = useRef(false);
 
   return (
@@ -472,12 +480,59 @@ function RoomShape({
               key={`${room.id}-edge-${index}`}
               type="button"
               className="floor-room-add-point-handle"
-              aria-label={`Add ${room.label} shape point`}
-              title="Add shape point"
-              style={roomPointPosition(midpoint(point, room.points[(index + 1) % room.points.length]))}
+              aria-label={`Move ${room.label} edge or add shape point`}
+              title="Drag edge or click to add point"
+              style={{
+                ...roomPointPosition(midpoint(point, room.points[(index + 1) % room.points.length])),
+                cursor: roomEdgeCursor(point, room.points[(index + 1) % room.points.length]),
+              }}
+              onPointerDown={(event) => {
+                const pointerStart = canvasPoint(event.clientX, event.clientY);
+                if (!pointerStart) return;
+                event.preventDefault();
+                event.stopPropagation();
+                edgeMovedRef.current = false;
+                edgeRef.current = {
+                  index,
+                  pointerStart,
+                  clientStart: { x: event.clientX, y: event.clientY },
+                  room,
+                  devices: assignedRoomDevices(floorDevices, room.id),
+                };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                const edge = edgeRef.current;
+                const pointer = canvasPoint(event.clientX, event.clientY);
+                if (!edge || !pointer) return;
+                if (!edgeMovedRef.current && Math.hypot(event.clientX - edge.clientStart.x, event.clientY - edge.clientStart.y) < roomDragThresholdPx) return;
+                edgeMovedRef.current = true;
+                const points = moveRoomEdge(edge.room, edge.index, {
+                  x: pointer.x - edge.pointerStart.x,
+                  y: pointer.y - edge.pointerStart.y,
+                });
+                onUpdateRoom(floorId, room.id, { points, devices: keepRoomDevicesInsideShape({ ...edge.room, points }, edge.devices) });
+              }}
+              onPointerUp={(event) => {
+                edgeRef.current = undefined;
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+                window.setTimeout(() => {
+                  edgeMovedRef.current = false;
+                }, 0);
+              }}
+              onPointerCancel={(event) => {
+                edgeRef.current = undefined;
+                edgeMovedRef.current = false;
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
+                if (edgeMovedRef.current) {
+                  edgeMovedRef.current = false;
+                  return;
+                }
                 const points = insertRoomPoint(room, index, midpoint(point, room.points[(index + 1) % room.points.length]));
                 onUpdateRoom(floorId, room.id, { points, devices: keepRoomDevicesInsideShape({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
               }}
@@ -752,6 +807,14 @@ function roomPointPosition(point: FloorPlanPoint): { left: string; top: string }
   return { left: `${point.x * 100}%`, top: `${point.y * 100}%` };
 }
 
+function roomEdgeCursor(start: FloorPlanPoint, end: FloorPlanPoint): 'ns-resize' | 'ew-resize' | 'nesw-resize' | 'nwse-resize' {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (Math.abs(dx) > Math.abs(dy) * 2) return 'ns-resize';
+  if (Math.abs(dy) > Math.abs(dx) * 2) return 'ew-resize';
+  return dx * dy > 0 ? 'nesw-resize' : 'nwse-resize';
+}
+
 function roomAnchorStyle(point: FloorPlanPoint): { left: string; top: string } {
   return { left: `${point.x * 100}%`, top: `${point.y * 100}%` };
 }
@@ -869,8 +932,10 @@ function roomTypeIcon(type?: FloorPlanRoomType): LucideIcon {
       return BedDouble;
     case 'living':
       return Sofa;
-    case 'kitchen':
+    case 'dining':
       return Utensils;
+    case 'kitchen':
+      return CookingPot;
     case 'bathroom':
       return Bath;
     case 'office':
