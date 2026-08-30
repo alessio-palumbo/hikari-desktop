@@ -46,6 +46,14 @@ Run the command from the folder containing `hikari.app`, or replace `hikari.app`
 - `Esc` in the text command prompt: clear the prompt and preview; when empty, close the prompt.
 - `Esc` with the right panel open: close the active device or group panel.
 
+## Floor Plans
+
+Use the `floor` center view to arrange the lights in the selected location across one or more floors. Enter edit mode to add floors and rooms, rename rooms, choose room types, and drag unassigned devices into place.
+
+Selecting a room in edit mode exposes its geometry controls. Drag the room body to move the room and its assigned devices, drag a vertex to reshape it, or use the smaller midpoint controls to add vertices. Double-click a vertex, or focus it and press `Delete` or `Backspace`, to remove it. Rooms retain at least three vertices.
+
+Floor layouts are stored locally and keyed by LIFX location. Removing a room or floor makes its devices unassigned; temporary LAN loss does not remove their saved placement. Devices that become unavailable during a session remain visible in the layout as dimmed, inactive markers and recover their normal controls when discovery finds them again.
+
 ## Local Text Commands
 
 Local text commands use the standalone `lifx-command-engine` JSONL sidecar. Release builds bundle the lightweight rule-only sidecar and enable local commands automatically. The sidecar only interprets text into a structured plan; hikari still validates targets, previews the action, asks for confirmation, and sends any LIFX commands itself.
