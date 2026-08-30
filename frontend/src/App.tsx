@@ -12,7 +12,7 @@ import { RoomInspector } from './components/RoomInspector';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
-import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
+import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, migrateLegacyLocationFloorPlan, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
@@ -168,10 +168,14 @@ export function App() {
   useEffect(() => saveFloorPlanPreferences(window.localStorage, floorPlan), [floorPlan]);
   useEffect(() => saveBooleanPreference(COMMAND_AUTO_EXECUTE_KEY, commandAutoExecute), [commandAutoExecute]);
 
+  const floorPlanLocationName = snapshot.locations.find((location) => location.id === locationId)?.name;
   useEffect(() => {
-    if (!locationId) return;
-    setFloorPlan((current) => ensureLocationFloorPlan(current, locationId));
-  }, [locationId]);
+    if (!locationId || !floorPlanLocationName) return;
+    setFloorPlan((current) => ensureLocationFloorPlan(
+      migrateLegacyLocationFloorPlan(current, locationId, floorPlanLocationName),
+      locationId,
+    ));
+  }, [locationId, floorPlanLocationName]);
 
   const openCommandModal = useCallback(() => {
     setCommandOpen(true);

@@ -29,7 +29,9 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 		Label:        "Desk Strip",
 		RegistryName: "LIFX Z",
 		Location:     "Studio",
+		LocationID:   lifxdevice.LocationID{0x01},
 		Group:        "Desk",
+		GroupID:      lifxdevice.GroupID{0x02},
 		PoweredOn:    true,
 		Color: lifxdevice.Color{
 			Hue:        200,
@@ -55,8 +57,14 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 	if len(snapshot.Locations) != 1 || snapshot.Locations[0].Name != "Studio" {
 		t.Fatalf("locations = %#v", snapshot.Locations)
 	}
+	if snapshot.Locations[0].ID != "lifx-location:01000000000000000000000000000000" {
+		t.Fatalf("location ID = %q", snapshot.Locations[0].ID)
+	}
 	if len(snapshot.Groups) != 1 || snapshot.Groups[0].Name != "Desk" {
 		t.Fatalf("groups = %#v", snapshot.Groups)
+	}
+	if snapshot.Groups[0].ID != "lifx-group:02000000000000000000000000000000" || snapshot.Groups[0].LocationID != snapshot.Locations[0].ID {
+		t.Fatalf("group = %#v", snapshot.Groups[0])
 	}
 	if len(snapshot.Devices) != 1 {
 		t.Fatalf("devices = %#v", snapshot.Devices)
@@ -73,6 +81,27 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 	}
 	if len(got.Zones) != 1 || got.Zones[0].L != 0.5 {
 		t.Fatalf("zones = %#v", got.Zones)
+	}
+}
+
+func TestMapLifxDevicesKeepsDuplicateLabelsDistinctByStableID(t *testing.T) {
+	first := testLifxDevice(t, "d073d501a2c3", "First", "Home", "Lights")
+	first.LocationID = lifxdevice.LocationID{0x01}
+	first.GroupID = lifxdevice.GroupID{0x11}
+	second := testLifxDevice(t, "d073d501a2c4", "Second", "Home", "Lights")
+	second.LocationID = lifxdevice.LocationID{0x02}
+	second.GroupID = lifxdevice.GroupID{0x12}
+
+	snapshot := mapLifxDevices([]lifxdevice.Device{first, second})
+
+	if len(snapshot.Locations) != 2 {
+		t.Fatalf("locations = %#v", snapshot.Locations)
+	}
+	if len(snapshot.Groups) != 2 {
+		t.Fatalf("groups = %#v", snapshot.Groups)
+	}
+	if snapshot.Devices[0].GroupID == snapshot.Devices[1].GroupID {
+		t.Fatalf("device group IDs collided: %#v", snapshot.Devices)
 	}
 }
 

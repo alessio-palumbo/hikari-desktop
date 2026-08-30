@@ -101,6 +101,21 @@ export function parseFloorPlanPreferences(value: string | null): FloorPlanPrefer
   return normalizeFloorPlanPreferences(JSON.parse(value) as Partial<FloorPlanPreferences>);
 }
 
+export function migrateLegacyLocationFloorPlan(
+  preferences: FloorPlanPreferences,
+  locationId: string,
+  legacyLabel: string,
+): FloorPlanPreferences {
+  const current = normalizeFloorPlanPreferences(preferences);
+  const id = cleanId(locationId);
+  const legacyId = cleanId(legacyLabel);
+  if (!id || !legacyId || id === legacyId || current.locations[id] || !current.locations[legacyId]) return current;
+
+  const locations = { ...current.locations, [id]: current.locations[legacyId] };
+  delete locations[legacyId];
+  return { ...current, locations };
+}
+
 export function ensureLocationFloorPlan(preferences: FloorPlanPreferences, locationId: string, floorLabel = 'Ground'): FloorPlanPreferences {
   const id = cleanId(locationId);
   if (!id) return normalizeFloorPlanPreferences(preferences);

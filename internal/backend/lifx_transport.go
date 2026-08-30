@@ -1693,8 +1693,8 @@ func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {
 			log.Printf("hikari: skipping unsupported lifx device %s type %q", d.Serial.String(), d.Type.String())
 			continue
 		}
-		locationID := idOrUnknown(d.Location, "unknown-location")
-		groupID := idOrUnknown(d.Group, "unknown-group")
+		locationID := mapLifxLocationID(d)
+		groupID := mapLifxGroupID(d, locationID)
 		if !locationIDs[locationID] {
 			snapshot.Locations = append(snapshot.Locations, Location{ID: locationID, Name: nameOrUnknown(d.Location, "Unknown")})
 			locationIDs[locationID] = true
@@ -1707,6 +1707,20 @@ func mapLifxDevices(devices []lifxdevice.Device) DeviceSnapshot {
 	}
 
 	return sortDeviceSnapshot(snapshot)
+}
+
+func mapLifxLocationID(d lifxdevice.Device) string {
+	if !d.LocationID.IsNil() {
+		return "lifx-location:" + d.LocationID.String()
+	}
+	return idOrUnknown(d.Location, "unknown-location")
+}
+
+func mapLifxGroupID(d lifxdevice.Device, locationID string) string {
+	if !d.GroupID.IsNil() {
+		return "lifx-group:" + d.GroupID.String()
+	}
+	return locationID + ":group-label:" + idOrUnknown(d.Group, "unknown")
 }
 
 func isSupportedDevice(d lifxdevice.Device) bool {

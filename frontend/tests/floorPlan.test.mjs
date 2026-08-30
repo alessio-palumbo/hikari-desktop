@@ -10,6 +10,7 @@ import {
   emptyFloorPlanPreferences,
   ensureLocationFloorPlan,
   loadFloorPlanPreferences,
+  migrateLegacyLocationFloorPlan,
   moveRoomEdge,
   normalizeFloorPlanPreferences,
   parseFloorPlanPreferences,
@@ -53,6 +54,27 @@ test('preserves existing multi-floor location layout', () => {
 
   assert.equal(got.locations.home.activeFloorId, 'upstairs');
   assert.equal(got.locations.home.floors.length, 2);
+});
+
+test('migrates a legacy label-keyed location to its stable ID', () => {
+  const legacy = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'Home');
+  const stableId = 'lifx-location:01000000000000000000000000000000';
+
+  const got = migrateLegacyLocationFloorPlan(legacy, stableId, 'Home');
+
+  assert.equal(got.locations.Home, undefined);
+  assert.equal(got.locations[stableId].floors[0].id, DEFAULT_FLOOR_ID);
+});
+
+test('does not overwrite an existing stable location during legacy migration', () => {
+  const stableId = 'lifx-location:01000000000000000000000000000000';
+  const legacy = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'Home');
+  const withStable = ensureLocationFloorPlan(legacy, stableId, 'Stable Ground');
+
+  const got = migrateLegacyLocationFloorPlan(withStable, stableId, 'Home');
+
+  assert.equal(got.locations.Home.floors[0].label, 'Ground');
+  assert.equal(got.locations[stableId].floors[0].label, 'Stable Ground');
 });
 
 test('creates rectangle rooms as normalized polygon points', () => {

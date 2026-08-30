@@ -120,7 +120,7 @@ The voice bundling script only copies existing files. It does not download whisp
 
 ## Requirements
 
-- Go 1.25
+- Go 1.26
 - Node.js 22 or newer
 - npm
 - Wails v2
