@@ -83,6 +83,7 @@ test('normalizes invalid persisted values defensively', () => {
           devices: {
             ' serial ': { x: 2, y: -1, roomId: ' bed ' },
             blank: { x: Number.NaN, y: 0.4 },
+            orphaned: { x: 0.3, y: 0.6, roomId: 'missing-room' },
           },
         }],
       },
@@ -96,6 +97,7 @@ test('normalizes invalid persisted values defensively', () => {
   assert.deepEqual(floor.rooms[0].points, [{ x: 0, y: 0 }, { x: 1, y: 0.2 }, { x: 0.5, y: 1 }]);
   assert.deepEqual(floor.devices.serial, { x: 1, y: 0, roomId: 'bed' });
   assert.deepEqual(floor.devices.blank, { x: 0, y: 0.4 });
+  assert.deepEqual(floor.devices.orphaned, { x: 0.3, y: 0.6 });
 });
 
 test('places a device immutably on the selected floor', () => {

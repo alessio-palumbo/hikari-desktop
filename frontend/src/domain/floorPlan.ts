@@ -495,12 +495,16 @@ function normalizeFloor(value: unknown): FloorPlanFloor | undefined {
   if (!id) return undefined;
 
   const rooms = Array.isArray(value.rooms) ? value.rooms.map(normalizeRoom).filter((room): room is FloorPlanRoom => !!room) : [];
+  const roomIds = new Set(rooms.map((room) => room.id));
   const devices: Record<string, FloorPlanDevicePlacement> = {};
   if (isRecord(value.devices)) {
     for (const [serial, placement] of Object.entries(value.devices)) {
       const cleanSerial = cleanId(serial);
       if (!cleanSerial || !isRecord(placement)) continue;
-      devices[cleanSerial] = normalizePlacement(placement);
+      const normalized = normalizePlacement(placement);
+      devices[cleanSerial] = normalized.roomId && !roomIds.has(normalized.roomId)
+        ? { x: normalized.x, y: normalized.y }
+        : normalized;
     }
   }
 

@@ -58,6 +58,25 @@ test('keeps missing devices as offline instead of dropping them', () => {
   assert.equal(got.devices[0].online, false);
 });
 
+test('keeps hierarchy referenced by retained offline devices', () => {
+  const current = {
+    ...base,
+    groups: [...base.groups, { id: 'empty', locationId: 'home', name: 'Empty' }],
+  };
+  const incoming = {
+    locations: [{ id: 'studio', name: 'Studio' }],
+    groups: [{ id: 'desk', locationId: 'studio', name: 'Desk' }],
+    devices: [{ ...base.devices[0], serial: 'd073d501a2c4', groupId: 'desk', name: 'Lamp' }],
+  };
+
+  const got = reconcileSnapshot(current, incoming);
+
+  assert.deepEqual(got.groups.map((group) => group.id), ['desk', 'living']);
+  assert.deepEqual(got.locations.map((location) => location.id), ['studio', 'home']);
+  assert.equal(got.devices.find((device) => device.serial === 'd073d501a2c3').online, false);
+  assert.equal(got.groups.some((group) => group.id === 'empty'), false);
+});
+
 test('overlays pending power and brightness over stale snapshot values', () => {
   const previous = { ...base.devices[0], on: true, brightness: 0.8 };
   const optimistic = { ...previous, on: false, brightness: 0.2 };

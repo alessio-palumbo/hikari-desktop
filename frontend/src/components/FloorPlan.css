@@ -629,6 +629,10 @@
   opacity: 0.45;
 }
 
+.floor-device-node[data-offline="true"][data-editing="false"] {
+  cursor: default;
+}
+
 .floor-device-node span,
 .floor-unplaced-device span {
   overflow: hidden;

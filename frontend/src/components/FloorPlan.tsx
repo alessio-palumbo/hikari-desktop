@@ -639,7 +639,8 @@ function DeviceNode({
   return (
     <div
       role="button"
-      tabIndex={0}
+      tabIndex={device.online || editing ? 0 : -1}
+      aria-disabled={!device.online && !editing}
       className="floor-device-node"
       data-selected={selected}
       data-on={device.on && isLightDevice(device) ? 'true' : 'false'}
@@ -668,6 +669,7 @@ function DeviceNode({
       }}
       onClick={() => {
         if (editing) return;
+        if (!device.online) return;
         if (movedRef.current) {
           movedRef.current = false;
           return;
@@ -675,7 +677,7 @@ function DeviceNode({
         onSelect(device.serial);
       }}
       onKeyDown={(event) => {
-        if (editing) return;
+        if (editing || !device.online) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         onSelect(device.serial);

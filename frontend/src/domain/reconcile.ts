@@ -34,11 +34,39 @@ export function reconcileSnapshot(current: DeviceSnapshot, incoming: DeviceSnaps
     }
   }
 
+  const referencedGroupIds = new Set(devices.map((device) => device.groupId));
+  const groups = mergeReferenced(
+    incoming.groups,
+    current.groups,
+    referencedGroupIds,
+    (group) => group.id,
+  );
+  const referencedLocationIds = new Set(groups.map((group) => group.locationId));
+  const locations = mergeReferenced(
+    incoming.locations,
+    current.locations,
+    referencedLocationIds,
+    (location) => location.id,
+  );
+
   return {
-    locations: incoming.locations.length ? incoming.locations : current.locations,
-    groups: incoming.groups.length ? incoming.groups : current.groups,
+    locations,
+    groups,
     devices,
   };
+}
+
+function mergeReferenced<T>(incoming: T[], current: T[], referencedIds: Set<string>, id: (value: T) => string): T[] {
+  const merged = incoming.filter((value) => referencedIds.has(id(value)));
+  const included = new Set(merged.map(id));
+  for (const value of current) {
+    const valueId = id(value);
+    if (referencedIds.has(valueId) && !included.has(valueId)) {
+      merged.push(value);
+      included.add(valueId);
+    }
+  }
+  return merged;
 }
 
 export function createPendingState(device: Device, previous?: Device, now = Date.now()): PendingDeviceState | undefined {
