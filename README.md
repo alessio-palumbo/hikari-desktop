@@ -37,6 +37,20 @@ xattr -dr com.apple.quarantine hikari.app
 
 Run the command from the folder containing `hikari.app`, or replace `hikari.app` with the full app path.
 
+## Screenshots
+
+### Group Control
+
+![hikari group view with multiple LIFX devices](docs/group-list.png)
+
+### Matrix Editor
+
+![hikari matrix editor with a pending gradient](docs/matrix-editor.png)
+
+### Floor Plan
+
+![hikari floor plan with shaped rooms and active lights](docs/floor-plan.png)
+
 ## Shortcuts
 
 - `Cmd+F` on macOS or `Ctrl+F` on Windows/Linux: focus and select the search field.
