@@ -67,6 +67,18 @@
   padding: 0;
 }
 
+.floor-tools .floor-add-floor-button {
+  border-color: oklch(1 0 0 / 0.045);
+  background: transparent;
+  color: var(--fg-4);
+}
+
+.floor-tools .floor-add-floor-button:hover {
+  border-color: oklch(1 0 0 / 0.1);
+  background: oklch(1 0 0 / 0.035);
+  color: var(--fg-1);
+}
+
 .floor-tools .floor-room-add-button {
   margin-left: 8px;
   margin-right: 8px;
@@ -437,36 +449,24 @@
 }
 
 .floor-room-shape-handle {
-  display: grid;
-  place-items: center;
-  color: oklch(0.12 0.01 250 / 0.82);
   cursor: move;
-}
-
-.floor-room-shape-handle svg {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease;
-}
-
-.floor-room-shape-handle:hover svg,
-.floor-room-shape-handle:focus-visible svg {
-  opacity: 1;
 }
 
 .floor-room-add-point-handle {
   z-index: 3;
-  width: 14px;
-  height: 14px;
-  border-color: oklch(0.9 0.11 92 / 0.34);
-  background: oklch(0.14 0.006 250 / 0.72);
-  color: oklch(0.9 0.11 92 / 0.78);
-  cursor: copy;
-  opacity: 0.78;
+  width: 8px;
+  height: 8px;
+  border-color: oklch(1 0 0 / 0.16);
+  background: oklch(1 0 0 / 0.08);
+  box-shadow: none;
+  cursor: pointer;
+  opacity: 0.58;
 }
 
 .floor-room-add-point-handle:hover {
-  color: oklch(0.96 0.1 92 / 0.96);
+  border-color: oklch(1 0 0 / 0.34);
+  background: oklch(1 0 0 / 0.18);
+  box-shadow: 0 0 0 3px oklch(1 0 0 / 0.055);
   opacity: 1;
 }
 

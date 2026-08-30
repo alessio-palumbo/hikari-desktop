@@ -186,7 +186,7 @@ export function FloorPlan({
                       <Trash2 size={13} strokeWidth={1.8} aria-hidden="true" />
                     </button>
                   ) : null}
-                  <button type="button" className="floor-icon-button" aria-label="Add floor" onClick={onAddFloor}>
+                  <button type="button" className="floor-icon-button floor-add-floor-button" aria-label="Add floor" onClick={onAddFloor}>
                     <Plus size={13} strokeWidth={1.9} aria-hidden="true" />
                   </button>
                 </span>
@@ -496,6 +496,7 @@ function RoomShape({
               type="button"
               className="floor-room-add-point-handle"
               aria-label={`Add ${room.label} shape point`}
+              title="Add shape point"
               style={roomPointPosition(midpoint(point, room.points[(index + 1) % room.points.length]))}
               onClick={(event) => {
                 event.preventDefault();
@@ -503,9 +504,7 @@ function RoomShape({
                 const points = insertRoomPoint(room, index, midpoint(point, room.points[(index + 1) % room.points.length]));
                 onUpdateRoom(floorId, room.id, { points, devices: keepRoomDevicesInsideShape({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
               }}
-            >
-              <Plus size={9} strokeWidth={2.1} aria-hidden="true" />
-            </button>
+            />
           ))}
           {room.points.map((point, index) => (
             <button
@@ -552,9 +551,7 @@ function RoomShape({
                 const points = removeRoomPoint(room, index);
                 onUpdateRoom(floorId, room.id, { points, devices: keepRoomDevicesInsideShape({ ...room, points }, assignedRoomDevices(floorDevices, room.id)) });
               }}
-            >
-              {room.points.length > 3 ? <X size={7} strokeWidth={2.6} aria-hidden="true" /> : null}
-            </button>
+            />
           ))}
         </>
       ) : null}
