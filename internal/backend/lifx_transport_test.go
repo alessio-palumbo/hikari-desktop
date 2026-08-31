@@ -57,13 +57,13 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 	if len(snapshot.Locations) != 1 || snapshot.Locations[0].Name != "Studio" {
 		t.Fatalf("locations = %#v", snapshot.Locations)
 	}
-	if snapshot.Locations[0].ID != "lifx-location:01000000000000000000000000000000" {
+	if snapshot.Locations[0].ID != "lifx-location:01000000-0000-0000-0000-000000000000" {
 		t.Fatalf("location ID = %q", snapshot.Locations[0].ID)
 	}
 	if len(snapshot.Groups) != 1 || snapshot.Groups[0].Name != "Desk" {
 		t.Fatalf("groups = %#v", snapshot.Groups)
 	}
-	if snapshot.Groups[0].ID != "lifx-group:02000000000000000000000000000000" || snapshot.Groups[0].LocationID != snapshot.Locations[0].ID {
+	if snapshot.Groups[0].ID != "lifx-group:02000000-0000-0000-0000-000000000000" || snapshot.Groups[0].LocationID != snapshot.Locations[0].ID {
 		t.Fatalf("group = %#v", snapshot.Groups[0])
 	}
 	if len(snapshot.Devices) != 1 {
