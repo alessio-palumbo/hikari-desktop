@@ -14,6 +14,7 @@ import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft,
 import type { DeviceEffect } from './domain/effects';
 import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, migrateLegacyLocationFloorPlan, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
+import { collectLocations, devicesInLocationCollection, groupsInLocationCollection, locationCollectionByKey, locationCollectionForID } from './domain/locationCollections.js';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
@@ -68,6 +69,8 @@ export function App() {
   const pendingStateRef = useRef<PendingDeviceStates>({});
   const deviceCommandRef = useRef<Record<string, Promise<void>>>({});
   const networkRecoveryRef = useRef(false);
+  const locationCollections = useMemo(() => collectLocations(snapshot.locations), [snapshot.locations]);
+  const selectedLocationCollection = locationCollectionForID(locationCollections, locationId);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -151,16 +154,16 @@ export function App() {
   }, [snapshot.devices.length, startupReady]);
 
   useEffect(() => {
-    if (snapshot.locations.length && !snapshot.locations.some((location) => location.id === locationId)) {
-      setLocationId(snapshot.locations[0].id);
+    if (locationCollections.length && !selectedLocationCollection) {
+      setLocationId(locationCollections[0].locationIds[0]);
       return;
     }
-    const groups = snapshot.groups.filter((group) => group.locationId === locationId);
+    const groups = groupsInLocationCollection(selectedLocationCollection, snapshot.groups);
     if (groups.length && !groups.some((group) => group.id === groupId)) {
       setGroupId(groups[0].id);
       setSelectedSerial(undefined);
     }
-  }, [groupId, locationId, snapshot.groups, snapshot.locations]);
+  }, [groupId, locationCollections, selectedLocationCollection, snapshot.groups]);
 
   useEffect(() => savePreference(LOCATION_KEY, locationId), [locationId]);
   useEffect(() => savePreference(GROUP_KEY, groupId), [groupId]);
@@ -343,8 +346,7 @@ export function App() {
 
   const currentGroup = snapshot.groups.find((group) => group.id === groupId);
   const currentLocation = snapshot.locations.find((location) => location.id === locationId);
-  const currentLocationGroupIds = new Set(snapshot.groups.filter((group) => group.locationId === locationId).map((group) => group.id));
-  const locationDevices = snapshot.devices.filter((device) => currentLocationGroupIds.has(device.groupId));
+  const locationDevices = devicesInLocationCollection(selectedLocationCollection, snapshot.groups, snapshot.devices);
   const activeFloor = activeFloorPlanFloor(floorPlan.locations[locationId]);
   const inspectorFloor = floorPlan.locations[locationId]?.floors.find((floor) => floor.id === selectedRoomInspector?.floorId);
   const inspectorRoom = inspectorFloor?.rooms.find((room) => room.id === selectedRoomInspector?.roomId);
@@ -678,10 +680,10 @@ export function App() {
   return (
     <div className="app-shell" data-center-view={centerView}>
       <Sidebar
-        locations={snapshot.locations}
+        locations={locationCollections}
         groups={snapshot.groups}
         devices={snapshot.devices}
-        selectedLocationId={locationId}
+        selectedLocationKey={selectedLocationCollection?.key ?? ''}
         selectedGroupId={groupId}
         query={query}
         refreshing={refreshing}
@@ -689,8 +691,10 @@ export function App() {
         networkSettings={networkSettings}
         networkChanging={networkChanging}
         onQueryChange={setQuery}
-        onLocationChange={(id) => {
-          setLocationId(id);
+        onLocationChange={(key) => {
+          const collection = locationCollectionByKey(locationCollections, key);
+          if (!collection) return;
+          setLocationId(collection.locationIds[0]);
           setSelectedSerial(undefined);
           setSelectedGroupInspectorId(undefined);
           setSelectedRoomInspector(undefined);
@@ -702,17 +706,14 @@ export function App() {
           setSelectedRoomInspector(undefined);
           setQuery('');
         }}
-        onLocationPower={(id, on) =>
-          void Promise.all(
-            snapshot.devices
+        onLocationPower={(key, on) => {
+          const collection = locationCollectionByKey(locationCollections, key);
+          return void Promise.all(
+            devicesInLocationCollection(collection, snapshot.groups, snapshot.devices)
               .filter(isLightDevice)
-              .filter((device) => {
-                const group = snapshot.groups.find((entry) => entry.id === device.groupId);
-                return group?.locationId === id;
-              })
               .map((device) => updateListDevice({ ...device, on })),
-          )
-        }
+          );
+        }}
         onNetworkInterfaceChange={(name) => void changeNetworkInterface(name)}
         onRefreshDiscovery={() => void refreshDiscovery()}
         onOpenCommands={openCommandModal}

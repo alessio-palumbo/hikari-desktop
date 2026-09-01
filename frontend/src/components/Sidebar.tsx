@@ -1,15 +1,17 @@
 import { useEffect, useRef } from 'react';
 import { ChevronDown, MessageSquareText, Network, RefreshCw, Search, X } from 'lucide-react';
 import type { NetworkSettings } from '../backend/api';
-import type { Device, Group, Location } from '../domain/lifx';
+import type { Device, Group } from '../domain/lifx';
+import type { LocationCollection } from '../domain/locationCollections';
+import { devicesInLocationCollection, groupsInLocationCollection } from '../domain/locationCollections.js';
 import { PowerDot } from './primitives';
 import './Sidebar.css';
 
 interface SidebarProps {
-  locations: Location[];
+  locations: LocationCollection[];
   groups: Group[];
   devices: Device[];
-  selectedLocationId: string;
+  selectedLocationKey: string;
   selectedGroupId: string;
   query: string;
   refreshing: boolean;
@@ -17,9 +19,9 @@ interface SidebarProps {
   networkSettings: NetworkSettings;
   networkChanging: boolean;
   onQueryChange: (query: string) => void;
-  onLocationChange: (id: string) => void;
+  onLocationChange: (key: string) => void;
   onGroupChange: (id: string) => void;
-  onLocationPower: (locationId: string, on: boolean) => void;
+  onLocationPower: (locationKey: string, on: boolean) => void;
   onNetworkInterfaceChange: (name: string) => void;
   onRefreshDiscovery: () => void;
   onOpenCommands: () => void;
@@ -29,10 +31,9 @@ interface SidebarProps {
 
 export function Sidebar(props: SidebarProps) {
   const searchRef = useRef<HTMLInputElement>(null);
-  const groupsInLocation = props.groups.filter((group) => group.locationId === props.selectedLocationId);
-  const selectedLocation = props.locations.find((location) => location.id === props.selectedLocationId);
-  const selectedLocationGroupIds = new Set(groupsInLocation.map((group) => group.id));
-  const locationDevices = props.devices.filter((device) => selectedLocationGroupIds.has(device.groupId));
+  const selectedLocation = props.locations.find((location) => location.key === props.selectedLocationKey);
+  const groupsInLocation = groupsInLocationCollection(selectedLocation, props.groups);
+  const locationDevices = devicesInLocationCollection(selectedLocation, props.groups, props.devices);
   const locationOn = locationDevices.some((device) => device.on);
   const statusText = props.refreshError
     ? props.refreshError
@@ -94,11 +95,11 @@ export function Sidebar(props: SidebarProps) {
       </div>
 
       <div className="location-control">
-        <PowerDot disabled={!props.selectedLocationId || !locationDevices.length} on={locationOn} size={7} onChange={(next) => props.onLocationPower(props.selectedLocationId, next)} />
+        <PowerDot disabled={!props.selectedLocationKey || !locationDevices.length} on={locationOn} size={7} onChange={(next) => props.onLocationPower(props.selectedLocationKey, next)} />
         <div className="location-select-wrap">
-          <select className="location-select" value={props.selectedLocationId} onChange={(event) => props.onLocationChange(event.target.value)} aria-label="Location">
+          <select className="location-select" value={props.selectedLocationKey} onChange={(event) => props.onLocationChange(event.target.value)} aria-label="Location">
             {props.locations.map((location) => (
-              <option key={location.id} value={location.id}>
+              <option key={location.key} value={location.key}>
                 {location.name}
               </option>
             ))}
