@@ -62,11 +62,13 @@ Run the command from the folder containing `hikari.app`, or replace `hikari.app`
 
 ## Floor Plans
 
-Use the `floor` center view to arrange the lights in the selected location across one or more floors. Enter edit mode to add floors and rooms, rename rooms, choose room types, and drag unassigned devices into place.
+Use the `floor` center view to arrange the lights available on the current LAN across one or more floors. Enter edit mode to add floors and rooms, rename rooms, choose room types, and drag unassigned devices into place.
 
 Selecting a room in edit mode exposes its geometry controls. Drag the room body to move the room and its assigned devices, drag a vertex to reshape it, or use the smaller midpoint controls to add vertices. Double-click a vertex, or focus it and press `Delete` or `Backspace`, to remove it. Rooms retain at least three vertices.
 
-Floor layouts are stored locally and keyed by LIFX location. Removing a room or floor makes its devices unassigned; temporary LAN loss does not remove their saved placement. Devices that become unavailable during a session remain visible in the layout as dimmed, inactive markers and recover their normal controls when discovery finds them again.
+Floor layouts are stored locally as independent floor-plan profiles. Hikari matches a profile using known device serials and LIFX location identifiers, and asks which profile to use when the available evidence is ambiguous. Locations with the same display name are merged in the sidebar without discarding their distinct identifiers, while a floor plan can include devices from every LIFX location found on the same physical LAN.
+
+Removing a room or floor makes its devices unassigned; temporary LAN loss does not remove their saved placement. Devices that become unavailable during a session remain visible in the layout as dimmed, inactive markers and recover their normal controls when discovery finds them again.
 
 ## Local Text Commands
 
