@@ -7,12 +7,14 @@ import {
   devicesForFloorPlanProfile,
   emptyFloorPlanProfilePreferences,
   floorPlanObservation,
+  floorPlanProfileMatchesObservation,
   loadFloorPlanProfilePreferences,
   normalizeFloorPlanProfilePreferences,
   observeFloorPlanProfile,
   parseFloorPlanProfilePreferences,
   resolveFloorPlanProfile,
   saveFloorPlanProfilePreferences,
+  selectedFloorPlanProfileId,
   updateFloorPlanProfileLayout,
 } from '../dist-test/domain/floorPlanProfiles.js';
 
@@ -88,6 +90,34 @@ test('returns new when no profile has matching evidence', () => {
   );
 });
 
+test('an explicit profile selection overrides an automatic match', () => {
+  const home = createFloorPlanProfile('home', 'Home', layout(), { deviceSerials: ['home-light'], locationIds: [] });
+  const office = createFloorPlanProfile('office', 'Office', layout(), { deviceSerials: ['office-light'], locationIds: [] });
+  const current = preferences(home, office);
+  const resolution = resolveFloorPlanProfile(current, { deviceSerials: ['home-light'], locationIds: [] });
+
+  assert.equal(selectedFloorPlanProfileId(current, resolution), 'home');
+  assert.equal(selectedFloorPlanProfileId(current, resolution, 'office'), 'office');
+  assert.equal(selectedFloorPlanProfileId(current, resolution, 'missing'), 'home');
+});
+
+test('manual profile evidence survives incremental discovery but not another LAN', () => {
+  const home = createFloorPlanProfile('home', 'Home', layout(), {
+    deviceSerials: ['known'],
+    locationIds: ['home-location'],
+  });
+
+  assert.equal(floorPlanProfileMatchesObservation(home, {
+    deviceSerials: ['known', 'new-light'],
+    locationIds: ['home-location'],
+  }), true);
+  assert.equal(floorPlanProfileMatchesObservation(home, {
+    deviceSerials: ['office-light'],
+    locationIds: ['office-location'],
+  }), false);
+  assert.equal(floorPlanProfileMatchesObservation(home, { deviceSerials: [], locationIds: [] }), true);
+});
+
 test('observing a confirmed profile accumulates evidence but excludes ignored devices', () => {
   const home = createFloorPlanProfile('home', 'Home', layout(), { deviceSerials: ['known'], locationIds: ['home-location'] });
   home.ignoredSerials = ['coworker'];
@@ -100,6 +130,16 @@ test('observing a confirmed profile accumulates evidence but excludes ignored de
   assert.equal(got.activeProfileId, 'home');
   assert.deepEqual(got.profiles.home.knownDeviceSerials, ['known', 'new-light']);
   assert.deepEqual(got.profiles.home.locationHints, ['home-location', 'new-location']);
+});
+
+test('observing unchanged evidence preserves preference identity', () => {
+  const home = createFloorPlanProfile('home', 'Home', layout(), { deviceSerials: ['known'], locationIds: ['home-location'] });
+  const current = { ...preferences(home), activeProfileId: 'home' };
+
+  assert.equal(observeFloorPlanProfile(current, 'home', {
+    deviceSerials: ['known'],
+    locationIds: ['home-location'],
+  }), current);
 });
 
 test('normalizes persisted profiles defensively', () => {
@@ -149,6 +189,23 @@ test('does not migrate empty generated location layouts', () => {
   const legacy = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'lifx-location:home');
 
   assert.deepEqual(parseFloorPlanProfilePreferences(JSON.stringify(legacy)), emptyFloorPlanProfilePreferences());
+});
+
+test('migrates multiple meaningful location layouts as separate profiles', () => {
+  const legacy = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'Home');
+  legacy.locations.Home.floors[0].rooms.push({
+    id: 'living', label: 'Living', type: 'living', points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }],
+  });
+  const withOffice = ensureLocationFloorPlan(legacy, 'Office');
+  withOffice.locations.Office.floors[0].rooms.push({
+    id: 'desk', label: 'Desk', type: 'office', points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }],
+  });
+
+  const got = parseFloorPlanProfilePreferences(JSON.stringify(withOffice));
+
+  assert.equal(Object.keys(got.profiles).length, 2);
+  assert.equal(got.activeProfileId, undefined);
+  assert.deepEqual(Object.values(got.profiles).map((profile) => profile.name).sort(), ['Home', 'Office']);
 });
 
 test('loads and saves profiles through a storage boundary', () => {

@@ -140,6 +140,27 @@ export function resolveFloorPlanProfile(
   return { kind: 'matched', profileId: candidates[0].profileId, candidates };
 }
 
+export function selectedFloorPlanProfileId(
+  preferences: FloorPlanProfilePreferences,
+  resolution: FloorPlanProfileResolution,
+  selectedProfileId?: string,
+): string | undefined {
+  if (selectedProfileId && preferences.profiles[selectedProfileId]) return selectedProfileId;
+  return resolution.kind === 'matched' ? resolution.profileId : undefined;
+}
+
+export function floorPlanProfileMatchesObservation(
+  profile: FloorPlanProfile,
+  observation: FloorPlanObservation,
+): boolean {
+  if (!observation.deviceSerials.length && !observation.locationIds.length) return true;
+  const ignored = new Set(profile.ignoredSerials);
+  const serials = new Set(observation.deviceSerials);
+  const locations = new Set(observation.locationIds);
+  return profile.knownDeviceSerials.some((serial) => !ignored.has(serial) && serials.has(serial))
+    || profile.locationHints.some((locationId) => locations.has(locationId));
+}
+
 export function observeFloorPlanProfile(
   preferences: FloorPlanProfilePreferences,
   profileId: string,
