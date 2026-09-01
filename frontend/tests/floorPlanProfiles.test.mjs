@@ -4,6 +4,7 @@ import { createFloorPlanFloor, emptyFloorPlanPreferences, ensureLocationFloorPla
 import {
   createFloorPlanProfile,
   createDefaultFloorPlanLocation,
+  devicesForFloorPlanProfile,
   emptyFloorPlanProfilePreferences,
   floorPlanObservation,
   loadFloorPlanProfilePreferences,
@@ -188,3 +189,40 @@ test('updates a profile layout without changing its identity evidence', () => {
   assert.equal(got.profiles.home.layout.floors.length, 2);
   assert.deepEqual(got.profiles.home.knownDeviceSerials, ['known']);
 });
+
+test('scopes floor devices to current LAN and profile evidence', () => {
+  const profile = createFloorPlanProfile('office', 'Office', {
+    activeFloorId: 'ground',
+    floors: [{
+      id: 'ground',
+      label: 'Ground',
+      rooms: [],
+      devices: { placed: { x: 0.5, y: 0.5 } },
+    }],
+  }, { deviceSerials: ['known-offline'], locationIds: [] });
+  profile.ignoredSerials = ['ignored-online'];
+
+  const got = devicesForFloorPlanProfile(profile, [
+    device('online', true),
+    device('known-offline', false),
+    device('placed', false),
+    device('other-profile', false),
+    device('ignored-online', true),
+  ]);
+
+  assert.deepEqual(got.map((entry) => entry.serial), ['online', 'known-offline', 'placed']);
+});
+
+function device(serial, online) {
+  return {
+    serial,
+    online,
+    groupId: 'group',
+    name: serial,
+    model: 'LIFX A19',
+    kind: 'single',
+    on: false,
+    brightness: 0,
+    capability: { hasColor: true, minKelvin: 2500, maxKelvin: 9000 },
+  };
+}

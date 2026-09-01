@@ -1,5 +1,5 @@
 import { DEFAULT_FLOOR_ID, FLOOR_PLAN_STORAGE_KEY, FLOOR_PLAN_VERSION, createFloorPlanFloor, normalizeFloorPlanLocation, normalizeFloorPlanPreferences, type FloorPlanLocation, type FloorPlanPreferences, type FloorPlanStorage } from './floorPlan.js';
-import type { DeviceSnapshot } from './lifx.js';
+import type { Device, DeviceSnapshot } from './lifx.js';
 
 export const FLOOR_PLAN_PROFILE_VERSION = 2;
 
@@ -216,6 +216,16 @@ export function floorPlanObservation(snapshot: DeviceSnapshot): FloorPlanObserva
     deviceSerials: uniqueValues(onlineDevices.map((device) => device.serial)),
     locationIds: uniqueValues([...locationIds]),
   };
+}
+
+export function devicesForFloorPlanProfile(profile: FloorPlanProfile, devices: Device[]): Device[] {
+  const ignored = new Set(profile.ignoredSerials);
+  const known = new Set(profile.knownDeviceSerials);
+  const placed = new Set(profile.layout.floors.flatMap((floor) => Object.keys(floor.devices)));
+  return devices.filter((device) => (
+    !ignored.has(device.serial)
+    && (device.online || known.has(device.serial) || placed.has(device.serial))
+  ));
 }
 
 function migrateLocationFloorPlans(preferences: FloorPlanPreferences): FloorPlanProfilePreferences {

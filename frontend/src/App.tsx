@@ -14,7 +14,7 @@ import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/comma
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
 import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
-import { createDefaultFloorPlanLocation, createFloorPlanProfile, floorPlanObservation, loadFloorPlanProfilePreferences, observeFloorPlanProfile, renameFloorPlanProfile, resolveFloorPlanProfile, saveFloorPlanProfilePreferences, updateFloorPlanProfileLayout, type FloorPlanProfilePreferences } from './domain/floorPlanProfiles.js';
+import { createDefaultFloorPlanLocation, createFloorPlanProfile, devicesForFloorPlanProfile, floorPlanObservation, loadFloorPlanProfilePreferences, observeFloorPlanProfile, renameFloorPlanProfile, resolveFloorPlanProfile, saveFloorPlanProfilePreferences, updateFloorPlanProfileLayout, type FloorPlanProfilePreferences } from './domain/floorPlanProfiles.js';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { collectLocations, devicesInLocationCollection, groupsInLocationCollection, locationCollectionByKey, locationCollectionForID } from './domain/locationCollections.js';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
@@ -391,7 +391,7 @@ export function App() {
     const floor = floorPlanProfile?.layout.floors.find((entry) => entry.id === floorId);
     if (!floor) return;
     void Promise.all(
-      locationDevices
+      floorPlanDevices
         .filter(isLightDevice)
         .filter((device) => floor.devices[device.serial]?.roomId === roomId)
         .map((device) => updateListDevice({ ...device, on })),
@@ -411,11 +411,12 @@ export function App() {
 
   const currentGroup = snapshot.groups.find((group) => group.id === groupId);
   const locationDevices = devicesInLocationCollection(selectedLocationCollection, snapshot.groups, snapshot.devices);
+  const floorPlanDevices = floorPlanProfile ? devicesForFloorPlanProfile(floorPlanProfile, snapshot.devices) : [];
   const activeFloor = activeFloorPlanFloor(floorPlanProfile?.layout);
   const inspectorFloor = floorPlanProfile?.layout.floors.find((floor) => floor.id === selectedRoomInspector?.floorId);
   const inspectorRoom = inspectorFloor?.rooms.find((room) => room.id === selectedRoomInspector?.roomId);
   const inspectorRoomDevices = inspectorFloor && inspectorRoom
-    ? locationDevices.filter((device) => inspectorFloor.devices[device.serial]?.roomId === inspectorRoom.id).filter(isLightDevice)
+    ? floorPlanDevices.filter((device) => inspectorFloor.devices[device.serial]?.roomId === inspectorRoom.id).filter(isLightDevice)
     : [];
   const inspectorDevice = draft?.draft ?? selectedDevice;
 
@@ -793,7 +794,7 @@ export function App() {
           profileId={floorPlanProfile.id}
           profileOptions={floorPlanProfileOptions.map((profile) => ({ id: profile.id, name: profile.name }))}
           groups={snapshot.groups}
-          devices={locationDevices}
+          devices={floorPlanDevices}
           layout={floorPlanProfile.layout}
           selectedSerial={selectedSerial}
           selectedGroupId={groupId}
