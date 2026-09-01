@@ -438,17 +438,23 @@ export function normalizeFloorPlanPreferences(value: Partial<FloorPlanPreference
   const locations: Record<string, FloorPlanLocation> = {};
   for (const [locationId, location] of Object.entries(value.locations)) {
     const cleanLocationId = cleanId(locationId);
-    if (!cleanLocationId || !isRecord(location) || !Array.isArray(location.floors)) continue;
-    const floors = location.floors.map(normalizeFloor).filter((floor): floor is FloorPlanFloor => !!floor);
-    if (!floors.length) continue;
-    const activeFloorId = cleanId(location.activeFloorId);
-    locations[cleanLocationId] = {
-      activeFloorId: floors.some((floor) => floor.id === activeFloorId) ? activeFloorId : floors[0].id,
-      floors,
-    };
+    const normalized = normalizeFloorPlanLocation(location);
+    if (!cleanLocationId || !normalized) continue;
+    locations[cleanLocationId] = normalized;
   }
 
   return { version: FLOOR_PLAN_VERSION, locations };
+}
+
+export function normalizeFloorPlanLocation(value: unknown): FloorPlanLocation | undefined {
+  if (!isRecord(value) || !Array.isArray(value.floors)) return undefined;
+  const floors = value.floors.map(normalizeFloor).filter((floor): floor is FloorPlanFloor => !!floor);
+  if (!floors.length) return undefined;
+  const activeFloorId = cleanId(value.activeFloorId);
+  return {
+    activeFloorId: floors.some((floor) => floor.id === activeFloorId) ? activeFloorId : floors[0].id,
+    floors,
+  };
 }
 
 export function normalizePoint(point: FloorPlanPoint): FloorPlanPoint {
