@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Bath, BedDouble, BriefcaseBusiness, Car, ChevronDown, CookingPot, DoorOpen, Plus, Sofa, Square, Trash2, Trees, Utensils, Wrench, X, type LucideIcon } from 'lucide-react';
-import type { Device, Group, Location } from '../domain/lifx';
+import type { Device, Group } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
 import { FLOOR_PLAN_ROOM_TYPES, keepRoomDevicesInsideShape, moveRoomEdge, roomAtPoint, roomCenter, roomInteriorPoint, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
 import { CenterViewToggle, type CenterView } from './CenterViewToggle';
 import './FloorPlan.css';
 
 interface FloorPlanProps {
-  location?: Location;
+  profileName: string;
+  profileId: string;
+  profileOptions: Array<{ id: string; name: string }>;
   groups: Group[];
   devices: Device[];
   layout?: FloorPlanLocation;
@@ -19,6 +21,7 @@ interface FloorPlanProps {
   view: CenterView;
   editing: boolean;
   onViewChange: (view: CenterView) => void;
+  onProfileChange: (profileId: string) => void;
   onEditingChange: (editing: boolean) => void;
   onAddRoom: () => string | undefined;
   onAddFloor: () => void;
@@ -41,7 +44,9 @@ type RoomPowerState = 'empty' | 'off' | 'mixed' | 'on';
 const roomDragThresholdPx = 4;
 
 export function FloorPlan({
-  location,
+  profileName,
+  profileId,
+  profileOptions,
   groups,
   devices,
   layout,
@@ -53,6 +58,7 @@ export function FloorPlan({
   view,
   editing,
   onViewChange,
+  onProfileChange,
   onEditingChange,
   onAddRoom,
   onAddFloor,
@@ -125,7 +131,7 @@ export function FloorPlan({
       <div className="floor-plan-shell">
         <header className="floor-plan-header">
           <div>
-            <span>{location?.name.toLowerCase() ?? 'location'}</span>
+            <span>{profileName.toLowerCase()}</span>
             <h1>{floor?.label ?? 'floor plan'}</h1>
           </div>
           <div className="floor-plan-actions">
@@ -133,6 +139,16 @@ export function FloorPlan({
               <span>{floor?.rooms.length ?? 0} room{floor?.rooms.length === 1 ? '' : 's'}</span>
             </div> : null}
             <div className="floor-tools">
+              {!editing && profileOptions.length > 1 ? (
+                <label className="floor-select-wrap">
+                  <select value={profileId} aria-label="Floor plan" onChange={(event) => onProfileChange(event.target.value)}>
+                    {profileOptions.map((profile) => (
+                      <option key={profile.id} value={profile.id}>{profile.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={12} aria-hidden="true" />
+                </label>
+              ) : null}
               {layout && !editing && layout.floors.length > 1 ? (
                 <label className="floor-select-wrap">
                   <select value={floor?.id ?? ''} aria-label="Floor" onChange={(event) => onSelectFloor(event.target.value)}>

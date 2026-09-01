@@ -153,6 +153,51 @@
   white-space: nowrap;
 }
 
+.floor-plan-choice-shell {
+  max-width: 720px;
+}
+
+.floor-plan-choice-list {
+  display: grid;
+  max-width: 520px;
+  border-top: 1px solid var(--line);
+}
+
+.floor-plan-choice-list button {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.floor-plan-choice-list button:hover {
+  color: var(--fg-0);
+  background: oklch(1 0 0 / 0.018);
+}
+
+.floor-plan-choice-list button > span {
+  display: grid;
+  gap: 3px;
+}
+
+.floor-plan-choice-list strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.floor-plan-choice-list small {
+  color: var(--fg-4);
+  font-size: 11px;
+}
+
 .floor-plan-meta span + span::before {
   content: "";
   display: inline-block;

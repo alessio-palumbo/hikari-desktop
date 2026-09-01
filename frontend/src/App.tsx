@@ -5,6 +5,7 @@ import type { CenterView } from './components/CenterViewToggle';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
 import { FloorPlan } from './components/FloorPlan';
+import { FloorPlanChooser } from './components/FloorPlanChooser';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
 import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
@@ -12,7 +13,8 @@ import { RoomInspector } from './components/RoomInspector';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
-import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, ensureLocationFloorPlan, loadFloorPlanPreferences, migrateLegacyLocationFloorPlan, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, saveFloorPlanPreferences, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
+import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
+import { createDefaultFloorPlanLocation, createFloorPlanProfile, floorPlanObservation, loadFloorPlanProfilePreferences, observeFloorPlanProfile, renameFloorPlanProfile, resolveFloorPlanProfile, saveFloorPlanProfilePreferences, updateFloorPlanProfileLayout, type FloorPlanProfilePreferences } from './domain/floorPlanProfiles.js';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { collectLocations, devicesInLocationCollection, groupsInLocationCollection, locationCollectionByKey, locationCollectionForID } from './domain/locationCollections.js';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
@@ -38,7 +40,8 @@ export function App() {
   const [locationId, setLocationId] = useState(() => loadPreference(LOCATION_KEY));
   const [groupId, setGroupId] = useState(() => loadPreference(GROUP_KEY));
   const [centerView, setCenterView] = useState<CenterView>(() => loadCenterViewPreference());
-  const [floorPlan, setFloorPlan] = useState<FloorPlanPreferences>(() => loadFloorPlanPreferences(window.localStorage));
+  const [floorPlanProfiles, setFloorPlanProfiles] = useState<FloorPlanProfilePreferences>(() => loadFloorPlanProfilePreferences(window.localStorage));
+  const [floorPlanSelection, setFloorPlanSelection] = useState<{ profileId: string; observationKey: string } | undefined>();
   const [floorEditing, setFloorEditing] = useState(false);
   const [selectedRoomInspector, setSelectedRoomInspector] = useState<{ floorId: string; roomId: string } | undefined>();
   const [selectedSerial, setSelectedSerial] = useState<string | undefined>();
@@ -71,6 +74,22 @@ export function App() {
   const networkRecoveryRef = useRef(false);
   const locationCollections = useMemo(() => collectLocations(snapshot.locations), [snapshot.locations]);
   const selectedLocationCollection = locationCollectionForID(locationCollections, locationId);
+  const currentFloorPlanObservation = useMemo(() => floorPlanObservation(snapshot), [snapshot]);
+  const floorPlanResolution = useMemo(
+    () => resolveFloorPlanProfile(floorPlanProfiles, currentFloorPlanObservation),
+    [currentFloorPlanObservation, floorPlanProfiles],
+  );
+  const floorPlanObservationKey = JSON.stringify(currentFloorPlanObservation);
+  const floorPlanProfileId = floorPlanResolution.kind === 'matched'
+    ? floorPlanResolution.profileId
+    : floorPlanSelection?.observationKey === floorPlanObservationKey
+      ? floorPlanSelection.profileId
+      : undefined;
+  const floorPlanProfile = floorPlanProfileId ? floorPlanProfiles.profiles[floorPlanProfileId] : undefined;
+  const floorPlanProfileOptions = useMemo(
+    () => Object.values(floorPlanProfiles.profiles).sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)),
+    [floorPlanProfiles.profiles],
+  );
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -168,17 +187,32 @@ export function App() {
   useEffect(() => savePreference(LOCATION_KEY, locationId), [locationId]);
   useEffect(() => savePreference(GROUP_KEY, groupId), [groupId]);
   useEffect(() => savePreference(CENTER_VIEW_KEY, centerView), [centerView]);
-  useEffect(() => saveFloorPlanPreferences(window.localStorage, floorPlan), [floorPlan]);
+  useEffect(() => saveFloorPlanProfilePreferences(window.localStorage, floorPlanProfiles), [floorPlanProfiles]);
   useEffect(() => saveBooleanPreference(COMMAND_AUTO_EXECUTE_KEY, commandAutoExecute), [commandAutoExecute]);
 
-  const floorPlanLocationName = snapshot.locations.find((location) => location.id === locationId)?.name;
   useEffect(() => {
-    if (!locationId || !floorPlanLocationName) return;
-    setFloorPlan((current) => ensureLocationFloorPlan(
-      migrateLegacyLocationFloorPlan(current, locationId, floorPlanLocationName),
-      locationId,
+    if (centerView !== 'floor') return;
+    if (floorPlanResolution.kind !== 'matched') {
+      if (floorPlanSelection && floorPlanSelection.observationKey !== floorPlanObservationKey) {
+        setFloorPlanSelection(undefined);
+        setFloorEditing(false);
+      }
+      return;
+    }
+    setFloorPlanSelection((current) => (
+      current?.profileId === floorPlanResolution.profileId && current.observationKey === floorPlanObservationKey
+        ? current
+        : { profileId: floorPlanResolution.profileId, observationKey: floorPlanObservationKey }
     ));
-  }, [locationId, floorPlanLocationName]);
+    setFloorPlanProfiles((current) => {
+      const observed = observeFloorPlanProfile(current, floorPlanResolution.profileId, currentFloorPlanObservation);
+      const profile = observed.profiles[floorPlanResolution.profileId];
+      const inferredName = profile ? floorPlanProfileName(profile.locationHints, locationCollections) : undefined;
+      return profile?.name === 'Floor plan' && inferredName
+        ? renameFloorPlanProfile(observed, profile.id, inferredName)
+        : observed;
+    });
+  }, [centerView, currentFloorPlanObservation, floorPlanObservationKey, floorPlanResolution, floorPlanSelection, locationCollections]);
 
   const openCommandModal = useCallback(() => {
     setCommandOpen(true);
@@ -258,72 +292,103 @@ export function App() {
     setSelectedRoomInspector((current) => (current?.floorId === floorId && current.roomId === roomId ? undefined : { floorId, roomId }));
   };
 
+  const updateActiveFloorPlan = (updater: (preferences: FloorPlanPreferences, profileId: string) => FloorPlanPreferences) => {
+    if (!floorPlanProfileId) return;
+    setFloorPlanProfiles((current) => updateFloorPlanProfileLayout(current, floorPlanProfileId, (layout) => {
+      const wrapped: FloorPlanPreferences = { version: 1, locations: { [floorPlanProfileId]: layout } };
+      return updater(wrapped, floorPlanProfileId).locations[floorPlanProfileId] ?? layout;
+    }));
+  };
+
+  const selectFloorPlanProfile = (profileId: string) => {
+    if (!floorPlanProfiles.profiles[profileId]) return;
+    setFloorEditing(false);
+    setSelectedRoomInspector(undefined);
+    setFloorPlanSelection({ profileId, observationKey: floorPlanObservationKey });
+    setFloorPlanProfiles((current) => observeFloorPlanProfile(current, profileId, currentFloorPlanObservation));
+  };
+
+  const createNewFloorPlanProfile = () => {
+    const profileId = newFloorPlanProfileId();
+    const name = selectedLocationCollection?.name ?? 'Floor plan';
+    const profile = createFloorPlanProfile(profileId, name, createDefaultFloorPlanLocation(), currentFloorPlanObservation);
+    if (!profile) return;
+    setFloorPlanProfiles((current) => ({
+      ...current,
+      activeProfileId: profile.id,
+      profiles: { ...current.profiles, [profile.id]: profile },
+    }));
+    setFloorPlanSelection({ profileId: profile.id, observationKey: floorPlanObservationKey });
+    setFloorEditing(false);
+    setSelectedRoomInspector(undefined);
+  };
+
   const addFloorRoom = () => {
-    if (!locationId) return undefined;
-    const layout = floorPlan.locations[locationId];
+    if (!floorPlanProfileId) return undefined;
+    const layout = floorPlanProfile?.layout;
     const floor = activeFloorPlanFloor(layout);
     if (!floor) return undefined;
     const index = floor.rooms.length + 1;
     const offset = (floor.rooms.length % 6) * 0.055;
     const room = createRectangleRoom(`room-${Date.now().toString(36)}-${index}`, `Room ${index}`, 'other', { x: 0.12 + offset, y: 0.12 + offset }, { x: 0.36, y: 0.28 });
-    setFloorPlan((current) => addRoomToFloor(current, locationId, floor.id, room));
+    updateActiveFloorPlan((current, profileId) => addRoomToFloor(current, profileId, floor.id, room));
     return room.id;
   };
 
   const addFloor = () => {
-    if (!locationId) return;
-    const layout = floorPlan.locations[locationId];
+    if (!floorPlanProfileId) return;
+    const layout = floorPlanProfile?.layout;
     const index = (layout?.floors.filter((floor) => floor.id !== DEFAULT_FLOOR_ID).length ?? 0) + 1;
     const floor = createFloorPlanFloor(`floor-${Date.now().toString(36)}-${index}`, `Floor ${index}`);
-    setFloorPlan((current) => addFloorToLocation(current, locationId, floor));
+    updateActiveFloorPlan((current, profileId) => addFloorToLocation(current, profileId, floor));
   };
 
   const selectFloor = (floorId: string) => {
-    if (!locationId) return;
+    if (!floorPlanProfileId) return;
     setSelectedRoomInspector(undefined);
-    setFloorPlan((current) => setActiveFloor(current, locationId, floorId));
+    updateActiveFloorPlan((current, profileId) => setActiveFloor(current, profileId, floorId));
   };
 
   const renameFloor = (floorId: string, label: string) => {
-    if (!locationId) return;
-    setFloorPlan((current) => updateFloorLabel(current, locationId, floorId, label));
+    if (!floorPlanProfileId) return;
+    updateActiveFloorPlan((current, profileId) => updateFloorLabel(current, profileId, floorId, label));
   };
 
   const removeFloor = (floorId: string) => {
-    if (!locationId) return;
-    setFloorPlan((current) => removeFloorFromLocation(current, locationId, floorId));
+    if (!floorPlanProfileId) return;
+    updateActiveFloorPlan((current, profileId) => removeFloorFromLocation(current, profileId, floorId));
   };
 
   const updateFloorRoom = (floorId: string, roomId: string, patch: FloorPlanRoomPatch) => {
-    if (!locationId) return;
-    setFloorPlan((current) => updateRoomInFloor(current, locationId, floorId, roomId, patch));
+    if (!floorPlanProfileId) return;
+    updateActiveFloorPlan((current, profileId) => updateRoomInFloor(current, profileId, floorId, roomId, patch));
   };
 
   const bringFloorRoomToFront = (floorId: string, roomId: string) => {
-    if (!locationId) return;
-    setFloorPlan((current) => bringRoomToFront(current, locationId, floorId, roomId));
+    if (!floorPlanProfileId) return;
+    updateActiveFloorPlan((current, profileId) => bringRoomToFront(current, profileId, floorId, roomId));
   };
 
   const removeFloorRoom = (floorId: string, roomId: string) => {
-    if (!locationId) return;
-    setFloorPlan((current) => removeRoomFromFloor(current, locationId, floorId, roomId));
+    if (!floorPlanProfileId) return;
+    updateActiveFloorPlan((current, profileId) => removeRoomFromFloor(current, profileId, floorId, roomId));
   };
 
   const placeFloorDevice = (serial: string, placement: FloorPlanDevicePlacement) => {
-    if (!locationId) return;
-    const layout = floorPlan.locations[locationId];
+    if (!floorPlanProfileId) return;
+    const layout = floorPlanProfile?.layout;
     const floor = activeFloorPlanFloor(layout);
     if (!floor) return;
-    setFloorPlan((current) => placeDeviceOnFloor(current, locationId, floor.id, serial, placement));
+    updateActiveFloorPlan((current, profileId) => placeDeviceOnFloor(current, profileId, floor.id, serial, placement));
   };
 
   const removeFloorDevice = (serial: string) => {
-    if (!locationId) return;
-    setFloorPlan((current) => removeDeviceFromFloorPlan(current, locationId, serial));
+    if (!floorPlanProfileId) return;
+    updateActiveFloorPlan((current, profileId) => removeDeviceFromFloorPlan(current, profileId, serial));
   };
 
   const setRoomPower = (floorId: string, roomId: string, on: boolean) => {
-    const floor = floorPlan.locations[locationId]?.floors.find((entry) => entry.id === floorId);
+    const floor = floorPlanProfile?.layout.floors.find((entry) => entry.id === floorId);
     if (!floor) return;
     void Promise.all(
       locationDevices
@@ -345,10 +410,9 @@ export function App() {
   }, [groupId, query, snapshot.devices, snapshot.groups]);
 
   const currentGroup = snapshot.groups.find((group) => group.id === groupId);
-  const currentLocation = snapshot.locations.find((location) => location.id === locationId);
   const locationDevices = devicesInLocationCollection(selectedLocationCollection, snapshot.groups, snapshot.devices);
-  const activeFloor = activeFloorPlanFloor(floorPlan.locations[locationId]);
-  const inspectorFloor = floorPlan.locations[locationId]?.floors.find((floor) => floor.id === selectedRoomInspector?.floorId);
+  const activeFloor = activeFloorPlanFloor(floorPlanProfile?.layout);
+  const inspectorFloor = floorPlanProfile?.layout.floors.find((floor) => floor.id === selectedRoomInspector?.floorId);
   const inspectorRoom = inspectorFloor?.rooms.find((room) => room.id === selectedRoomInspector?.roomId);
   const inspectorRoomDevices = inspectorFloor && inspectorRoom
     ? locationDevices.filter((device) => inspectorFloor.devices[device.serial]?.roomId === inspectorRoom.id).filter(isLightDevice)
@@ -723,12 +787,14 @@ export function App() {
         }
       />
 
-      {centerView === 'floor' ? (
+      {centerView === 'floor' && floorPlanProfile ? (
         <FloorPlan
-          location={currentLocation}
+          profileName={floorPlanProfile.name}
+          profileId={floorPlanProfile.id}
+          profileOptions={floorPlanProfileOptions.map((profile) => ({ id: profile.id, name: profile.name }))}
           groups={snapshot.groups}
           devices={locationDevices}
-          layout={floorPlan.locations[locationId]}
+          layout={floorPlanProfile.layout}
           selectedSerial={selectedSerial}
           selectedGroupId={groupId}
           selectedRoomId={selectedRoomInspector && selectedRoomInspector.floorId === activeFloor?.id ? selectedRoomInspector.roomId : undefined}
@@ -737,6 +803,7 @@ export function App() {
           view={centerView}
           editing={floorEditing}
           onViewChange={setCenterView}
+          onProfileChange={selectFloorPlanProfile}
           onEditingChange={setFloorEditing}
           onAddRoom={addFloorRoom}
           onAddFloor={addFloor}
@@ -753,6 +820,15 @@ export function App() {
           onRoomSelect={openRoomInspector}
           onRoomPower={setRoomPower}
           onSurfaceClick={closeInspector}
+        />
+      ) : centerView === 'floor' ? (
+        <FloorPlanChooser
+          profiles={floorPlanProfileOptions}
+          resolution={floorPlanResolution}
+          view={centerView}
+          onViewChange={setCenterView}
+          onSelect={selectFloorPlanProfile}
+          onCreate={createNewFloorPlanProfile}
         />
       ) : (
         <DeviceList
@@ -897,6 +973,19 @@ function loadPreference(key: string): string {
     console.warn(`Unable to read preference ${key}`, error);
     return '';
   }
+}
+
+function newFloorPlanProfileId(): string {
+  const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `floor-plan:${id}`;
+}
+
+function floorPlanProfileName(locationHints: string[], collections: ReturnType<typeof collectLocations>): string | undefined {
+  for (const locationId of locationHints) {
+    const collection = locationCollectionForID(collections, locationId);
+    if (collection) return collection.name;
+  }
+  return undefined;
 }
 
 function loadCenterViewPreference(): CenterView {

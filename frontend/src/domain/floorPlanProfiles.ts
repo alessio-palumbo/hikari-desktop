@@ -1,4 +1,5 @@
-import { normalizeFloorPlanLocation, type FloorPlanLocation } from './floorPlan.js';
+import { DEFAULT_FLOOR_ID, FLOOR_PLAN_STORAGE_KEY, FLOOR_PLAN_VERSION, createFloorPlanFloor, normalizeFloorPlanLocation, normalizeFloorPlanPreferences, type FloorPlanLocation, type FloorPlanPreferences, type FloorPlanStorage } from './floorPlan.js';
+import type { DeviceSnapshot } from './lifx.js';
 
 export const FLOOR_PLAN_PROFILE_VERSION = 2;
 
@@ -35,6 +36,41 @@ export type FloorPlanProfileResolution =
 
 export function emptyFloorPlanProfilePreferences(): FloorPlanProfilePreferences {
   return { version: FLOOR_PLAN_PROFILE_VERSION, profiles: {} };
+}
+
+export function loadFloorPlanProfilePreferences(storage: FloorPlanStorage, key = FLOOR_PLAN_STORAGE_KEY): FloorPlanProfilePreferences {
+  try {
+    return parseFloorPlanProfilePreferences(storage.getItem(key));
+  } catch (error) {
+    console.warn('Unable to read floor plan profiles', error);
+    return emptyFloorPlanProfilePreferences();
+  }
+}
+
+export function saveFloorPlanProfilePreferences(
+  storage: FloorPlanStorage,
+  preferences: FloorPlanProfilePreferences,
+  key = FLOOR_PLAN_STORAGE_KEY,
+): void {
+  try {
+    storage.setItem(key, JSON.stringify(normalizeFloorPlanProfilePreferences(preferences)));
+  } catch (error) {
+    console.warn('Unable to save floor plan profiles', error);
+  }
+}
+
+export function parseFloorPlanProfilePreferences(value: string | null): FloorPlanProfilePreferences {
+  if (!value) return emptyFloorPlanProfilePreferences();
+  const parsed: unknown = JSON.parse(value);
+  if (isRecord(parsed) && parsed.version === FLOOR_PLAN_VERSION) {
+    return migrateLocationFloorPlans(normalizeFloorPlanPreferences(parsed));
+  }
+  return normalizeFloorPlanProfilePreferences(parsed);
+}
+
+export function createDefaultFloorPlanLocation(): FloorPlanLocation {
+  const floor = createFloorPlanFloor(DEFAULT_FLOOR_ID, 'Ground');
+  return { activeFloorId: floor.id, floors: [floor] };
 }
 
 export function createFloorPlanProfile(
@@ -109,11 +145,20 @@ export function observeFloorPlanProfile(
   profileId: string,
   observation: FloorPlanObservation,
 ): FloorPlanProfilePreferences {
-  const current = normalizeFloorPlanProfilePreferences(preferences);
+  const current = preferences;
   const profile = current.profiles[profileId];
   if (!profile) return current;
   const ignored = new Set(profile.ignoredSerials);
   const observedSerials = uniqueValues(observation.deviceSerials).filter((serial) => !ignored.has(serial));
+  const knownDeviceSerials = uniqueValues([...profile.knownDeviceSerials, ...observedSerials]);
+  const locationHints = uniqueValues([...profile.locationHints, ...observation.locationIds]);
+  if (
+    current.activeProfileId === profile.id
+    && sameValues(knownDeviceSerials, profile.knownDeviceSerials)
+    && sameValues(locationHints, profile.locationHints)
+  ) {
+    return current;
+  }
   return {
     ...current,
     activeProfileId: profile.id,
@@ -121,11 +166,89 @@ export function observeFloorPlanProfile(
       ...current.profiles,
       [profile.id]: {
         ...profile,
-        knownDeviceSerials: uniqueValues([...profile.knownDeviceSerials, ...observedSerials]),
-        locationHints: uniqueValues([...profile.locationHints, ...observation.locationIds]),
+        knownDeviceSerials,
+        locationHints,
       },
     },
   };
+}
+
+export function updateFloorPlanProfileLayout(
+  preferences: FloorPlanProfilePreferences,
+  profileId: string,
+  updater: (layout: FloorPlanLocation) => FloorPlanLocation,
+): FloorPlanProfilePreferences {
+  const profile = preferences.profiles[profileId];
+  if (!profile) return preferences;
+  const layout = normalizeFloorPlanLocation(updater(profile.layout));
+  if (!layout) return preferences;
+  return {
+    ...preferences,
+    profiles: {
+      ...preferences.profiles,
+      [profileId]: { ...profile, layout },
+    },
+  };
+}
+
+export function renameFloorPlanProfile(
+  preferences: FloorPlanProfilePreferences,
+  profileId: string,
+  name: string,
+): FloorPlanProfilePreferences {
+  const profile = preferences.profiles[profileId];
+  const cleanName = cleanValue(name);
+  if (!profile || !cleanName || profile.name === cleanName) return preferences;
+  return {
+    ...preferences,
+    profiles: {
+      ...preferences.profiles,
+      [profileId]: { ...profile, name: cleanName },
+    },
+  };
+}
+
+export function floorPlanObservation(snapshot: DeviceSnapshot): FloorPlanObservation {
+  const onlineDevices = snapshot.devices.filter((device) => device.online);
+  const groupIds = new Set(onlineDevices.map((device) => device.groupId));
+  const locationIds = new Set(snapshot.groups.filter((group) => groupIds.has(group.id)).map((group) => group.locationId));
+  return {
+    deviceSerials: uniqueValues(onlineDevices.map((device) => device.serial)),
+    locationIds: uniqueValues([...locationIds]),
+  };
+}
+
+function migrateLocationFloorPlans(preferences: FloorPlanPreferences): FloorPlanProfilePreferences {
+  const profiles: Record<string, FloorPlanProfile> = {};
+  for (const [locationId, layout] of Object.entries(preferences.locations)) {
+    if (!isMeaningfulLayout(layout)) continue;
+    const id = `profile:${encodeURIComponent(locationId)}`;
+    const locationHint = locationId.startsWith('lifx-location:') ? [locationId] : [];
+    const profile = createFloorPlanProfile(id, legacyProfileName(locationId), layout, {
+      deviceSerials: layout.floors.flatMap((floor) => Object.keys(floor.devices)),
+      locationIds: locationHint,
+    });
+    if (profile) profiles[id] = profile;
+  }
+  const profileIds = Object.keys(profiles);
+  return {
+    version: FLOOR_PLAN_PROFILE_VERSION,
+    ...(profileIds.length === 1 ? { activeProfileId: profileIds[0] } : {}),
+    profiles,
+  };
+}
+
+function isMeaningfulLayout(layout: FloorPlanLocation): boolean {
+  if (layout.floors.length !== 1) return true;
+  const floor = layout.floors[0];
+  return floor.id !== DEFAULT_FLOOR_ID
+    || floor.label !== 'Ground'
+    || floor.rooms.length > 0
+    || Object.keys(floor.devices).length > 0;
+}
+
+function legacyProfileName(locationId: string): string {
+  return locationId.startsWith('lifx-location:') ? 'Floor plan' : cleanValue(locationId) || 'Floor plan';
 }
 
 function candidateForProfile(profile: FloorPlanProfile, serials: Set<string>, locationIds: Set<string>): FloorPlanProfileCandidate {
@@ -147,6 +270,10 @@ function compareCandidates(left: FloorPlanProfileCandidate, right: FloorPlanProf
 
 function sameEvidence(left: FloorPlanProfileCandidate, right: FloorPlanProfileCandidate): boolean {
   return left.serialMatches === right.serialMatches && left.locationMatches === right.locationMatches;
+}
+
+function sameValues(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function uniqueValues(value: unknown): string[] {

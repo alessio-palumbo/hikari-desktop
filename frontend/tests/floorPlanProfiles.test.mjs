@@ -1,12 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createFloorPlanFloor } from '../dist-test/domain/floorPlan.js';
+import { createFloorPlanFloor, emptyFloorPlanPreferences, ensureLocationFloorPlan } from '../dist-test/domain/floorPlan.js';
 import {
   createFloorPlanProfile,
+  createDefaultFloorPlanLocation,
   emptyFloorPlanProfilePreferences,
+  floorPlanObservation,
+  loadFloorPlanProfilePreferences,
   normalizeFloorPlanProfilePreferences,
   observeFloorPlanProfile,
+  parseFloorPlanProfilePreferences,
   resolveFloorPlanProfile,
+  saveFloorPlanProfilePreferences,
+  updateFloorPlanProfileLayout,
 } from '../dist-test/domain/floorPlanProfiles.js';
 
 function layout() {
@@ -119,4 +125,66 @@ test('normalizes persisted profiles defensively', () => {
 
 test('empty profile preferences are versioned', () => {
   assert.deepEqual(emptyFloorPlanProfilePreferences(), { version: 2, profiles: {} });
+});
+
+test('migrates a meaningful location layout into a profile', () => {
+  const legacy = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'lifx-location:home');
+  legacy.locations['lifx-location:home'].floors[0].rooms.push({
+    id: 'living',
+    label: 'Living',
+    type: 'living',
+    points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }],
+  });
+
+  const got = parseFloorPlanProfilePreferences(JSON.stringify(legacy));
+  const [profile] = Object.values(got.profiles);
+
+  assert.equal(profile.name, 'Floor plan');
+  assert.deepEqual(profile.locationHints, ['lifx-location:home']);
+  assert.equal(profile.layout.floors[0].rooms[0].id, 'living');
+});
+
+test('does not migrate empty generated location layouts', () => {
+  const legacy = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'lifx-location:home');
+
+  assert.deepEqual(parseFloorPlanProfilePreferences(JSON.stringify(legacy)), emptyFloorPlanProfilePreferences());
+});
+
+test('loads and saves profiles through a storage boundary', () => {
+  let value = null;
+  const storage = {
+    getItem: () => value,
+    setItem: (_key, next) => { value = next; },
+  };
+  const profile = createFloorPlanProfile('home', 'Home', createDefaultFloorPlanLocation());
+  const input = preferences(profile);
+
+  saveFloorPlanProfilePreferences(storage, input);
+
+  assert.deepEqual(loadFloorPlanProfilePreferences(storage), input);
+});
+
+test('observes only currently online devices and their locations', () => {
+  const got = floorPlanObservation({
+    locations: [{ id: 'home', name: 'Home' }, { id: 'office', name: 'Office' }],
+    groups: [{ id: 'living', locationId: 'home', name: 'Living' }, { id: 'desk', locationId: 'office', name: 'Desk' }],
+    devices: [
+      { serial: 'online', groupId: 'living', online: true },
+      { serial: 'offline', groupId: 'desk', online: false },
+    ],
+  });
+
+  assert.deepEqual(got, { deviceSerials: ['online'], locationIds: ['home'] });
+});
+
+test('updates a profile layout without changing its identity evidence', () => {
+  const profile = createFloorPlanProfile('home', 'Home', layout(), { deviceSerials: ['known'], locationIds: ['home-location'] });
+
+  const got = updateFloorPlanProfileLayout(preferences(profile), 'home', (current) => ({
+    ...current,
+    floors: [...current.floors, createFloorPlanFloor('upstairs', 'Upstairs')],
+  }));
+
+  assert.equal(got.profiles.home.layout.floors.length, 2);
+  assert.deepEqual(got.profiles.home.knownDeviceSerials, ['known']);
 });
