@@ -76,6 +76,28 @@ jobs:
         run: |
           echo "HIKARI_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
+      - name: Import Developer ID certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/hikari-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          printf '%s' "$MACOS_CERTIFICATE_BASE64" | /usr/bin/base64 -D > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
       - name: Build Wails app
         run: wails build -clean -ldflags "-X main.version=${HIKARI_VERSION}"
 
@@ -83,15 +105,13 @@ jobs:
         shell: bash
         run: ./scripts/bundle-command-sidecar.sh
 
-      - name: Re-sign macOS app
+      - name: Sign and notarize macOS app
         if: runner.os == 'macOS'
-        run: codesign --force --deep --sign - build/bin/hikari.app
-
-      - name: Package macOS app
-        if: runner.os == 'macOS'
-        run: |
-          mkdir -p release
-          ditto -c -k --keepParent build/bin/hikari.app release/${{ matrix.archive }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: ./scripts/sign-notarize-macos.sh build/bin/hikari.app release/${{ matrix.archive }}
 
       - name: Package Windows app
         if: runner.os == 'Windows'
@@ -157,6 +177,27 @@ jobs:
         run: |
           echo "HIKARI_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
+      - name: Import Developer ID certificate
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/hikari-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          printf '%s' "$MACOS_CERTIFICATE_BASE64" | /usr/bin/base64 -D > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
       - name: Build Wails app
         run: wails build -clean -ldflags "-X main.version=${HIKARI_VERSION}"
 
@@ -187,13 +228,12 @@ jobs:
           HIKARI_WHISPER_MODEL: ${{ github.workspace }}/build/whisper.cpp/models/ggml-base.en.bin
         run: ./scripts/bundle-voice-runtime.sh
 
-      - name: Re-sign macOS voice app
-        run: codesign --force --deep --sign - build/bin/hikari.app
-
-      - name: Package macOS voice app
-        run: |
-          mkdir -p release
-          ditto -c -k --keepParent build/bin/hikari.app release/hikari-macos-voice.zip
+      - name: Sign and notarize macOS voice app
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: ./scripts/sign-notarize-macos.sh build/bin/hikari.app release/hikari-macos-voice.zip
 
       - name: Upload packaged voice build
         uses: actions/upload-artifact@v4
