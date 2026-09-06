@@ -37,6 +37,13 @@ export interface FloorPlanRoom {
   label: string;
   type?: FloorPlanRoomType;
   points: FloorPlanPoint[];
+  presence?: FloorPlanPresenceConfig;
+}
+
+export interface FloorPlanPresenceConfig {
+  sensorIds: string[];
+  lightingEnabled: boolean;
+  offDelaySeconds: number;
 }
 
 export interface FloorPlanDevicePlacement {
@@ -55,7 +62,7 @@ export interface FloorPlanStorage {
   setItem(key: string, value: string): void;
 }
 
-export type FloorPlanRoomPatch = Partial<Pick<FloorPlanRoom, 'label' | 'type' | 'points'>> & {
+export type FloorPlanRoomPatch = Partial<Pick<FloorPlanRoom, 'label' | 'type' | 'points' | 'presence'>> & {
   devices?: Record<string, FloorPlanDevicePlacement>;
 };
 
@@ -72,6 +79,12 @@ export const FLOOR_PLAN_ROOM_TYPES: FloorPlanRoomType[] = [
   'utility',
   'other',
 ];
+
+export const DEFAULT_PRESENCE_OFF_DELAY_SECONDS = 30;
+
+export function defaultFloorPlanPresenceConfig(): FloorPlanPresenceConfig {
+  return { sensorIds: [], lightingEnabled: false, offDelaySeconds: DEFAULT_PRESENCE_OFF_DELAY_SECONDS };
+}
 
 const roomTypes = new Set<FloorPlanRoomType>(FLOOR_PLAN_ROOM_TYPES);
 
@@ -390,7 +403,8 @@ function updateFloorRoomGeometry(
       const after = pointsCenter(nextPoints);
       delta = { x: after.x - before.x, y: after.y - before.y };
     }
-    return { ...room, label, points: nextPoints, ...(type ? { type } : { type: undefined }) };
+    const presence = patch.presence === undefined ? room.presence : normalizePresenceConfig(patch.presence);
+    return { ...room, label, points: nextPoints, presence, ...(type ? { type } : { type: undefined }) };
   });
 
   if (patch.devices) {
@@ -569,11 +583,28 @@ function normalizeRoom(value: unknown): FloorPlanRoom | undefined {
   const points = value.points.filter(isPointLike).map(normalizePoint);
   if (points.length < 3) return undefined;
   const type = roomTypes.has(value.type as FloorPlanRoomType) ? (value.type as FloorPlanRoomType) : undefined;
+  const presence = normalizePresenceConfig(value.presence);
   return {
     id,
     label: cleanLabel(value.label) || 'Room',
     type,
     points,
+    ...(presence ? { presence } : {}),
+  };
+}
+
+function normalizePresenceConfig(value: unknown): FloorPlanPresenceConfig | undefined {
+  if (!isRecord(value)) return undefined;
+  const sensorIds = Array.isArray(value.sensorIds)
+    ? [...new Set(value.sensorIds.map(cleanId).filter(Boolean))].sort()
+    : [];
+  const delay = typeof value.offDelaySeconds === 'number' && Number.isFinite(value.offDelaySeconds)
+    ? Math.round(value.offDelaySeconds)
+    : DEFAULT_PRESENCE_OFF_DELAY_SECONDS;
+  return {
+    sensorIds,
+    lightingEnabled: Boolean(value.lightingEnabled),
+    offDelaySeconds: Math.max(1, Math.min(3600, delay)),
   };
 }
 

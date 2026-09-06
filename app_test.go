@@ -116,6 +116,28 @@ func TestAppUsesTransport(t *testing.T) {
 	}
 }
 
+func TestAppUsesSensorProvider(t *testing.T) {
+	transport := &recordingTransport{}
+	sensors := &recordingSensorProvider{snapshot: backend.SensorSnapshot{Nodes: []backend.SensorNode{{ID: "sensaa-1", Name: "Bedroom"}}}}
+	app := newAppWithServices(transport, sensors)
+	app.startup(context.Background())
+
+	if !sensors.startCalled {
+		t.Fatal("expected sensor provider Start to be called")
+	}
+	snapshot, err := app.GetSensorSnapshot()
+	if err != nil {
+		t.Fatalf("GetSensorSnapshot returned error: %v", err)
+	}
+	if len(snapshot.Nodes) != 1 || snapshot.Nodes[0].ID != "sensaa-1" {
+		t.Fatalf("GetSensorSnapshot returned %#v", snapshot)
+	}
+	app.shutdown(context.Background())
+	if !sensors.closeCalled {
+		t.Fatal("expected sensor provider Close to be called")
+	}
+}
+
 func TestAppReturnsTransportError(t *testing.T) {
 	device := backend.Device{Serial: "d073d501a2c3", Name: "Test", Kind: backend.DeviceKindSingle}
 	app := NewAppWithTransport(&recordingTransport{err: errors.New("boom")})
@@ -161,6 +183,26 @@ type recordingTransport struct {
 	lastStartEffectReq backend.StartDeviceEffectRequest
 	lastEffectReq      backend.StopDeviceEffectRequest
 	lastNetworkReq     backend.SetNetworkInterfaceRequest
+}
+
+type recordingSensorProvider struct {
+	snapshot    backend.SensorSnapshot
+	startCalled bool
+	closeCalled bool
+}
+
+func (s *recordingSensorProvider) Start(context.Context) error {
+	s.startCalled = true
+	return nil
+}
+
+func (s *recordingSensorProvider) Close(context.Context) error {
+	s.closeCalled = true
+	return nil
+}
+
+func (s *recordingSensorProvider) Snapshot(context.Context) (backend.SensorSnapshot, error) {
+	return s.snapshot, nil
 }
 
 func (t *recordingTransport) Start(ctx context.Context) error {

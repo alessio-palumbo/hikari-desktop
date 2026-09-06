@@ -4,6 +4,7 @@ import type { DeviceEffect } from '../domain/effects';
 
 interface WailsApp {
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
+  GetSensorSnapshot?: () => Promise<SensorSnapshot>;
   NetworkSettings?: () => Promise<NetworkSettings>;
   SetNetworkInterface?: (request: SetNetworkInterfaceRequest) => Promise<NetworkSettings>;
   RestartDeviceDiscovery?: () => Promise<NetworkSettings>;
@@ -15,6 +16,19 @@ interface WailsApp {
   InterpretCommand?: (request: InterpretCommandRequest) => Promise<CommandPreview>;
   TranscribeCommand?: (request: TranscribeCommandRequest) => Promise<SpeechCommandPreview>;
   TranscribeCommandAudio?: (request: TranscribeCommandAudioRequest) => Promise<SpeechCommandPreview>;
+}
+
+export interface SensorNode {
+  id: string;
+  name: string;
+  capabilities: string[];
+  online: boolean;
+  presenceKnown: boolean;
+  present: boolean;
+}
+
+export interface SensorSnapshot {
+  nodes: SensorNode[];
 }
 
 export interface NetworkInterfaceOption {
@@ -154,6 +168,12 @@ export async function getDeviceSnapshot(): Promise<DeviceSnapshot> {
   const app = window.go?.main?.App;
   if (app?.GetDeviceSnapshot) return normalizeSnapshot(await app.GetDeviceSnapshot());
   return mockSnapshot();
+}
+
+export async function getSensorSnapshot(): Promise<SensorSnapshot> {
+  const app = window.go?.main?.App;
+  if (app?.GetSensorSnapshot) return normalizeSensorSnapshot(await app.GetSensorSnapshot());
+  return { nodes: [] };
 }
 
 export async function getNetworkSettings(): Promise<NetworkSettings> {
@@ -326,6 +346,19 @@ function normalizeSnapshot(snapshot: DeviceSnapshot | null | undefined): DeviceS
     locations: Array.isArray(snapshot?.locations) ? snapshot.locations : [],
     groups: Array.isArray(snapshot?.groups) ? snapshot.groups : [],
     devices: Array.isArray(snapshot?.devices) ? snapshot.devices : [],
+  };
+}
+
+function normalizeSensorSnapshot(snapshot: SensorSnapshot | null | undefined): SensorSnapshot {
+  return {
+    nodes: Array.isArray(snapshot?.nodes) ? snapshot.nodes.map((node) => ({
+      id: node.id ?? '',
+      name: node.name || node.id || 'Sensaa sensor',
+      capabilities: Array.isArray(node.capabilities) ? node.capabilities : [],
+      online: Boolean(node.online),
+      presenceKnown: Boolean(node.presenceKnown),
+      present: Boolean(node.present),
+    })).filter((node) => node.id) : [],
   };
 }
 

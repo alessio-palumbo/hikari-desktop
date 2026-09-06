@@ -390,6 +390,27 @@ test('loads and saves preferences through a storage boundary', () => {
   assert.deepEqual(got, prefs);
 });
 
+test('persists and normalizes room presence assignments by stable sensor ID', () => {
+  const initial = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const withRoom = addRoomToFloor(initial, 'home', DEFAULT_FLOOR_ID, createRectangleRoom(
+    'bedroom', 'Bedroom', 'bedroom', { x: 0.1, y: 0.1 }, { x: 0.4, y: 0.4 },
+  ));
+  const configured = updateRoomInFloor(withRoom, 'home', DEFAULT_FLOOR_ID, 'bedroom', {
+    presence: {
+      sensorIds: [' sensaa-b ', 'sensaa-a', 'sensaa-a'],
+      lightingEnabled: true,
+      offDelaySeconds: 30,
+    },
+  });
+
+  const parsed = parseFloorPlanPreferences(JSON.stringify(configured));
+  assert.deepEqual(parsed.locations.home.floors[0].rooms[0].presence, {
+    sensorIds: ['sensaa-a', 'sensaa-b'],
+    lightingEnabled: true,
+    offDelaySeconds: 30,
+  });
+});
+
 test('falls back to empty preferences for missing or incompatible data', () => {
   assert.deepEqual(parseFloorPlanPreferences(null), emptyFloorPlanPreferences());
   assert.deepEqual(parseFloorPlanPreferences('{"version":2,"locations":{}}'), emptyFloorPlanPreferences());

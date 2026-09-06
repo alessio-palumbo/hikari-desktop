@@ -13,6 +13,7 @@ The app is in active development, but it is ready to try with real LAN devices. 
 - Matrix custom grids and orientation-aware preview/apply behavior.
 - Device and firmware effects for supported multizone and matrix lights.
 - Floor-plan view with multiple floors, editable rooms, draggable light placement, room power controls, and local layout persistence.
+- Sensaa presence sensor discovery, room assignment, occupancy state, and delayed room lighting.
 - Periodic refresh with pending-state reconciliation to avoid stale device updates fighting recent UI changes.
 - Optional local text commands through the rule-only `lifx-command-engine` sidecar.
 
@@ -69,6 +70,14 @@ Selecting a room in edit mode exposes its geometry controls. Drag the room body 
 Floor layouts are stored locally as independent floor-plan profiles. Hikari matches a profile using known device serials and LIFX location identifiers, and asks which profile to use when the available evidence is ambiguous. Locations with the same display name are merged in the sidebar without discarding their distinct identifiers, while a floor plan can include devices from every LIFX location found on the same physical LAN.
 
 Removing a room or floor makes its devices unassigned; temporary LAN loss does not remove their saved placement. Devices that become unavailable during a session remain visible in the layout as dimmed, inactive markers and recover their normal controls when discovery finds them again.
+
+## Sensaa Presence
+
+Hikari discovers presence-capable [Sensaa](https://github.com/alessio-palumbo/sensaa) nodes over mDNS. Open a room inspector in the floor view to assign one or more sensors, view their online and occupancy state, enable presence lighting, and choose the off delay. A sensor can be assigned to one room, while a room with multiple sensors uses simple OR semantics.
+
+Presence lighting turns the room's currently assigned lights on when any assigned sensor reports presence. When every assigned online sensor reports no presence, Hikari waits for the configured delay before turning the room off. Re-entry cancels the pending-off transition, and a disconnected sensor is treated as unknown rather than as evidence that the room is empty.
+
+Assignments use the stable Sensaa node ID and are stored with the local floor-plan profile. IP addresses and observations are not persisted. Restarting Hikari or power-cycling a node retains the assignment and reconnects it after discovery finds the same node ID.
 
 ## Local Text Commands
 
@@ -204,14 +213,15 @@ Release builds are intended to be produced natively on each platform through Git
 ## Architecture
 
 - `main.go` and `app.go`: Wails entry point and app binding.
-- `internal/backend`: device transport interface, LIFX transport, optional command-engine sidecar service, mock transport, DTOs, and backend tests.
-- `frontend/src/domain`: typed frontend device models, draft editor state, floor-plan preferences, and refresh reconciliation.
+- `internal/backend`: device transport interface, LIFX transport, Sensaa discovery service, optional command-engine sidecar service, mock transport, DTOs, and backend tests.
+- `frontend/src/domain`: typed frontend models, draft editor state, floor-plan preferences, occupancy state, and refresh reconciliation.
 - `frontend/src/components`: React UI components for the shell, device list, floor plan, previews, and inspector.
 - `frontend/src/styles`: global styles and design tokens.
 
 The frontend calls:
 
 - `GetDeviceSnapshot()`
+- `GetSensorSnapshot()`
 - `SetDeviceState(req)`
 - `CommandEngineSettings()`
 - `SetCommandEngineSettings(req)`

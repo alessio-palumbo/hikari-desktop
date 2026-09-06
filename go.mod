@@ -4,14 +4,21 @@ go 1.26
 
 require (
 	github.com/alessio-palumbo/lifxprotocol-go v0.4.0
+	github.com/alessio-palumbo/sensaa v0.0.0-20260905224818-166462a96af0
 	github.com/wailsapp/wails/v2 v2.12.0
 )
 
 require github.com/alessio-palumbo/lifx-command-engine v0.2.3
 
 require (
+	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
+	github.com/grandcat/zeroconf v1.0.0 // indirect
+	github.com/miekg/dns v1.1.27 // indirect
+)
+
+require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
-	github.com/alessio-palumbo/lifxlan-go v0.7.1
+	github.com/alessio-palumbo/lifxlan-go v0.8.1
 	github.com/alessio-palumbo/lifxregistry-go v0.4.0 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
@@ -36,8 +43,8 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
-	golang.org/x/crypto v0.33.0 // indirect
-	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )

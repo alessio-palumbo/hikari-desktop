@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getCommandEngineSettings, getDeviceSnapshot, getNetworkSettings, interpretCommand, restartDeviceDiscovery, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings } from './backend/api';
+import { getCommandEngineSettings, getDeviceSnapshot, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorNode, type SensorSnapshot } from './backend/api';
 import type { CenterView } from './components/CenterViewToggle';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
@@ -13,10 +13,11 @@ import { RoomInspector } from './components/RoomInspector';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
-import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
+import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanPresenceConfig, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
 import { createDefaultFloorPlanLocation, createFloorPlanProfile, devicesForFloorPlanProfile, floorPlanObservation, floorPlanProfileMatchesObservation, loadFloorPlanProfilePreferences, observeFloorPlanProfile, renameFloorPlanProfile, resolveFloorPlanProfile, saveFloorPlanProfilePreferences, selectedFloorPlanProfileId, updateFloorPlanProfileLayout, type FloorPlanProfilePreferences } from './domain/floorPlanProfiles.js';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { collectLocations, devicesInLocationCollection, groupsInLocationCollection, locationCollectionByKey, locationCollectionForID } from './domain/locationCollections.js';
+import { initialRoomOccupancyState, reconcileRoomOccupancy, type RoomOccupancyState } from './domain/occupancy';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
@@ -28,11 +29,12 @@ const LOCATION_KEY = 'hikari:selectedLocation';
 const GROUP_KEY = 'hikari:selectedGroup';
 const COMMAND_AUTO_EXECUTE_KEY = 'hikari:commandAutoExecute';
 const CENTER_VIEW_KEY = 'hikari:centerView';
+const SENSOR_REFRESH_INTERVAL_MS = 1000;
 
 type DeviceStatus = Record<string, { loading?: boolean; error?: string }>;
 type DeviceEffectStates = Record<string, DeviceEffectStatus & { loading?: boolean }>;
 type PendingDeviceStates = Record<string, PendingDeviceState>;
-type FloorPlanRoomPatch = Partial<Pick<FloorPlanRoom, 'label' | 'type' | 'points'>>;
+type FloorPlanRoomPatch = Partial<Pick<FloorPlanRoom, 'label' | 'type' | 'points' | 'presence'>>;
 
 export function App() {
   const [snapshot, setSnapshot] = useState<DeviceSnapshot>({ locations: [], groups: [], devices: [] });
@@ -67,11 +69,16 @@ export function App() {
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({});
   const [deviceEffectStatus, setDeviceEffectStatus] = useState<DeviceEffectStates>({});
   const [pendingState, setPendingState] = useState<PendingDeviceStates>({});
+  const [sensorSnapshot, setSensorSnapshot] = useState<SensorSnapshot>({ nodes: [] });
+  const [roomOccupancy, setRoomOccupancy] = useState<Record<string, RoomOccupancyState>>({});
+  const [occupancyNow, setOccupancyNow] = useState(() => Date.now());
   const snapshotRef = useRef<DeviceSnapshot>(snapshot);
   const draftRef = useRef<DeviceDraft | undefined>(undefined);
   const pendingStateRef = useRef<PendingDeviceStates>({});
   const deviceCommandRef = useRef<Record<string, Promise<void>>>({});
   const networkRecoveryRef = useRef(false);
+  const roomOccupancyRef = useRef<Record<string, RoomOccupancyState>>({});
+  const updateListDeviceRef = useRef<(device: Device) => Promise<void>>(async () => undefined);
   const locationCollections = useMemo(() => collectLocations(snapshot.locations), [snapshot.locations]);
   const selectedLocationCollection = locationCollectionForID(locationCollections, locationId);
   const currentFloorPlanObservation = useMemo(() => floorPlanObservation(snapshot), [snapshot]);
@@ -120,6 +127,24 @@ export function App() {
       });
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshSensors = () => void getSensorSnapshot()
+      .then((next) => {
+        if (!cancelled) {
+          setSensorSnapshot(next);
+          setOccupancyNow(Date.now());
+        }
+      })
+      .catch(() => undefined);
+    refreshSensors();
+    const timer = window.setInterval(refreshSensors, SENSOR_REFRESH_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -393,6 +418,10 @@ export function App() {
     );
   };
 
+  const setRoomPresence = (floorId: string, roomId: string, presence: FloorPlanPresenceConfig) => {
+    updateFloorRoom(floorId, roomId, { presence });
+  };
+
   const visibleDevices = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q) {
@@ -528,6 +557,48 @@ export function App() {
       }
     }
   };
+
+  updateListDeviceRef.current = updateListDevice;
+
+  useEffect(() => {
+    if (!floorPlanProfileId || !floorPlanProfile) {
+      roomOccupancyRef.current = {};
+      setRoomOccupancy({});
+      return;
+    }
+
+    const previous = roomOccupancyRef.current;
+    const next: Record<string, RoomOccupancyState> = {};
+    const commands: Array<{ floorId: string; roomId: string; on: boolean }> = [];
+    for (const floor of floorPlanProfile.layout.floors) {
+      for (const room of floor.rooms) {
+        const key = roomOccupancyKey(floorPlanProfileId, floor.id, room.id);
+        const transition = reconcileRoomOccupancy(previous[key] ?? initialRoomOccupancyState(), room.presence, sensorSnapshot.nodes, occupancyNow);
+        next[key] = transition.state;
+        if (transition.command) {
+          commands.push({ floorId: floor.id, roomId: room.id, on: transition.command === 'on' });
+        }
+      }
+    }
+    roomOccupancyRef.current = next;
+    setRoomOccupancy(next);
+
+    for (const command of commands) {
+      const floor = floorPlanProfile.layout.floors.find((entry) => entry.id === command.floorId);
+      if (!floor) continue;
+      const devices = devicesForFloorPlanProfile(floorPlanProfile, snapshotRef.current.devices)
+        .filter(isLightDevice)
+        .filter((device) => floor.devices[device.serial]?.roomId === command.roomId);
+      void Promise.all(devices.map((device) => updateListDeviceRef.current({ ...device, on: command.on })));
+    }
+  }, [floorPlanProfile, floorPlanProfileId, occupancyNow, sensorSnapshot.nodes]);
+
+  useEffect(() => {
+    const hasPending = Object.values(roomOccupancy).some((state) => state.phase === 'pending-off');
+    if (!hasPending) return undefined;
+    const timer = window.setInterval(() => setOccupancyNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [roomOccupancy]);
 
   const updateInspectorDevice = async (next: Device) => {
     if (!isLightDevice(next) || next.kind === DeviceKind.Single || !draft) {
@@ -907,8 +978,15 @@ export function App() {
         <RoomInspector
           roomName={inspectorRoom.label}
           devices={inspectorRoomDevices}
+          sensors={sensorsAvailableToRoom(floorPlanProfile, selectedRoomInspector, sensorSnapshot.nodes)}
+          presence={inspectorRoom.presence}
+          occupancy={roomOccupancy[roomOccupancyKey(floorPlanProfileId ?? '', selectedRoomInspector?.floorId ?? '', inspectorRoom.id)] ?? initialRoomOccupancyState()}
           onClose={() => setSelectedRoomInspector(undefined)}
           onDeviceChange={updateListDevice}
+          onPresenceChange={(presence) => {
+            if (!selectedRoomInspector) return;
+            setRoomPresence(selectedRoomInspector.floorId, selectedRoomInspector.roomId, presence);
+          }}
         />
       ) : null}
     </div>
@@ -974,6 +1052,32 @@ function loadPreference(key: string): string {
 function newFloorPlanProfileId(): string {
   const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   return `floor-plan:${id}`;
+}
+
+function roomOccupancyKey(profileId: string, floorId: string, roomId: string): string {
+  return `${profileId}\u0000${floorId}\u0000${roomId}`;
+}
+
+function sensorsAvailableToRoom(
+  profile: FloorPlanProfilePreferences['profiles'][string] | undefined,
+  selectedRoom: { floorId: string; roomId: string } | undefined,
+  sensors: SensorNode[],
+): SensorNode[] {
+  if (!profile || !selectedRoom) return sensors;
+  const assignedElsewhere = new Set<string>();
+  const assignedHere = new Set(
+    profile.layout.floors
+      .find((floor) => floor.id === selectedRoom.floorId)
+      ?.rooms.find((room) => room.id === selectedRoom.roomId)
+      ?.presence?.sensorIds ?? [],
+  );
+  for (const floor of profile.layout.floors) {
+    for (const room of floor.rooms) {
+      if (floor.id === selectedRoom.floorId && room.id === selectedRoom.roomId) continue;
+      for (const sensorId of room.presence?.sensorIds ?? []) assignedElsewhere.add(sensorId);
+    }
+  }
+  return sensors.filter((sensor) => assignedHere.has(sensor.id) || !assignedElsewhere.has(sensor.id));
 }
 
 function floorPlanProfileName(locationHints: string[], collections: ReturnType<typeof collectLocations>): string | undefined {

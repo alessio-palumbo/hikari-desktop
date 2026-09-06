@@ -12,23 +12,37 @@ import (
 type App struct {
 	ctx           context.Context
 	transport     backend.DeviceTransport
+	sensors       sensorProvider
 	commandEngine *backend.CommandEngineService
 }
 
+type sensorProvider interface {
+	Start(context.Context) error
+	Close(context.Context) error
+	Snapshot(context.Context) (backend.SensorSnapshot, error)
+}
+
 func NewApp() *App {
+	var transport backend.DeviceTransport
 	if strings.EqualFold(os.Getenv("HIKARI_TRANSPORT"), "mock") {
 		log.Print("hikari: using mock device transport")
-		return NewAppWithTransport(backend.NewMockTransport())
+		transport = backend.NewMockTransport()
+	} else {
+		log.Print("hikari: using lifx LAN device transport")
+		transport = backend.NewLifxTransport()
 	}
-	log.Print("hikari: using lifx LAN device transport")
-	return NewAppWithTransport(backend.NewLifxTransport())
+	return newAppWithServices(transport, backend.NewSensorService())
 }
 
 func NewAppWithTransport(transport backend.DeviceTransport) *App {
+	return newAppWithServices(transport, nil)
+}
+
+func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvider) *App {
 	if transport == nil {
 		transport = backend.NewMockTransport()
 	}
-	return &App{transport: transport, commandEngine: backend.NewCommandEngineService()}
+	return &App{transport: transport, sensors: sensors, commandEngine: backend.NewCommandEngineService()}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -36,11 +50,21 @@ func (a *App) startup(ctx context.Context) {
 	if err := a.transport.Start(ctx); err != nil {
 		log.Printf("hikari: transport startup failed: %v", err)
 	}
+	if a.sensors != nil {
+		if err := a.sensors.Start(ctx); err != nil {
+			log.Printf("hikari: sensor discovery startup failed: %v", err)
+		}
+	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
 	if err := a.transport.Close(ctx); err != nil {
 		log.Printf("hikari: transport shutdown failed: %v", err)
+	}
+	if a.sensors != nil {
+		if err := a.sensors.Close(ctx); err != nil {
+			log.Printf("hikari: sensor discovery shutdown failed: %v", err)
+		}
 	}
 	if a.commandEngine != nil {
 		if err := a.commandEngine.Close(ctx); err != nil {
@@ -58,6 +82,13 @@ func (a *App) context() context.Context {
 
 func (a *App) GetDeviceSnapshot() (backend.DeviceSnapshot, error) {
 	return a.transport.Snapshot(a.context())
+}
+
+func (a *App) GetSensorSnapshot() (backend.SensorSnapshot, error) {
+	if a.sensors == nil {
+		return backend.SensorSnapshot{Nodes: []backend.SensorNode{}}, nil
+	}
+	return a.sensors.Snapshot(a.context())
 }
 
 func (a *App) NetworkSettings() (backend.NetworkSettings, error) {
