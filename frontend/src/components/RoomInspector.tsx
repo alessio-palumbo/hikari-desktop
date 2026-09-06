@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Info, Radar, Trash2, X } from 'lucide-react';
+import { ChevronDown, Info, Minus, Plus, Radar, Settings, Trash2, X } from 'lucide-react';
 import type { SensorNode } from '../backend/api';
 import { defaultFloorPlanPresenceConfig, type FloorPlanPresenceConfig } from '../domain/floorPlan';
 import type { Device, HslColor } from '../domain/lifx';
-import type { RoomOccupancyState } from '../domain/occupancy';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl } from '../domain/paint';
 import { ColorWheel, Slider } from './primitives';
 import { ModeToggle, WhiteScale } from './Inspector';
@@ -16,13 +15,12 @@ interface RoomInspectorProps {
   devices: Device[];
   sensors: SensorNode[];
   presence?: FloorPlanPresenceConfig;
-  occupancy: RoomOccupancyState;
   onClose: () => void;
   onDeviceChange: (device: Device) => void;
   onPresenceChange: (presence: FloorPlanPresenceConfig) => void;
 }
 
-export function RoomInspector({ roomName, devices, sensors, presence, occupancy, onClose, onDeviceChange, onPresenceChange }: RoomInspectorProps) {
+export function RoomInspector({ roomName, devices, sensors, presence, onClose, onDeviceChange, onPresenceChange }: RoomInspectorProps) {
   const onlineDevices = devices.filter((device) => device.online);
   const colorDevices = onlineDevices.filter((device) => device.capability?.hasColor ?? true);
   const hasColor = colorDevices.length > 0;
@@ -33,6 +31,11 @@ export function RoomInspector({ roomName, devices, sensors, presence, occupancy,
   const [whiteKelvin, setWhiteKelvin] = useState(() => clampKelvin(firstDevice?.kelvin ?? 3500, kelvinRange.min, kelvinRange.max));
   const [showInfo, setShowInfo] = useState(false);
   const presenceConfig = presence ?? defaultFloorPlanPresenceConfig();
+  const showSensors = sensors.length > 0 || presenceConfig.sensorIds.length > 0;
+  const hasPresenceSensor = presenceConfig.sensorIds.some((sensorId) => {
+    const sensor = sensors.find((candidate) => candidate.id === sensorId);
+    return !sensor || sensor.capabilities.includes('presence');
+  });
   const avgBrightness = onlineDevices.length ? onlineDevices.reduce((sum, device) => sum + device.brightness, 0) / onlineDevices.length : 0;
   const allOff = onlineDevices.length > 0 && onlineDevices.every((device) => !device.on);
   const whiteValue = Math.max(0, Math.min(1, (whiteKelvin - kelvinRange.min) / Math.max(1, kelvinRange.max - kelvinRange.min)));
@@ -85,12 +88,9 @@ export function RoomInspector({ roomName, devices, sensors, presence, occupancy,
 
       {showInfo ? <RoomDeviceInfo devices={devices} /> : null}
 
-      <PresenceControls
-        sensors={sensors}
-        config={presenceConfig}
-        occupancy={occupancy}
-        onChange={onPresenceChange}
-      />
+      {showSensors ? (
+        <SensorsSection sensors={sensors} config={presenceConfig} hasPresenceSensor={hasPresenceSensor} onChange={onPresenceChange} />
+      ) : null}
 
       <ModeToggle value={mode} hasColor={hasColor} onChange={(value) => {
         if (value !== 'effects') setMode(value);
@@ -111,91 +111,185 @@ export function RoomInspector({ roomName, devices, sensors, presence, occupancy,
   );
 }
 
-function PresenceControls(props: {
+function SensorsSection(props: {
   sensors: SensorNode[];
   config: FloorPlanPresenceConfig;
-  occupancy: RoomOccupancyState;
+  hasPresenceSensor: boolean;
   onChange: (config: FloorPlanPresenceConfig) => void;
 }) {
-  const { sensors, config, occupancy, onChange } = props;
+  const { sensors, config, hasPresenceSensor, onChange } = props;
+  const [showPresenceSettings, setShowPresenceSettings] = useState(false);
+  const [infoSensorId, setInfoSensorId] = useState<string>();
   const byId = new Map(sensors.map((sensor) => [sensor.id, sensor]));
   const available = sensors.filter((sensor) => !config.sensorIds.includes(sensor.id));
-  const occupancyLabel = occupancy.phase === 'pending-off'
-    ? 'pending off'
-    : occupancy.phase === 'unoccupied'
-      ? 'clear'
-      : occupancy.phase;
+
+  useEffect(() => {
+    if (!hasPresenceSensor) setShowPresenceSettings(false);
+  }, [hasPresenceSensor]);
 
   return (
-    <section className="presence-controls">
+    <section className="sensor-controls">
       <header>
-        <span><Radar size={13} aria-hidden="true" /> presence</span>
-        <span className="presence-state" data-state={occupancy.phase}>{occupancyLabel}</span>
+        <span><Radar size={13} aria-hidden="true" /> sensors</span>
+        {hasPresenceSensor ? (
+          <button
+            className="sensor-settings-button"
+            type="button"
+            aria-label="Sensor settings"
+            aria-expanded={showPresenceSettings}
+            data-active={showPresenceSettings ? 'true' : 'false'}
+            onClick={() => setShowPresenceSettings((value) => !value)}
+          >
+            <Settings size={12} aria-hidden="true" />
+          </button>
+        ) : null}
       </header>
 
-      <div className="presence-sensors">
+      {showPresenceSettings ? <PresenceLightingControls config={config} onChange={onChange} /> : null}
+
+      <div className="sensor-list">
         {config.sensorIds.map((sensorId) => {
           const sensor = byId.get(sensorId);
           return (
-            <div className="presence-sensor-row" key={sensorId}>
-              <span>
-                <strong>{sensor?.name ?? sensorId}</strong>
-                <small>{sensor?.online ? (sensor.presenceKnown && sensor.present ? 'occupied' : 'online') : 'offline'}</small>
-              </span>
-              <i data-online={sensor?.online ? 'true' : 'false'} aria-label={sensor?.online ? 'Online' : 'Offline'} />
-              <button
-                type="button"
-                aria-label={`Remove ${sensor?.name ?? sensorId}`}
-                onClick={() => onChange({ ...config, sensorIds: config.sensorIds.filter((id) => id !== sensorId) })}
-              >
-                <Trash2 size={12} aria-hidden="true" />
-              </button>
+            <div className="sensor-item" key={sensorId}>
+              <div className="sensor-item-header">
+                <span
+                  className="sensor-status-dot"
+                  data-online={sensor?.online ? 'true' : 'false'}
+                  role="img"
+                  aria-label={sensor?.online ? 'Online' : 'Offline'}
+                />
+                <span className="sensor-identity">
+                  <strong>{sensor?.name ?? sensorId}</strong>
+                </span>
+                <button
+                  className="sensor-info-button"
+                  type="button"
+                  aria-label={`Information about ${sensor?.name ?? sensorId}`}
+                  aria-expanded={infoSensorId === sensorId}
+                  data-active={infoSensorId === sensorId ? 'true' : 'false'}
+                  onClick={() => setInfoSensorId((current) => current === sensorId ? undefined : sensorId)}
+                >
+                  <Info size={11} aria-hidden="true" />
+                </button>
+                <button
+                  className="sensor-remove-button"
+                  type="button"
+                  aria-label={`Remove ${sensor?.name ?? sensorId}`}
+                  onClick={() => onChange({ ...config, sensorIds: config.sensorIds.filter((id) => id !== sensorId) })}
+                >
+                  <Trash2 size={12} aria-hidden="true" />
+                </button>
+              </div>
+              {infoSensorId === sensorId ? <SensorInfo sensorId={sensorId} /> : null}
+              {sensor ? <SensorReadings sensor={sensor} /> : null}
             </div>
           );
         })}
       </div>
 
       {available.length ? (
-        <label className="presence-select">
+        <label className="sensor-select-row">
           <span>assign sensor</span>
-          <select
-            aria-label="Assign presence sensor"
-            value=""
-            onChange={(event) => {
-              if (!event.target.value) return;
-              onChange({ ...config, sensorIds: [...config.sensorIds, event.target.value].sort() });
-            }}
-          >
-            <option value="">select...</option>
-            {available.map((sensor) => <option key={sensor.id} value={sensor.id}>{sensor.name}</option>)}
-          </select>
+          <span className="sensor-select">
+            <select
+              aria-label="Assign sensor"
+              value=""
+              onChange={(event) => {
+                if (!event.target.value) return;
+                onChange({ ...config, sensorIds: [...config.sensorIds, event.target.value].sort() });
+              }}
+            >
+              <option value="">select...</option>
+              {available.map((sensor) => <option key={sensor.id} value={sensor.id}>{sensor.name}</option>)}
+            </select>
+            <ChevronDown size={12} aria-hidden="true" />
+          </span>
         </label>
-      ) : !config.sensorIds.length ? <p className="presence-empty">no presence sensors discovered</p> : null}
+      ) : null}
+    </section>
+  );
+}
 
+function SensorReadings({ sensor }: { sensor: SensorNode }) {
+  const readings: Array<{ label: string; value: string; state?: 'occupied' | 'clear' | 'unknown' }> = [];
+  if (sensor.capabilities.includes('presence')) {
+    const state = !sensor.online || !sensor.presenceKnown ? 'unknown' : sensor.present ? 'occupied' : 'clear';
+    readings.push({
+      label: 'presence',
+      value: state,
+      state,
+    });
+  }
+  if (!readings.length) return null;
+
+  return (
+    <dl className="sensor-readings">
+      {readings.map((reading) => (
+        <div key={reading.label}>
+          <dt>{reading.label}</dt>
+          <dd data-state={reading.state}>{reading.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function SensorInfo({ sensorId }: { sensorId: string }) {
+  return (
+    <dl className="sensor-info">
+      <div>
+        <dt>sensor ID</dt>
+        <dd>{sensorId}</dd>
+      </div>
+      <div>
+        <dt>protocol</dt>
+        <dd>Sensaa</dd>
+      </div>
+    </dl>
+  );
+}
+
+function PresenceLightingControls(props: {
+  config: FloorPlanPresenceConfig;
+  onChange: (config: FloorPlanPresenceConfig) => void;
+}) {
+  const { config, onChange } = props;
+
+  return (
+    <div className="presence-lighting-controls">
       <label className="presence-toggle">
         <span>presence lighting</span>
         <input
           type="checkbox"
           checked={config.lightingEnabled}
-          disabled={!config.sensorIds.length}
           onChange={(event) => onChange({ ...config, lightingEnabled: event.target.checked })}
         />
+        <i aria-hidden="true" />
       </label>
-      <label className="presence-delay">
+      <div className="presence-delay">
         <span>off delay</span>
-        <span>
-          <input
-            type="number"
-            min={1}
-            max={3600}
-            value={config.offDelaySeconds}
-            disabled={!config.sensorIds.length}
-            onChange={(event) => onChange({ ...config, offDelaySeconds: Math.max(1, Math.min(3600, Number(event.target.value) || 1)) })}
-          />
+        <span className="presence-delay-value">
+          <span className="presence-delay-control">
+            <button type="button" aria-label="Decrease off delay" onClick={() => onChange({ ...config, offDelaySeconds: clampOffDelay(config.offDelaySeconds - 5) })}>
+              <Minus size={11} aria-hidden="true" />
+            </button>
+            <input
+              aria-label="Presence lighting off delay in seconds"
+              type="number"
+              min={1}
+              max={3600}
+              value={config.offDelaySeconds}
+              onChange={(event) => onChange({ ...config, offDelaySeconds: clampOffDelay(Number(event.target.value) || 1) })}
+            />
+            <button type="button" aria-label="Increase off delay" onClick={() => onChange({ ...config, offDelaySeconds: clampOffDelay(config.offDelaySeconds + 5) })}>
+              <Plus size={11} aria-hidden="true" />
+            </button>
+          </span>
           sec
         </span>
-      </label>
-    </section>
+      </div>
+    </div>
   );
 }
 
@@ -222,4 +316,8 @@ function roomKelvinRange(devices: Device[]): { min: number; max: number } {
 
 function clampKelvin(kelvin: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, kelvin));
+}
+
+function clampOffDelay(seconds: number): number {
+  return Math.max(1, Math.min(3600, Math.round(seconds)));
 }

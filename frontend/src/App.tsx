@@ -980,7 +980,6 @@ export function App() {
           devices={inspectorRoomDevices}
           sensors={sensorsAvailableToRoom(floorPlanProfile, selectedRoomInspector, sensorSnapshot.nodes)}
           presence={inspectorRoom.presence}
-          occupancy={roomOccupancy[roomOccupancyKey(floorPlanProfileId ?? '', selectedRoomInspector?.floorId ?? '', inspectorRoom.id)] ?? initialRoomOccupancyState()}
           onClose={() => setSelectedRoomInspector(undefined)}
           onDeviceChange={updateListDevice}
           onPresenceChange={(presence) => {

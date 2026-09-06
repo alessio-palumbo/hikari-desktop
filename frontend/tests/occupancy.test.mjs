@@ -41,12 +41,12 @@ test('presence during pending off cancels the delay without another on command',
   assert.equal(returned.command, undefined);
 });
 
-test('offline sensor is uncertainty and never expires pending off', () => {
+test('offline sensor becomes unknown and never expires pending off', () => {
   const occupied = reconcileRoomOccupancy(initialRoomOccupancyState(), config, [node(true)], 0).state;
   const pending = reconcileRoomOccupancy(occupied, config, [node(false)], 1000).state;
   const offline = reconcileRoomOccupancy(pending, config, [node(false, false, false)], 60000);
 
-  assert.equal(offline.state.phase, 'occupied');
+  assert.equal(offline.state.phase, 'unknown');
   assert.equal(offline.command, undefined);
 });
 
@@ -57,8 +57,18 @@ test('multiple sensors use OR semantics and require all sensors for confident ab
   assert.equal(occupied.command, 'on');
 
   const uncertain = reconcileRoomOccupancy(occupied.state, multi, [node(false), node(false, false, false, 'sensor-2')], 1000);
-  assert.equal(uncertain.state.phase, 'occupied');
+  assert.equal(uncertain.state.phase, 'unknown');
 
   const pending = reconcileRoomOccupancy(uncertain.state, multi, [node(false), node(false, true, true, 'sensor-2')], 2000);
+  assert.equal(pending.state.phase, 'pending-off');
+});
+
+test('non-presence sensors do not participate in occupancy state', () => {
+  const mixed = { ...config, sensorIds: ['sensor-1', 'environment-1'] };
+  const environment = {
+    id: 'environment-1', name: 'Environment', capabilities: ['temperature'], online: true, presenceKnown: false, present: false,
+  };
+
+  const pending = reconcileRoomOccupancy(initialRoomOccupancyState(), mixed, [node(false), environment], 1000);
   assert.equal(pending.state.phase, 'pending-off');
 });

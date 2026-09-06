@@ -71,9 +71,9 @@ Floor layouts are stored locally as independent floor-plan profiles. Hikari matc
 
 Removing a room or floor makes its devices unassigned; temporary LAN loss does not remove their saved placement. Devices that become unavailable during a session remain visible in the layout as dimmed, inactive markers and recover their normal controls when discovery finds them again.
 
-## Sensaa Presence
+## Sensaa Sensors
 
-Hikari discovers presence-capable [Sensaa](https://github.com/alessio-palumbo/sensaa) nodes over mDNS. Open a room inspector in the floor view to assign one or more sensors, view their online and occupancy state, enable presence lighting, and choose the off delay. A sensor can be assigned to one room, while a room with multiple sensors uses simple OR semantics.
+Hikari discovers [Sensaa](https://github.com/alessio-palumbo/sensaa) nodes over mDNS and presents their available capability readings in the room inspector. Assign one or more presence-capable sensors there to view their online and occupancy state, enable presence lighting, and choose the off delay. A sensor can be assigned to one room, while a room with multiple presence sensors uses simple OR semantics.
 
 Presence lighting turns the room's currently assigned lights on when any assigned sensor reports presence. When every assigned online sensor reports no presence, Hikari waits for the configured delay before turning the room off. Re-entry cancels the pending-off transition, and a disconnected sensor is treated as unknown rather than as evidence that the room is empty.
 

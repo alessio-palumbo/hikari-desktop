@@ -29,13 +29,20 @@ export function reconcileRoomOccupancy(
   now: number,
 ): RoomOccupancyTransition {
   const sensorIds = config?.sensorIds ?? [];
-  const lightingEnabled = Boolean(config?.lightingEnabled && sensorIds.length);
   if (!sensorIds.length) {
     return { state: { phase: 'unknown', lightingEnabled: false } };
   }
 
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const assigned = sensorIds.map((id) => byId.get(id));
+  // Undiscovered assignments remain unknown; discovered non-presence sensors
+  // do not participate in room occupancy semantics.
+  const assigned = sensorIds
+    .map((id) => byId.get(id))
+    .filter((node) => !node || node.capabilities.includes('presence'));
+  const lightingEnabled = Boolean(config?.lightingEnabled && assigned.length);
+  if (!assigned.length) {
+    return { state: { phase: 'unknown', lightingEnabled: false } };
+  }
   const anyPresent = assigned.some((node) => node?.online && node.presenceKnown && node.present);
   const allKnownAbsent = assigned.every((node) => node?.online && node.presenceKnown && !node.present);
 
@@ -49,8 +56,7 @@ export function reconcileRoomOccupancy(
   }
 
   if (!allKnownAbsent) {
-    const phase = previous.phase === 'occupied' || previous.phase === 'pending-off' ? 'occupied' : 'unknown';
-    return { state: { phase, lightingEnabled } };
+    return { state: { phase: 'unknown', lightingEnabled } };
   }
 
   if (!lightingEnabled) {

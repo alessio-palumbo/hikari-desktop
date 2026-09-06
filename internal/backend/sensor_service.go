@@ -212,9 +212,6 @@ func discoverSensaaNodes(ctx context.Context) ([]sensorEndpoint, error) {
 	}
 	endpoints := make([]sensorEndpoint, 0, len(nodes))
 	for _, node := range nodes {
-		if !node.HasCapability(sensaa.CapabilityPresence) {
-			continue
-		}
 		node := node
 		capabilities := node.Capabilities()
 		labels := make([]string, len(capabilities))
