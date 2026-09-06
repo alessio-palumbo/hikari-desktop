@@ -25,6 +25,13 @@ export interface SensorNode {
   online: boolean;
   presenceKnown: boolean;
   present: boolean;
+  targetCount?: SensorTargetCount;
+}
+
+export interface SensorTargetCount {
+  known: boolean;
+  value: number;
+  max?: number;
 }
 
 export interface SensorSnapshot {
@@ -358,6 +365,13 @@ function normalizeSensorSnapshot(snapshot: SensorSnapshot | null | undefined): S
       online: Boolean(node.online),
       presenceKnown: Boolean(node.presenceKnown),
       present: Boolean(node.present),
+      ...(node.targetCount ? {
+        targetCount: {
+          known: Boolean(node.targetCount.known),
+          value: Number.isFinite(node.targetCount.value) ? Math.max(0, Math.round(node.targetCount.value)) : 0,
+          ...(typeof node.targetCount.max === 'number' && node.targetCount.max > 0 ? { max: Math.round(node.targetCount.max) } : {}),
+        },
+      } : {}),
     })).filter((node) => node.id) : [],
   };
 }

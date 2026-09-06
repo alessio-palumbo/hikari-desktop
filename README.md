@@ -52,6 +52,10 @@ Run the command from the folder containing `hikari.app`, or replace `hikari.app`
 
 ![hikari floor plan with shaped rooms and active lights](docs/floor-plan.png)
 
+### Presence Lighting
+
+![hikari room with Sensaa occupancy and presence lighting controls](docs/presence-lighting.png)
+
 ## Shortcuts
 
 - `Cmd+F` on macOS or `Ctrl+F` on Windows/Linux: focus and select the search field.
@@ -73,9 +77,9 @@ Removing a room or floor makes its devices unassigned; temporary LAN loss does n
 
 ## Sensaa Sensors
 
-Hikari discovers [Sensaa](https://github.com/alessio-palumbo/sensaa) nodes over mDNS and presents their available capability readings in the room inspector. Assign one or more presence-capable sensors there to view their online and occupancy state, enable presence lighting, and choose the off delay. A sensor can be assigned to one room, while a room with multiple presence sensors uses simple OR semantics.
+Hikari discovers [Sensaa](https://github.com/alessio-palumbo/sensaa) nodes over mDNS and presents their available capability readings in the room inspector. Assign one or more presence-capable sensors there to view their online state, occupancy, and detected target count when supported. A sensor can be assigned to one room, while a room with multiple presence sensors uses simple OR semantics.
 
-Presence lighting turns the room's currently assigned lights on when any assigned sensor reports presence. When every assigned online sensor reports no presence, Hikari waits for the configured delay before turning the room off. Re-entry cancels the pending-off transition, and a disconnected sensor is treated as unknown rather than as evidence that the room is empty.
+Presence lighting turns the room's currently assigned lights on when any assigned sensor reports presence. When every assigned online sensor reports no presence, Hikari waits for the configured delay before either turning the room off or dimming its currently-on lights. Returning presence conditionally restores brightness that Hikari still owns; subsequent manual changes take precedence. Re-entry during the delay cancels the pending action, and a disconnected sensor is treated as unknown rather than as evidence that the room is empty.
 
 Assignments use the stable Sensaa node ID and are stored with the local floor-plan profile. IP addresses and observations are not persisted. Restarting Hikari or power-cycling a node retains the assignment and reconnects it after discovery finds the same node ID.
 

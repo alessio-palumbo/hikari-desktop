@@ -1,13 +1,14 @@
 import type { SensorNode } from '../backend/api.js';
 import type { FloorPlanPresenceConfig } from './floorPlan.js';
 
-export type RoomOccupancyPhase = 'unknown' | 'occupied' | 'pending-off' | 'unoccupied';
-export type RoomOccupancyCommand = 'on' | 'off';
+export type RoomOccupancyPhase = 'unknown' | 'occupied' | 'pending-clear' | 'unoccupied';
+export type RoomOccupancyCommand = 'on' | 'off' | 'dim' | 'restore';
 
 export interface RoomOccupancyState {
   phase: RoomOccupancyPhase;
   lightingEnabled: boolean;
   pendingUntil?: number;
+  clearActionApplied?: 'off' | 'dim';
 }
 
 export interface RoomOccupancyTransition {
@@ -30,7 +31,10 @@ export function reconcileRoomOccupancy(
 ): RoomOccupancyTransition {
   const sensorIds = config?.sensorIds ?? [];
   if (!sensorIds.length) {
-    return { state: { phase: 'unknown', lightingEnabled: false } };
+    return {
+      state: { phase: 'unknown', lightingEnabled: false },
+      ...(previous.clearActionApplied === 'dim' ? { command: 'restore' as const } : {}),
+    };
   }
 
   const byId = new Map(nodes.map((node) => [node.id, node]));
@@ -41,31 +45,61 @@ export function reconcileRoomOccupancy(
     .filter((node) => !node || node.capabilities.includes('presence'));
   const lightingEnabled = Boolean(config?.lightingEnabled && assigned.length);
   if (!assigned.length) {
-    return { state: { phase: 'unknown', lightingEnabled: false } };
+    return {
+      state: { phase: 'unknown', lightingEnabled: false },
+      ...(previous.clearActionApplied === 'dim' ? { command: 'restore' as const } : {}),
+    };
   }
   const anyPresent = assigned.some((node) => node?.online && node.presenceKnown && node.present);
   const allKnownAbsent = assigned.every((node) => node?.online && node.presenceKnown && !node.present);
 
   if (anyPresent) {
-    const wasAlreadyOn = previous.lightingEnabled && (previous.phase === 'occupied' || previous.phase === 'pending-off');
+    const wasAlreadyOn = previous.lightingEnabled && (previous.phase === 'occupied' || previous.phase === 'pending-clear');
     const shouldTurnOn = lightingEnabled && !wasAlreadyOn;
+    const command = previous.clearActionApplied === 'dim' ? 'restore' : shouldTurnOn ? 'on' : undefined;
     return {
       state: { phase: 'occupied', lightingEnabled },
-      ...(shouldTurnOn ? { command: 'on' as const } : {}),
+      ...(command ? { command } : {}),
     };
   }
 
   if (!allKnownAbsent) {
-    return { state: { phase: 'unknown', lightingEnabled } };
+    return {
+      state: {
+        phase: 'unknown',
+        lightingEnabled,
+        ...(previous.clearActionApplied ? { clearActionApplied: previous.clearActionApplied } : {}),
+      },
+    };
   }
 
   if (!lightingEnabled) {
-    return { state: { phase: 'unoccupied', lightingEnabled: false } };
+    return {
+      state: { phase: 'unoccupied', lightingEnabled: false },
+      ...(previous.clearActionApplied === 'dim' ? { command: 'restore' as const } : {}),
+    };
   }
 
-  if (previous.phase === 'pending-off' && previous.pendingUntil !== undefined) {
+  if (previous.clearActionApplied) {
+    if (previous.clearActionApplied === 'dim' && config?.clearAction !== 'dim') {
+      const delaySeconds = Math.max(1, config?.offDelaySeconds ?? 30);
+      return {
+        state: { phase: 'pending-clear', lightingEnabled: true, pendingUntil: now + delaySeconds * 1000 },
+        command: 'restore',
+      };
+    }
+    return {
+      state: { phase: 'unoccupied', lightingEnabled: true, clearActionApplied: previous.clearActionApplied },
+    };
+  }
+
+  if (previous.phase === 'pending-clear' && previous.pendingUntil !== undefined) {
     if (now >= previous.pendingUntil) {
-      return { state: { phase: 'unoccupied', lightingEnabled: true }, command: 'off' };
+      const clearAction = config?.clearAction === 'dim' ? 'dim' : 'off';
+      return {
+        state: { phase: 'unoccupied', lightingEnabled: true, clearActionApplied: clearAction },
+        command: clearAction,
+      };
     }
     return { state: { ...previous, lightingEnabled: true } };
   }
@@ -77,7 +111,7 @@ export function reconcileRoomOccupancy(
   const delaySeconds = Math.max(1, config?.offDelaySeconds ?? 30);
   return {
     state: {
-      phase: 'pending-off',
+      phase: 'pending-clear',
       lightingEnabled: true,
       pendingUntil: now + delaySeconds * 1000,
     },

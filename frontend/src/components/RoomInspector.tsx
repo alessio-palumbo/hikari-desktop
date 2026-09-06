@@ -4,6 +4,7 @@ import type { SensorNode } from '../backend/api';
 import { defaultFloorPlanPresenceConfig, type FloorPlanPresenceConfig } from '../domain/floorPlan';
 import type { Device, HslColor } from '../domain/lifx';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl } from '../domain/paint';
+import { presenceReading } from '../domain/sensors';
 import { ColorWheel, Slider } from './primitives';
 import { ModeToggle, WhiteScale } from './Inspector';
 import './Inspector.css';
@@ -217,7 +218,7 @@ function SensorReadings({ sensor }: { sensor: SensorNode }) {
     const state = !sensor.online || !sensor.presenceKnown ? 'unknown' : sensor.present ? 'occupied' : 'clear';
     readings.push({
       label: 'presence',
-      value: state,
+      value: presenceReading(sensor),
       state,
     });
   }
@@ -267,28 +268,78 @@ function PresenceLightingControls(props: {
         />
         <i aria-hidden="true" />
       </label>
-      <div className="presence-delay">
-        <span>off delay</span>
-        <span className="presence-delay-value">
-          <span className="presence-delay-control">
-            <button type="button" aria-label="Decrease off delay" onClick={() => onChange({ ...config, offDelaySeconds: clampOffDelay(config.offDelaySeconds - 5) })}>
-              <Minus size={11} aria-hidden="true" />
-            </button>
-            <input
-              aria-label="Presence lighting off delay in seconds"
-              type="number"
-              min={1}
-              max={3600}
-              value={config.offDelaySeconds}
-              onChange={(event) => onChange({ ...config, offDelaySeconds: clampOffDelay(Number(event.target.value) || 1) })}
-            />
-            <button type="button" aria-label="Increase off delay" onClick={() => onChange({ ...config, offDelaySeconds: clampOffDelay(config.offDelaySeconds + 5) })}>
-              <Plus size={11} aria-hidden="true" />
-            </button>
-          </span>
-          sec
-        </span>
+      <div className="presence-setting-row">
+        <span>clear action</span>
+        <div className="presence-clear-actions" role="radiogroup" aria-label="Presence lighting clear action">
+          <label>
+            <input type="radio" name="presence-clear-action" value="off" checked={config.clearAction === 'off'} onChange={() => onChange({ ...config, clearAction: 'off' })} />
+            <span>turn off</span>
+          </label>
+          <label>
+            <input type="radio" name="presence-clear-action" value="dim" checked={config.clearAction === 'dim'} onChange={() => onChange({ ...config, clearAction: 'dim' })} />
+            <span>dim</span>
+          </label>
+        </div>
       </div>
+      <CompactNumberSetting
+        label={config.clearAction === 'dim' ? 'dim after' : 'off delay'}
+        ariaLabel="Presence lighting clear delay in seconds"
+        value={config.offDelaySeconds}
+        min={1}
+        max={3600}
+        step={5}
+        suffix="sec"
+        onChange={(offDelaySeconds) => onChange({ ...config, offDelaySeconds: clampOffDelay(offDelaySeconds) })}
+      />
+      {config.clearAction === 'dim' ? (
+        <CompactNumberSetting
+          label="brightness"
+          ariaLabel="Presence lighting dim brightness percentage"
+          value={Math.round(config.dimBrightness * 100)}
+          min={1}
+          max={100}
+          step={5}
+          suffix="%"
+          onChange={(brightness) => onChange({ ...config, dimBrightness: clampDimBrightness(brightness / 100) })}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CompactNumberSetting(props: {
+  label: string;
+  ariaLabel: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  suffix: string;
+  onChange: (value: number) => void;
+}) {
+  const update = (value: number) => props.onChange(Math.max(props.min, Math.min(props.max, Math.round(value))));
+  return (
+    <div className="presence-setting-row">
+      <span>{props.label}</span>
+      <span className="presence-number-value">
+        <span className="presence-number-control">
+          <button type="button" aria-label={`Decrease ${props.label}`} onClick={() => update(props.value - props.step)}>
+            <Minus size={10} aria-hidden="true" />
+          </button>
+          <input
+            aria-label={props.ariaLabel}
+            type="number"
+            min={props.min}
+            max={props.max}
+            value={props.value}
+            onChange={(event) => update(Number(event.target.value) || props.min)}
+          />
+          <button type="button" aria-label={`Increase ${props.label}`} onClick={() => update(props.value + props.step)}>
+            <Plus size={10} aria-hidden="true" />
+          </button>
+        </span>
+        {props.suffix}
+      </span>
     </div>
   );
 }
@@ -320,4 +371,8 @@ function clampKelvin(kelvin: number, min: number, max: number): number {
 
 function clampOffDelay(seconds: number): number {
   return Math.max(1, Math.min(3600, Math.round(seconds)));
+}
+
+function clampDimBrightness(brightness: number): number {
+  return Math.max(0.01, Math.min(1, brightness));
 }

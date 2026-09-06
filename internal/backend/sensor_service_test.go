@@ -47,7 +47,7 @@ func TestSensorServiceTracksPresenceAndRetainsOfflineNode(t *testing.T) {
 	client := newTestSensorClient()
 	service := newSensorService(func(context.Context) ([]sensorEndpoint, error) {
 		return []sensorEndpoint{{
-			id: "sensaa-aabbccddeeff", name: "Bedroom radar", capabilities: []string{"presence"},
+			id: "sensaa-aabbccddeeff", name: "Bedroom radar", capabilities: []string{"presence", "target_count"}, targetCountMax: 3,
 			connect: func(context.Context) (sensorClient, error) { return client, nil },
 		}}, nil
 	}, time.Hour, time.Second)
@@ -58,14 +58,14 @@ func TestSensorServiceTracksPresenceAndRetainsOfflineNode(t *testing.T) {
 	}
 	defer service.Close(context.Background())
 
-	client.updates <- sensaa.Update{Sequence: 1, Presence: true}
+	client.updates <- sensaa.Update{Sequence: 1, Presence: true, Targets: []sensaa.Target{{}, {}}}
 	waitForSensor(t, service, func(node SensorNode) bool {
-		return node.Online && node.PresenceKnown && node.Present
+		return node.Online && node.PresenceKnown && node.Present && node.TargetCount != nil && node.TargetCount.Known && node.TargetCount.Value == 2 && node.TargetCount.Max == 3
 	})
 
 	client.errors <- errors.New("connection lost")
 	waitForSensor(t, service, func(node SensorNode) bool {
-		return !node.Online && !node.PresenceKnown && node.ID == "sensaa-aabbccddeeff"
+		return !node.Online && !node.PresenceKnown && node.TargetCount != nil && !node.TargetCount.Known && node.ID == "sensaa-aabbccddeeff"
 	})
 }
 

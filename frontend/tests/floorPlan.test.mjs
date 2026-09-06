@@ -408,6 +408,33 @@ test('persists and normalizes room presence assignments by stable sensor ID', ()
     sensorIds: ['sensaa-a', 'sensaa-b'],
     lightingEnabled: true,
     offDelaySeconds: 30,
+    clearAction: 'off',
+    dimBrightness: 0.1,
+  });
+});
+
+test('persists dim presence lighting configuration', () => {
+  const initial = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'home');
+  const withRoom = addRoomToFloor(initial, 'home', DEFAULT_FLOOR_ID, createRectangleRoom(
+    'bedroom', 'Bedroom', 'bedroom', { x: 0.1, y: 0.1 }, { x: 0.4, y: 0.4 },
+  ));
+  const configured = updateRoomInFloor(withRoom, 'home', DEFAULT_FLOOR_ID, 'bedroom', {
+    presence: {
+      sensorIds: ['sensaa-a'],
+      lightingEnabled: true,
+      offDelaySeconds: 45,
+      clearAction: 'dim',
+      dimBrightness: 0.15,
+    },
+  });
+
+  const parsed = parseFloorPlanPreferences(JSON.stringify(configured));
+  assert.deepEqual(parsed.locations.home.floors[0].rooms[0].presence, {
+    sensorIds: ['sensaa-a'],
+    lightingEnabled: true,
+    offDelaySeconds: 45,
+    clearAction: 'dim',
+    dimBrightness: 0.15,
   });
 });
 

@@ -116,7 +116,7 @@
 
 .sensor-controls > header,
 .presence-toggle,
-.presence-delay,
+.presence-setting-row,
 .sensor-select-row {
   display: flex;
   align-items: center;
@@ -264,7 +264,7 @@
 
 .sensor-select-row > span:first-child,
 .presence-toggle span,
-.presence-delay > span:first-child {
+.presence-setting-row > span:first-child {
   color: var(--fg-3);
 }
 
@@ -275,7 +275,7 @@
 }
 
 .sensor-select select,
-.presence-delay input {
+.presence-number-control input {
   border: 1px solid var(--line);
   border-radius: 5px;
   outline: 0;
@@ -300,7 +300,7 @@
 }
 
 .sensor-select:focus-within select,
-.presence-delay-control:focus-within {
+.presence-number-control:focus-within {
   border-color: var(--line-strong);
 }
 
@@ -337,14 +337,14 @@
   background: oklch(1 0 0 / 0.012);
 }
 
-.presence-delay-value {
+.presence-number-value {
   display: flex;
   align-items: center;
   gap: 5px;
   color: var(--fg-3);
 }
 
-.presence-delay-control {
+.presence-number-control {
   display: grid;
   grid-template-columns: 18px 30px 18px;
   align-items: center;
@@ -354,7 +354,7 @@
   background: var(--bg-sink);
 }
 
-.presence-delay input {
+.presence-number-control input {
   width: 30px;
   min-height: 22px;
   box-sizing: border-box;
@@ -366,13 +366,13 @@
   text-align: center;
 }
 
-.presence-delay input::-webkit-inner-spin-button,
-.presence-delay input::-webkit-outer-spin-button {
+.presence-number-control input::-webkit-inner-spin-button,
+.presence-number-control input::-webkit-outer-spin-button {
   appearance: none;
   margin: 0;
 }
 
-.presence-delay-control button {
+.presence-number-control button {
   display: grid;
   width: 18px;
   height: 22px;
@@ -384,8 +384,47 @@
   padding: 0;
 }
 
-.presence-delay-control button:hover {
+.presence-number-control button:hover {
   color: var(--fg-0);
+}
+
+.presence-clear-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 112px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg-sink);
+}
+
+.presence-clear-actions label {
+  cursor: pointer;
+}
+
+.presence-clear-actions input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.presence-clear-actions span {
+  display: grid;
+  min-height: 20px;
+  place-items: center;
+  border-radius: 3px;
+  color: var(--fg-3);
+  font-size: 10px;
+}
+
+.presence-clear-actions input:checked + span {
+  background: oklch(1 0 0 / 0.06);
+  color: var(--fg-1);
+}
+
+.presence-clear-actions input:focus-visible + span {
+  outline: 1px solid var(--accent);
 }
 
 .presence-toggle {

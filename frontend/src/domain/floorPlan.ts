@@ -44,7 +44,11 @@ export interface FloorPlanPresenceConfig {
   sensorIds: string[];
   lightingEnabled: boolean;
   offDelaySeconds: number;
+  clearAction: PresenceClearAction;
+  dimBrightness: number;
 }
+
+export type PresenceClearAction = 'off' | 'dim';
 
 export interface FloorPlanDevicePlacement {
   x: number;
@@ -81,9 +85,16 @@ export const FLOOR_PLAN_ROOM_TYPES: FloorPlanRoomType[] = [
 ];
 
 export const DEFAULT_PRESENCE_OFF_DELAY_SECONDS = 30;
+export const DEFAULT_PRESENCE_DIM_BRIGHTNESS = 0.1;
 
 export function defaultFloorPlanPresenceConfig(): FloorPlanPresenceConfig {
-  return { sensorIds: [], lightingEnabled: false, offDelaySeconds: DEFAULT_PRESENCE_OFF_DELAY_SECONDS };
+  return {
+    sensorIds: [],
+    lightingEnabled: false,
+    offDelaySeconds: DEFAULT_PRESENCE_OFF_DELAY_SECONDS,
+    clearAction: 'off',
+    dimBrightness: DEFAULT_PRESENCE_DIM_BRIGHTNESS,
+  };
 }
 
 const roomTypes = new Set<FloorPlanRoomType>(FLOOR_PLAN_ROOM_TYPES);
@@ -601,10 +612,15 @@ function normalizePresenceConfig(value: unknown): FloorPlanPresenceConfig | unde
   const delay = typeof value.offDelaySeconds === 'number' && Number.isFinite(value.offDelaySeconds)
     ? Math.round(value.offDelaySeconds)
     : DEFAULT_PRESENCE_OFF_DELAY_SECONDS;
+  const dimBrightness = typeof value.dimBrightness === 'number' && Number.isFinite(value.dimBrightness)
+    ? value.dimBrightness
+    : DEFAULT_PRESENCE_DIM_BRIGHTNESS;
   return {
     sensorIds,
     lightingEnabled: Boolean(value.lightingEnabled),
     offDelaySeconds: Math.max(1, Math.min(3600, delay)),
+    clearAction: value.clearAction === 'dim' ? 'dim' : 'off',
+    dimBrightness: Math.max(0.01, Math.min(1, dimBrightness)),
   };
 }
 

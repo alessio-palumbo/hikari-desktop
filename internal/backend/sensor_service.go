@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -23,10 +24,11 @@ type sensorClient interface {
 }
 
 type sensorEndpoint struct {
-	id           string
-	name         string
-	capabilities []string
-	connect      func(context.Context) (sensorClient, error)
+	id             string
+	name           string
+	capabilities   []string
+	targetCountMax int
+	connect        func(context.Context) (sensorClient, error)
 }
 
 type sensorRuntime struct {
@@ -100,6 +102,10 @@ func (s *SensorService) Snapshot(context.Context) (SensorSnapshot, error) {
 	for _, runtime := range s.nodes {
 		node := runtime.node
 		node.Capabilities = append([]string(nil), node.Capabilities...)
+		if node.TargetCount != nil {
+			targetCount := *node.TargetCount
+			node.TargetCount = &targetCount
+		}
 		nodes = append(nodes, node)
 	}
 	s.mu.RUnlock()
@@ -146,6 +152,14 @@ func (s *SensorService) discoverOnce(ctx context.Context) {
 		runtime.node.ID = endpoint.id
 		runtime.node.Name = endpoint.name
 		runtime.node.Capabilities = append(runtime.node.Capabilities[:0], endpoint.capabilities...)
+		if slices.Contains(endpoint.capabilities, string(sensaa.CapabilityTargetCount)) {
+			if runtime.node.TargetCount == nil {
+				runtime.node.TargetCount = &SensorTargetCount{}
+			}
+			runtime.node.TargetCount.Max = endpoint.targetCountMax
+		} else {
+			runtime.node.TargetCount = nil
+		}
 		startConnection := !runtime.connecting && !runtime.node.Online
 		if startConnection {
 			runtime.connecting = true
@@ -190,6 +204,13 @@ func (s *SensorService) consume(ctx context.Context, endpoint sensorEndpoint) {
 			runtime.node.Online = true
 			runtime.node.PresenceKnown = true
 			runtime.node.Present = update.Presence
+			if slices.Contains(endpoint.capabilities, string(sensaa.CapabilityTargetCount)) {
+				if runtime.node.TargetCount == nil {
+					runtime.node.TargetCount = &SensorTargetCount{Max: endpoint.targetCountMax}
+				}
+				runtime.node.TargetCount.Known = true
+				runtime.node.TargetCount.Value = update.TargetCount()
+			}
 		}
 		s.mu.Unlock()
 	}
@@ -201,6 +222,9 @@ func (s *SensorService) markDisconnected(id string) {
 		runtime.connecting = false
 		runtime.node.Online = false
 		runtime.node.PresenceKnown = false
+		if runtime.node.TargetCount != nil {
+			runtime.node.TargetCount.Known = false
+		}
 	}
 	s.mu.Unlock()
 }
@@ -218,10 +242,15 @@ func discoverSensaaNodes(ctx context.Context) ([]sensorEndpoint, error) {
 		for index, capability := range capabilities {
 			labels[index] = string(capability)
 		}
+		var targetCountMax int
+		if targetCount, ok := node.TargetCountCapability(); ok {
+			targetCountMax = targetCount.Max
+		}
 		endpoints = append(endpoints, sensorEndpoint{
-			id:           node.ID(),
-			name:         node.Name(),
-			capabilities: labels,
+			id:             node.ID(),
+			name:           node.Name(),
+			capabilities:   labels,
+			targetCountMax: targetCountMax,
 			connect: func(connectCtx context.Context) (sensorClient, error) {
 				return node.Connect(connectCtx)
 			},

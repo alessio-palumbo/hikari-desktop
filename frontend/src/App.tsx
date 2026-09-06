@@ -18,6 +18,7 @@ import { createDefaultFloorPlanLocation, createFloorPlanProfile, devicesForFloor
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { collectLocations, devicesInLocationCollection, groupsInLocationCollection, locationCollectionByKey, locationCollectionForID } from './domain/locationCollections.js';
 import { initialRoomOccupancyState, reconcileRoomOccupancy, type RoomOccupancyState } from './domain/occupancy';
+import { planRoomDim, planRoomDimRestore, type RoomDimOwnership } from './domain/presenceLighting';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
@@ -78,6 +79,7 @@ export function App() {
   const deviceCommandRef = useRef<Record<string, Promise<void>>>({});
   const networkRecoveryRef = useRef(false);
   const roomOccupancyRef = useRef<Record<string, RoomOccupancyState>>({});
+  const roomDimOwnershipRef = useRef<Record<string, RoomDimOwnership>>({});
   const updateListDeviceRef = useRef<(device: Device) => Promise<void>>(async () => undefined);
   const locationCollections = useMemo(() => collectLocations(snapshot.locations), [snapshot.locations]);
   const selectedLocationCollection = locationCollectionForID(locationCollections, locationId);
@@ -562,6 +564,12 @@ export function App() {
 
   useEffect(() => {
     if (!floorPlanProfileId || !floorPlanProfile) {
+      const ownership = Object.values(roomDimOwnershipRef.current);
+      roomDimOwnershipRef.current = {};
+      for (const ownedDevices of ownership) {
+        const restored = planRoomDimRestore(snapshotRef.current.devices, ownedDevices);
+        void Promise.all(restored.map((device) => updateListDeviceRef.current(device)));
+      }
       roomOccupancyRef.current = {};
       setRoomOccupancy({});
       return;
@@ -569,19 +577,32 @@ export function App() {
 
     const previous = roomOccupancyRef.current;
     const next: Record<string, RoomOccupancyState> = {};
-    const commands: Array<{ floorId: string; roomId: string; on: boolean }> = [];
+    const commands: Array<{ key: string; floorId: string; roomId: string; action: 'on' | 'off' | 'dim' | 'restore'; dimBrightness: number }> = [];
     for (const floor of floorPlanProfile.layout.floors) {
       for (const room of floor.rooms) {
         const key = roomOccupancyKey(floorPlanProfileId, floor.id, room.id);
         const transition = reconcileRoomOccupancy(previous[key] ?? initialRoomOccupancyState(), room.presence, sensorSnapshot.nodes, occupancyNow);
         next[key] = transition.state;
         if (transition.command) {
-          commands.push({ floorId: floor.id, roomId: room.id, on: transition.command === 'on' });
+          commands.push({
+            key,
+            floorId: floor.id,
+            roomId: room.id,
+            action: transition.command,
+            dimBrightness: room.presence?.dimBrightness ?? 0.1,
+          });
         }
       }
     }
     roomOccupancyRef.current = next;
     setRoomOccupancy(next);
+
+    for (const [key, ownership] of Object.entries(roomDimOwnershipRef.current)) {
+      if (key in next) continue;
+      delete roomDimOwnershipRef.current[key];
+      const restored = planRoomDimRestore(snapshotRef.current.devices, ownership);
+      void Promise.all(restored.map((device) => updateListDeviceRef.current(device)));
+    }
 
     for (const command of commands) {
       const floor = floorPlanProfile.layout.floors.find((entry) => entry.id === command.floorId);
@@ -589,12 +610,27 @@ export function App() {
       const devices = devicesForFloorPlanProfile(floorPlanProfile, snapshotRef.current.devices)
         .filter(isLightDevice)
         .filter((device) => floor.devices[device.serial]?.roomId === command.roomId);
-      void Promise.all(devices.map((device) => updateListDeviceRef.current({ ...device, on: command.on })));
+      if (command.action === 'dim') {
+        const plan = planRoomDim(devices, command.dimBrightness);
+        roomDimOwnershipRef.current[command.key] = plan.ownership;
+        void Promise.all(plan.devices.map((device) => updateListDeviceRef.current(device)));
+        continue;
+      }
+      if (command.action === 'restore') {
+        const ownership = roomDimOwnershipRef.current[command.key] ?? {};
+        delete roomDimOwnershipRef.current[command.key];
+        const restored = planRoomDimRestore(snapshotRef.current.devices, ownership);
+        void Promise.all(restored.map((device) => updateListDeviceRef.current(device)));
+        continue;
+      }
+      delete roomDimOwnershipRef.current[command.key];
+      const on = command.action === 'on';
+      void Promise.all(devices.map((device) => updateListDeviceRef.current({ ...device, on })));
     }
   }, [floorPlanProfile, floorPlanProfileId, occupancyNow, sensorSnapshot.nodes]);
 
   useEffect(() => {
-    const hasPending = Object.values(roomOccupancy).some((state) => state.phase === 'pending-off');
+    const hasPending = Object.values(roomOccupancy).some((state) => state.phase === 'pending-clear');
     if (!hasPending) return undefined;
     const timer = window.setInterval(() => setOccupancyNow(Date.now()), 250);
     return () => window.clearInterval(timer);
