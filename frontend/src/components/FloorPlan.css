@@ -39,19 +39,17 @@
 }
 
 .floor-tools button,
-.floor-tools input,
-.floor-select-wrap {
+.floor-tools input {
   height: 28px;
   padding: 0 10px;
-  border: 1px solid oklch(1 0 0 / 0.055);
+  border: 1px solid oklch(1 0 0 / 0.085);
   border-radius: 6px;
-  background: oklch(1 0 0 / 0.025);
-  color: var(--fg-3);
+  background: oklch(1 0 0 / 0.04);
+  color: var(--fg-2);
   font-size: 11px;
 }
 
-.floor-tools button,
-.floor-select-wrap {
+.floor-tools button {
   cursor: pointer;
 }
 
@@ -68,9 +66,9 @@
 }
 
 .floor-tools .floor-add-floor-button {
-  border-color: oklch(1 0 0 / 0.045);
+  border-color: oklch(1 0 0 / 0.075);
   background: transparent;
-  color: var(--fg-4);
+  color: var(--fg-2);
 }
 
 .floor-tools .floor-add-floor-button:hover {
@@ -82,17 +80,18 @@
 .floor-tools .floor-room-add-button {
   margin-left: 8px;
   margin-right: 8px;
+  border-color: oklch(1 0 0 / 0.11);
+  background: oklch(1 0 0 / 0.055);
+  color: var(--fg-1);
 }
 
-.floor-tools input {
-  width: 92px;
-  outline: 0;
+.floor-tools .floor-delete-floor-button {
+  color: var(--fg-3);
 }
 
-.floor-tools input:focus,
-.floor-select-wrap:focus-within {
-  border-color: oklch(1 0 0 / 0.14);
-  color: var(--fg-0);
+.floor-tools .floor-edit-button {
+  min-width: 57px;
+  justify-content: center;
 }
 
 .floor-tools button:hover,
@@ -102,34 +101,64 @@
   color: var(--fg-0);
 }
 
-.floor-select-wrap {
+.floor-plan-title {
+  display: grid;
+  justify-items: start;
+}
+
+.floor-profile-select,
+.floor-title-select {
   position: relative;
   display: inline-flex;
   align-items: center;
-  min-width: 94px;
-  padding-right: 26px;
+  cursor: pointer;
 }
 
-.floor-select-wrap select {
+.floor-profile-select select,
+.floor-title-select select {
   position: absolute;
   inset: 0;
   width: 100%;
+  height: 100%;
   border: 0;
-  border-radius: inherit;
-  appearance: none;
-  background: transparent;
-  color: inherit;
+  opacity: 0;
   cursor: pointer;
-  font: inherit;
-  outline: 0;
-  padding: 0 26px 0 10px;
 }
 
-.floor-select-wrap svg {
-  position: absolute;
-  right: 8px;
+.floor-profile-select {
+  gap: 4px;
+  color: var(--fg-3);
+}
+
+.floor-profile-select svg,
+.floor-title-select svg {
   pointer-events: none;
   color: var(--fg-4);
+}
+
+.floor-profile-select:hover,
+.floor-profile-select:focus-within {
+  color: var(--fg-1);
+}
+
+.floor-title-select {
+  display: flex;
+  gap: 8px;
+}
+
+.floor-title-select:hover svg,
+.floor-title-select:focus-within svg {
+  color: var(--fg-1);
+}
+
+.floor-tools .floor-floor-label-input {
+  width: 92px;
+  outline: 0;
+}
+
+.floor-tools .floor-floor-label-input:focus {
+  border-color: oklch(0.88 0.08 235 / 0.45);
+  color: var(--fg-0);
 }
 
 .floor-plan-header h1 {
@@ -146,6 +175,11 @@
 .floor-unplaced p {
   color: var(--fg-3);
   font-size: 12px;
+}
+
+.floor-plan-meta,
+.floor-plan-meta span {
+  color: var(--fg-2);
 }
 
 .floor-search-matches {

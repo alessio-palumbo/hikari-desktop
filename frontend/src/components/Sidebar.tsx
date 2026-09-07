@@ -65,7 +65,7 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <aside className="left-panel sidebar">
-      <div className="sidebar-search">
+      <div className="sidebar-search" data-searching={props.query.trim() ? 'true' : 'false'}>
         <Search size={13} />
         <input
           ref={searchRef}

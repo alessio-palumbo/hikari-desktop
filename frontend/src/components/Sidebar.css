@@ -14,10 +14,24 @@
   border-radius: 8px;
   padding: 0 10px;
   color: var(--fg-3);
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .sidebar-search:focus-within {
   border-color: oklch(1 0 0 / 0.16);
+}
+
+.sidebar-search[data-searching="true"] {
+  border-color: oklch(0.88 0.08 235 / 0.52);
+  background: oklch(0.88 0.08 235 / 0.055);
+  box-shadow: inset 0 0 0 1px oklch(0.88 0.08 235 / 0.08);
+}
+
+.sidebar-search[data-searching="true"] > svg {
+  color: oklch(0.88 0.08 235 / 0.9);
 }
 
 .sidebar-search input {

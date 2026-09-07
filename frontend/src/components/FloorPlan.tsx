@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Bath, BedDouble, BriefcaseBusiness, Car, ChevronDown, CookingPot, DoorOpen, Plus, Sofa, Square, Trash2, Trees, Utensils, Wrench, X, type LucideIcon } from 'lucide-react';
+import { Bath, BedDouble, BriefcaseBusiness, Car, Check, ChevronDown, CookingPot, DoorOpen, Pencil, Plus, Sofa, Square, Trash2, Trees, Utensils, Wrench, X, type LucideIcon } from 'lucide-react';
 import type { Device, Group } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
 import { FLOOR_PLAN_ROOM_TYPES, keepRoomDevicesInsideShape, moveRoomEdge, roomAtPoint, roomCenter, roomInteriorPoint, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
@@ -82,6 +82,8 @@ export function FloorPlan({
   const floor = activeFloor(layout);
   const [editedRoomId, setEditedRoomId] = useState<string | undefined>();
   const [dropTargetRoomId, setDropTargetRoomId] = useState<string | undefined>();
+  const [floorLabel, setFloorLabel] = useState(floor?.label ?? '');
+  const cancelFloorLabelRef = useRef(false);
   const editedRoom = floor?.rooms.find((room) => room.id === editedRoomId);
   const roomLabelRef = useRef<HTMLInputElement | null>(null);
   const placed = new Set(Object.keys(floor?.devices ?? {}));
@@ -119,11 +121,25 @@ export function FloorPlan({
     setDropTargetRoomId(undefined);
   }, [editing]);
 
+  useEffect(() => setFloorLabel(floor?.label ?? ''), [floor?.id, floor?.label]);
+
   useEffect(() => {
     if (!editing || !editedRoom) return;
     roomLabelRef.current?.focus();
     roomLabelRef.current?.select();
   }, [editing, editedRoom?.id]);
+
+  const commitFloorLabel = () => {
+    if (!floor) return;
+    if (cancelFloorLabelRef.current) {
+      cancelFloorLabelRef.current = false;
+      setFloorLabel(floor.label);
+      return;
+    }
+    const next = floorLabel.trim();
+    setFloorLabel(next || floor.label);
+    if (next && next !== floor.label) onRenameFloor(floor.id, next);
+  };
 
   return (
     <main
@@ -138,40 +154,35 @@ export function FloorPlan({
     >
       <div className="floor-plan-shell">
         <header className="floor-plan-header">
-          <div>
-            <span>{profileName.toLowerCase()}</span>
-            <h1>{floor?.label ?? 'floor plan'}</h1>
+          <div className="floor-plan-title">
+            {profileOptions.length > 1 ? (
+              <label className="floor-profile-select">
+                <span>{profileName.toLowerCase()}</span>
+                <ChevronDown size={10} aria-hidden="true" />
+                <select value={profileId} aria-label="Floor plan" onChange={(event) => onProfileChange(event.target.value)}>
+                  {profileOptions.map((profile) => (
+                    <option key={profile.id} value={profile.id}>{profile.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {layout && layout.floors.length > 1 ? (
+              <label className="floor-title-select">
+                <h1>{floor?.label ?? 'floor plan'}</h1>
+                <ChevronDown size={15} aria-hidden="true" />
+                <select value={floor?.id ?? ''} aria-label="Floor" onChange={(event) => onSelectFloor(event.target.value)}>
+                  {layout.floors.map((entry) => (
+                    <option key={entry.id} value={entry.id}>{entry.label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : <h1>{floor?.label ?? 'floor plan'}</h1>}
           </div>
           <div className="floor-plan-actions">
             {!editing ? <div className="floor-plan-meta">
               <span>{floor?.rooms.length ?? 0} room{floor?.rooms.length === 1 ? '' : 's'}</span>
             </div> : null}
             <div className="floor-tools">
-              {!editing && profileOptions.length > 1 ? (
-                <label className="floor-select-wrap">
-                  <select value={profileId} aria-label="Floor plan" onChange={(event) => onProfileChange(event.target.value)}>
-                    {profileOptions.map((profile) => (
-                      <option key={profile.id} value={profile.id}>{profile.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={12} aria-hidden="true" />
-                </label>
-              ) : null}
-              {layout && !editing && layout.floors.length > 1 ? (
-                <label className="floor-select-wrap">
-                  <select value={floor?.id ?? ''} aria-label="Floor" onChange={(event) => onSelectFloor(event.target.value)}>
-                    {layout.floors.map((entry) => (
-                      <option key={entry.id} value={entry.id}>{entry.label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={12} aria-hidden="true" />
-                </label>
-              ) : null}
-              {editing && floor ? (
-                <span className="floor-tool-cluster">
-                  <input value={floor.label} aria-label="Floor label" onChange={(event) => onRenameFloor(floor.id, event.target.value)} />
-                </span>
-              ) : null}
               {editing ? (
                 <button
                   type="button"
@@ -186,16 +197,31 @@ export function FloorPlan({
               ) : null}
               {editing && layout ? (
                 <span className="floor-tool-cluster">
-                  <label className="floor-select-wrap">
-                    <select value={floor?.id ?? ''} aria-label="Floor" onChange={(event) => onSelectFloor(event.target.value)}>
-                      {layout.floors.map((entry) => (
-                        <option key={entry.id} value={entry.id}>{entry.label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={12} aria-hidden="true" />
-                  </label>
+                  {floor ? (
+                    <input
+                      className="floor-floor-label-input"
+                      value={floorLabel}
+                      aria-label="Floor label"
+                      onChange={(event) => {
+                        cancelFloorLabelRef.current = false;
+                        setFloorLabel(event.target.value);
+                      }}
+                      onBlur={commitFloorLabel}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          cancelFloorLabelRef.current = true;
+                          setFloorLabel(floor.label);
+                          event.currentTarget.blur();
+                        }
+                        if (event.key === 'Enter') {
+                          commitFloorLabel();
+                          event.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  ) : null}
                   {floor && layout.floors.length > 1 ? (
-                    <button type="button" className="floor-icon-button" aria-label="Delete selected floor" onClick={() => onRemoveFloor(floor.id)}>
+                    <button type="button" className="floor-icon-button floor-delete-floor-button" aria-label="Delete selected floor" onClick={() => onRemoveFloor(floor.id)}>
                       <Trash2 size={13} strokeWidth={1.8} aria-hidden="true" />
                     </button>
                   ) : null}
@@ -204,8 +230,9 @@ export function FloorPlan({
                   </button>
                 </span>
               ) : null}
-              <button type="button" data-active={editing ? 'true' : 'false'} onClick={() => onEditingChange(!editing)}>
-                edit
+              <button type="button" className="floor-edit-button" data-active={editing ? 'true' : 'false'} onClick={() => onEditingChange(!editing)}>
+                {editing ? <Check size={12} aria-hidden="true" /> : <Pencil size={12} aria-hidden="true" />}
+                {editing ? 'done' : 'edit'}
               </button>
             </div>
             <CenterViewToggle view={view} onChange={onViewChange} />
