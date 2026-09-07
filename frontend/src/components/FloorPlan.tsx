@@ -364,7 +364,10 @@ function DeviceSourceList({
                 event.dataTransfer.effectAllowed = 'move';
               }}
               onDragEnd={onDragEnd}
-              onClick={() => onSelect(device.serial)}
+              onClick={() => {
+                if (editing) return;
+                onSelect(device.serial);
+              }}
             >
               <DeviceSwatch device={device} />
               <span>{device.name}</span>
@@ -664,14 +667,11 @@ function RoomEditor({
               event.currentTarget.blur();
             }}
           />
-          <label className="floor-select-wrap">
-            <select value={room.type ?? 'other'} aria-label={`${room.label} room type`} onChange={(event) => onUpdateRoom(floorId, room.id, { type: event.target.value as FloorPlanRoomType })}>
-              {FLOOR_PLAN_ROOM_TYPES.map((type) => (
-                <option key={type} value={type}>{roomTypeLabel(type)}</option>
-              ))}
-            </select>
-            <ChevronDown size={12} aria-hidden="true" />
-          </label>
+          <RoomTypeSelect
+            roomLabel={room.label}
+            value={room.type ?? 'other'}
+            onChange={(type) => onUpdateRoom(floorId, room.id, { type })}
+          />
           <button type="button" className="floor-icon-button" aria-label={`Delete ${room.label}`} onClick={() => onRemoveRoom(floorId, room.id)}>
             <Trash2 size={13} strokeWidth={1.8} aria-hidden="true" />
           </button>
@@ -935,6 +935,74 @@ function shouldDim(device: Device, searching: boolean, matches: Set<string>, sel
 
 function roomTypeLabel(type: FloorPlanRoomType): string {
   return type.replace('-', ' ');
+}
+
+function RoomTypeSelect({
+  roomLabel,
+  value,
+  onChange,
+}: {
+  roomLabel: string;
+  value: FloorPlanRoomType;
+  onChange: (type: FloorPlanRoomType) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="floor-room-type-select">
+      <button
+        type="button"
+        className="floor-room-type-trigger"
+        aria-label={`${roomLabel} room type`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            setOpen(false);
+            return;
+          }
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        <RoomTypeIcon type={value} />
+        <span>{roomTypeLabel(value)}</span>
+        <ChevronDown size={12} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="floor-room-type-options" role="listbox" aria-label="Room type">
+          {FLOOR_PLAN_ROOM_TYPES.map((type) => (
+            <button
+              key={type}
+              type="button"
+              role="option"
+              aria-selected={type === value}
+              onClick={() => {
+                onChange(type);
+                setOpen(false);
+              }}
+            >
+              <RoomTypeIcon type={type} />
+              <span>{roomTypeLabel(type)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function RoomTypeIcon({ type }: { type?: FloorPlanRoomType }) {
