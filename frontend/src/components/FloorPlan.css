@@ -148,6 +148,54 @@
   font-size: 12px;
 }
 
+.floor-search-matches {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 7px;
+  margin: -10px 0 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.floor-search-matches::-webkit-scrollbar {
+  display: none;
+}
+
+.floor-search-matches > button {
+  display: inline-flex;
+  height: 29px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid oklch(0.88 0.08 235 / 0.22);
+  border-radius: 999px;
+  background: oklch(0.88 0.08 235 / 0.045);
+  color: var(--fg-1);
+  cursor: pointer;
+}
+
+.floor-search-matches > button:hover {
+  border-color: oklch(0.88 0.08 235 / 0.48);
+  background: oklch(0.88 0.08 235 / 0.09);
+  color: var(--fg-0);
+}
+
+.floor-search-matches > button span {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.floor-search-matches > button small,
+.floor-search-matches > span {
+  color: var(--fg-4);
+  font-size: 10px;
+}
+
 .floor-plan-meta {
   gap: 12px;
   white-space: nowrap;
@@ -468,6 +516,18 @@
   cursor: grabbing;
 }
 
+.floor-room[data-searching="true"][data-search-match="false"],
+.floor-room-power[data-search-dimmed="true"] {
+  opacity: 0.28;
+}
+
+.floor-room[data-searching="true"][data-search-match="true"] .floor-room-label {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: oklch(0.88 0.08 235 / 0.12);
+  color: var(--fg-0);
+}
+
 .floor-room-shape-handle,
 .floor-room-add-point-handle {
   position: absolute;
@@ -756,6 +816,27 @@
 .floor-device-node[data-offline="true"],
 .floor-unplaced-device[data-dimmed="true"] {
   opacity: 0.45;
+}
+
+.floor-device-node[data-searching="true"][data-search-match="false"] {
+  opacity: 0.2;
+}
+
+.floor-unplaced-device[data-searching="true"][data-search-match="false"] {
+  opacity: 0.2;
+}
+
+.floor-device-node[data-searching="true"][data-search-match="true"] {
+  outline-color: oklch(0.88 0.08 235 / 0.9);
+  box-shadow:
+    0 0 0 2px oklch(0.88 0.08 235 / 0.2),
+    0 8px 24px oklch(0 0 0 / 0.22);
+}
+
+.floor-unplaced-device[data-searching="true"][data-search-match="true"] {
+  border-color: oklch(0.88 0.08 235 / 0.55);
+  background: oklch(0.88 0.08 235 / 0.08);
+  color: var(--fg-0);
 }
 
 .floor-device-node[data-offline="true"][data-editing="false"] {

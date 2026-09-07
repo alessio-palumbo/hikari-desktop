@@ -439,6 +439,12 @@ export function App() {
   const locationDevices = devicesInLocationCollection(selectedLocationCollection, snapshot.groups, snapshot.devices);
   const floorPlanDevices = floorPlanProfile ? devicesForFloorPlanProfile(floorPlanProfile, snapshot.devices) : [];
   const activeFloor = activeFloorPlanFloor(floorPlanProfile?.layout);
+  const locateFloorDevice = (serial: string, floorId?: string) => {
+    if (floorId && floorId !== activeFloor?.id) selectFloor(floorId);
+    setSelectedGroupInspectorId(undefined);
+    setSelectedRoomInspector(undefined);
+    setSelectedSerial(serial);
+  };
   const inspectorFloor = floorPlanProfile?.layout.floors.find((floor) => floor.id === selectedRoomInspector?.floorId);
   const inspectorRoom = inspectorFloor?.rooms.find((room) => room.id === selectedRoomInspector?.roomId);
   const inspectorRoomDevices = inspectorFloor && inspectorRoom
@@ -919,6 +925,7 @@ export function App() {
           onPlaceDevice={placeFloorDevice}
           onRemoveDevice={removeFloorDevice}
           onSelect={selectDevice}
+          onLocateDevice={locateFloorDevice}
           onDeviceChange={updateListDevice}
           onRoomSelect={openRoomInspector}
           onRoomPower={setRoomPower}

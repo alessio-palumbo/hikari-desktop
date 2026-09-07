@@ -34,6 +34,7 @@ interface FloorPlanProps {
   onPlaceDevice: (serial: string, placement: FloorPlanDevicePlacement) => void;
   onRemoveDevice: (serial: string) => void;
   onSelect: (serial: string) => void;
+  onLocateDevice: (serial: string, floorId?: string) => void;
   onDeviceChange: (device: Device) => void;
   onRoomSelect: (floorId: string, roomId: string) => void;
   onRoomPower: (floorId: string, roomId: string, on: boolean) => void;
@@ -71,6 +72,7 @@ export function FloorPlan({
   onPlaceDevice,
   onRemoveDevice,
   onSelect,
+  onLocateDevice,
   onDeviceChange,
   onRoomSelect,
   onRoomPower,
@@ -88,6 +90,12 @@ export function FloorPlan({
   const matches = searchMatches(devices, groups, query);
   const placedDevices = floor ? devices.filter((device) => placed.has(device.serial)) : [];
   const unplacedDevices = layout ? devices.filter((device) => !placedAnywhere.has(device.serial)) : devices;
+  const searchResults = searching
+    ? devices.filter((device) => matches.has(device.serial)).map((device) => {
+        const resultFloor = layout?.floors.find((entry) => entry.devices[device.serial]);
+        return { device, floorId: resultFloor?.id, floorLabel: resultFloor?.label ?? 'unassigned' };
+      })
+    : [];
   const placeDevice = (serial: string, point: FloorPlanPoint) => {
     const roomId = floor ? roomAtPoint(floor.rooms, point)?.id : undefined;
     onPlaceDevice(serial, { ...point, ...(roomId ? { roomId } : {}) });
@@ -217,6 +225,19 @@ export function FloorPlan({
           />
         ) : null}
 
+        {searching ? (
+          <section className="floor-search-matches" aria-label="Matching devices">
+            {searchResults.map(({ device, floorId, floorLabel }) => (
+              <button key={device.serial} type="button" onClick={() => onLocateDevice(device.serial, floorId)}>
+                <DeviceSwatch device={device} />
+                <span>{device.name}</span>
+                <small>{floorLabel}</small>
+              </button>
+            ))}
+            {!searchResults.length ? <span>no devices matched</span> : null}
+          </section>
+        ) : null}
+
         <section
           ref={canvasRef}
           className="floor-canvas"
@@ -250,6 +271,8 @@ export function FloorPlan({
               floorId={floor.id}
               editing={editing}
               selected={editing ? room.id === editedRoomId : room.id === selectedRoomId}
+              searching={searching}
+              searchMatch={roomMatchesSearch(room, floor, matches, query)}
               dropTarget={dropTargetRoomId === room.id}
               powerState={roomPowerState(room.id, floor, devices)}
               canvasPoint={canvasPoint}
@@ -275,6 +298,8 @@ export function FloorPlan({
                 key={device.serial}
                 device={device}
                 selected={device.serial === selectedSerial}
+                searching={searching}
+                searchMatch={matches.has(device.serial)}
                 x={placement.x}
                 y={placement.y}
                 editing={editing}
@@ -356,6 +381,8 @@ function DeviceSourceList({
               type="button"
               className="floor-unplaced-device"
               data-selected={device.serial === selectedSerial}
+              data-searching={searching ? 'true' : 'false'}
+              data-search-match={matches.has(device.serial) ? 'true' : 'false'}
               data-dimmed={shouldDim(device, searching, matches, selectedGroupDevices) ? 'true' : 'false'}
               draggable={editing}
               onDragStart={(event) => {
@@ -386,6 +413,8 @@ function RoomShape({
   floorId,
   editing,
   selected,
+  searching,
+  searchMatch,
   dropTarget,
   powerState,
   canvasPoint,
@@ -398,6 +427,8 @@ function RoomShape({
   floorId: string;
   editing: boolean;
   selected: boolean;
+  searching: boolean;
+  searchMatch: boolean;
   dropTarget: boolean;
   powerState: RoomPowerState;
   canvasPoint: (clientX: number, clientY: number) => FloorPlanPoint | undefined;
@@ -434,6 +465,8 @@ function RoomShape({
         data-type={room.type ?? 'other'}
         data-editing={editing ? 'true' : 'false'}
         data-selected={selected ? 'true' : 'false'}
+        data-searching={searching ? 'true' : 'false'}
+        data-search-match={searchMatch ? 'true' : 'false'}
         data-drop-target={dropTarget ? 'true' : 'false'}
         data-power={powerState}
         style={{
@@ -610,6 +643,7 @@ function RoomShape({
         <button
           type="button"
           className="floor-room-power"
+          data-search-dimmed={searching && !searchMatch ? 'true' : 'false'}
           aria-label={powerState === 'off' ? `Turn ${room.label} on` : `Turn ${room.label} off`}
           style={roomPowerPosition(room)}
           onClick={(event) => {
@@ -686,6 +720,8 @@ function RoomEditor({
 function DeviceNode({
   device,
   selected,
+  searching,
+  searchMatch,
   x,
   y,
   editing,
@@ -697,6 +733,8 @@ function DeviceNode({
 }: {
   device: Device;
   selected: boolean;
+  searching: boolean;
+  searchMatch: boolean;
   x: number;
   y: number;
   editing: boolean;
@@ -714,6 +752,8 @@ function DeviceNode({
       aria-disabled={!device.online && !editing}
       className="floor-device-node"
       data-selected={selected}
+      data-searching={searching ? 'true' : 'false'}
+      data-search-match={searchMatch ? 'true' : 'false'}
       data-on={device.on && isLightDevice(device) ? 'true' : 'false'}
       data-offline={!device.online ? 'true' : 'false'}
       data-editing={editing ? 'true' : 'false'}
@@ -931,6 +971,13 @@ function searchMatches(devices: Device[], groups: Group[], query: string): Set<s
 function shouldDim(device: Device, searching: boolean, matches: Set<string>, selectedGroupDevices?: Set<string>): boolean {
   if (searching) return !matches.has(device.serial);
   return !!selectedGroupDevices && !selectedGroupDevices.has(device.serial);
+}
+
+function roomMatchesSearch(room: FloorPlanRoom, floor: FloorPlanFloor, matches: Set<string>, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  if ([room.label, room.type ?? 'other'].some((value) => value.toLowerCase().includes(normalized))) return true;
+  return Object.entries(floor.devices).some(([serial, placement]) => placement.roomId === room.id && matches.has(serial));
 }
 
 function roomTypeLabel(type: FloorPlanRoomType): string {
