@@ -13,8 +13,10 @@ import {
   observeFloorPlanProfile,
   parseFloorPlanProfilePreferences,
   resolveFloorPlanProfile,
+  resolveFloorPlanStartupPreferences,
   saveFloorPlanProfilePreferences,
   selectedFloorPlanProfileId,
+  serializeFloorPlanProfilePreferences,
   updateFloorPlanProfileLayout,
 } from '../dist-test/domain/floorPlanProfiles.js';
 
@@ -168,6 +170,31 @@ test('empty profile preferences are versioned', () => {
   assert.deepEqual(emptyFloorPlanProfilePreferences(), { version: 2, profiles: {} });
 });
 
+test('loads floor plans from recovery, backend, then legacy storage', () => {
+  const recovery = preferences(createFloorPlanProfile('recovery', 'Recovery', layout()));
+  const backend = preferences(createFloorPlanProfile('backend', 'Backend', layout()));
+  const legacy = preferences(createFloorPlanProfile('legacy', 'Legacy', layout()));
+
+  assert.equal(resolveFloorPlanStartupPreferences({
+    recovery: JSON.stringify(recovery),
+    backend: JSON.stringify(backend),
+    legacy: JSON.stringify(legacy),
+  }).source, 'recovery');
+  assert.equal(resolveFloorPlanStartupPreferences({
+    backend: JSON.stringify(backend),
+    legacy: JSON.stringify(legacy),
+  }).source, 'backend');
+  assert.equal(resolveFloorPlanStartupPreferences({ legacy: JSON.stringify(legacy) }).source, 'legacy');
+});
+
+test('ignores invalid floor plan persistence candidates', () => {
+  const legacy = preferences(createFloorPlanProfile('legacy', 'Legacy', layout()));
+  const got = resolveFloorPlanStartupPreferences({ recovery: '{', legacy: JSON.stringify(legacy) });
+
+  assert.equal(got.source, 'legacy');
+  assert.ok(got.preferences.profiles.legacy);
+});
+
 test('migrates a meaningful location layout into a profile', () => {
   const legacy = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'lifx-location:home');
   legacy.locations['lifx-location:home'].floors[0].rooms.push({
@@ -220,6 +247,17 @@ test('loads and saves profiles through a storage boundary', () => {
   saveFloorPlanProfilePreferences(storage, input);
 
   assert.deepEqual(loadFloorPlanProfilePreferences(storage), input);
+});
+
+test('serializes normalized profiles for backend persistence', () => {
+  const profile = createFloorPlanProfile('home', 'Home', createDefaultFloorPlanLocation());
+  const serialized = serializeFloorPlanProfilePreferences({
+    version: 2,
+    activeProfileId: 'missing',
+    profiles: { home: profile },
+  });
+
+  assert.deepEqual(JSON.parse(serialized), preferences(profile));
 });
 
 test('observes only currently online devices and their locations', () => {

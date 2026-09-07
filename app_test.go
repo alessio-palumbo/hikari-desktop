@@ -138,6 +138,29 @@ func TestAppUsesSensorProvider(t *testing.T) {
 	}
 }
 
+func TestAppUsesFloorPlanStore(t *testing.T) {
+	store := &recordingFloorPlanStore{document: backend.FloorPlanPreferencesDocument{
+		Exists: true,
+		Data:   `{"version":2,"profiles":{}}`,
+	}}
+	app := NewAppWithTransport(&recordingTransport{})
+	app.floorPlans = store
+
+	document, err := app.GetFloorPlanPreferences()
+	if err != nil {
+		t.Fatalf("GetFloorPlanPreferences returned error: %v", err)
+	}
+	if !store.loadCalled || !document.Exists || document.Data != store.document.Data {
+		t.Fatalf("GetFloorPlanPreferences returned %#v", document)
+	}
+	if err := app.SaveFloorPlanPreferences(backend.SaveFloorPlanPreferencesRequest{Data: document.Data}); err != nil {
+		t.Fatalf("SaveFloorPlanPreferences returned error: %v", err)
+	}
+	if !store.saveCalled || store.saved != document.Data {
+		t.Fatalf("SaveFloorPlanPreferences saved %q", store.saved)
+	}
+}
+
 func TestAppReturnsTransportError(t *testing.T) {
 	device := backend.Device{Serial: "d073d501a2c3", Name: "Test", Kind: backend.DeviceKindSingle}
 	app := NewAppWithTransport(&recordingTransport{err: errors.New("boom")})
@@ -189,6 +212,24 @@ type recordingSensorProvider struct {
 	snapshot    backend.SensorSnapshot
 	startCalled bool
 	closeCalled bool
+}
+
+type recordingFloorPlanStore struct {
+	document   backend.FloorPlanPreferencesDocument
+	saved      string
+	loadCalled bool
+	saveCalled bool
+}
+
+func (s *recordingFloorPlanStore) Load() (backend.FloorPlanPreferencesDocument, error) {
+	s.loadCalled = true
+	return s.document, nil
+}
+
+func (s *recordingFloorPlanStore) Save(data string) error {
+	s.saveCalled = true
+	s.saved = data
+	return nil
 }
 
 func (s *recordingSensorProvider) Start(context.Context) error {

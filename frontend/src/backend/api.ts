@@ -5,6 +5,8 @@ import type { DeviceEffect } from '../domain/effects';
 interface WailsApp {
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
   GetSensorSnapshot?: () => Promise<SensorSnapshot>;
+  GetFloorPlanPreferences?: () => Promise<FloorPlanPreferencesDocument>;
+  SaveFloorPlanPreferences?: (request: SaveFloorPlanPreferencesRequest) => Promise<void>;
   NetworkSettings?: () => Promise<NetworkSettings>;
   SetNetworkInterface?: (request: SetNetworkInterfaceRequest) => Promise<NetworkSettings>;
   RestartDeviceDiscovery?: () => Promise<NetworkSettings>;
@@ -16,6 +18,15 @@ interface WailsApp {
   InterpretCommand?: (request: InterpretCommandRequest) => Promise<CommandPreview>;
   TranscribeCommand?: (request: TranscribeCommandRequest) => Promise<SpeechCommandPreview>;
   TranscribeCommandAudio?: (request: TranscribeCommandAudioRequest) => Promise<SpeechCommandPreview>;
+}
+
+export interface FloorPlanPreferencesDocument {
+  exists: boolean;
+  data?: string;
+}
+
+interface SaveFloorPlanPreferencesRequest {
+  data: string;
 }
 
 export interface SensorNode {
@@ -181,6 +192,22 @@ export async function getSensorSnapshot(): Promise<SensorSnapshot> {
   const app = window.go?.main?.App;
   if (app?.GetSensorSnapshot) return normalizeSensorSnapshot(await app.GetSensorSnapshot());
   return { nodes: [] };
+}
+
+export async function getFloorPlanPreferences(): Promise<FloorPlanPreferencesDocument> {
+  const app = window.go?.main?.App;
+  if (!app?.GetFloorPlanPreferences) return { exists: false };
+  const document = await app.GetFloorPlanPreferences();
+  return {
+    exists: Boolean(document?.exists),
+    data: typeof document?.data === 'string' ? document.data : undefined,
+  };
+}
+
+export async function saveFloorPlanPreferences(data: string): Promise<void> {
+  const app = window.go?.main?.App;
+  if (!app?.SaveFloorPlanPreferences) throw new Error('floor plan storage is unavailable');
+  await app.SaveFloorPlanPreferences({ data });
 }
 
 export async function getNetworkSettings(): Promise<NetworkSettings> {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getCommandEngineSettings, getDeviceSnapshot, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorNode, type SensorSnapshot } from './backend/api';
+import { getCommandEngineSettings, getDeviceSnapshot, getFloorPlanPreferences, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, saveFloorPlanPreferences, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorNode, type SensorSnapshot } from './backend/api';
 import type { CenterView } from './components/CenterViewToggle';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
@@ -13,8 +13,8 @@ import { RoomInspector } from './components/RoomInspector';
 import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
-import { DEFAULT_FLOOR_ID, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanPresenceConfig, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
-import { createDefaultFloorPlanLocation, createFloorPlanProfile, devicesForFloorPlanProfile, floorPlanObservation, floorPlanProfileMatchesObservation, loadFloorPlanProfilePreferences, observeFloorPlanProfile, renameFloorPlanProfile, resolveFloorPlanProfile, saveFloorPlanProfilePreferences, selectedFloorPlanProfileId, updateFloorPlanProfileLayout, type FloorPlanProfilePreferences } from './domain/floorPlanProfiles.js';
+import { DEFAULT_FLOOR_ID, FLOOR_PLAN_STORAGE_KEY, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanPresenceConfig, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
+import { FLOOR_PLAN_RECOVERY_KEY, createDefaultFloorPlanLocation, createFloorPlanProfile, devicesForFloorPlanProfile, floorPlanObservation, floorPlanProfileMatchesObservation, loadFloorPlanProfilePreferences, observeFloorPlanProfile, renameFloorPlanProfile, resolveFloorPlanProfile, resolveFloorPlanStartupPreferences, selectedFloorPlanProfileId, serializeFloorPlanProfilePreferences, updateFloorPlanProfileLayout, type FloorPlanProfilePreferences } from './domain/floorPlanProfiles.js';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { collectLocations, devicesInLocationCollection, groupsInLocationCollection, locationCollectionByKey, locationCollectionForID } from './domain/locationCollections.js';
 import { initialRoomOccupancyState, reconcileRoomOccupancy, type RoomOccupancyState } from './domain/occupancy';
@@ -31,6 +31,7 @@ const GROUP_KEY = 'hikari:selectedGroup';
 const COMMAND_AUTO_EXECUTE_KEY = 'hikari:commandAutoExecute';
 const CENTER_VIEW_KEY = 'hikari:centerView';
 const SENSOR_REFRESH_INTERVAL_MS = 1000;
+const FLOOR_PLAN_SAVE_DELAY_MS = 200;
 
 type DeviceStatus = Record<string, { loading?: boolean; error?: string }>;
 type DeviceEffectStates = Record<string, DeviceEffectStatus & { loading?: boolean }>;
@@ -44,6 +45,7 @@ export function App() {
   const [groupId, setGroupId] = useState(() => loadPreference(GROUP_KEY));
   const [centerView, setCenterView] = useState<CenterView>(() => loadCenterViewPreference());
   const [floorPlanProfiles, setFloorPlanProfiles] = useState<FloorPlanProfilePreferences>(() => loadFloorPlanProfilePreferences(window.localStorage));
+  const [floorPlanStorageReady, setFloorPlanStorageReady] = useState(false);
   const [floorPlanSelection, setFloorPlanSelection] = useState<string | undefined>();
   const [floorEditing, setFloorEditing] = useState(false);
   const [selectedRoomInspector, setSelectedRoomInspector] = useState<{ floorId: string; roomId: string } | undefined>();
@@ -80,6 +82,7 @@ export function App() {
   const networkRecoveryRef = useRef(false);
   const roomOccupancyRef = useRef<Record<string, RoomOccupancyState>>({});
   const roomDimOwnershipRef = useRef<Record<string, RoomDimOwnership>>({});
+  const floorPlanSaveRef = useRef<Promise<void>>(Promise.resolve());
   const updateListDeviceRef = useRef<(device: Device) => Promise<void>>(async () => undefined);
   const locationCollections = useMemo(() => collectLocations(snapshot.locations), [snapshot.locations]);
   const selectedLocationCollection = locationCollectionForID(locationCollections, locationId);
@@ -110,6 +113,30 @@ export function App() {
   useEffect(() => {
     pendingStateRef.current = pendingState;
   }, [pendingState]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getFloorPlanPreferences()
+      .then((document) => {
+        if (cancelled) return;
+        const resolved = resolveFloorPlanStartupPreferences({
+          recovery: loadPreference(FLOOR_PLAN_RECOVERY_KEY),
+          backend: document.exists ? document.data : null,
+          legacy: loadPreference(FLOOR_PLAN_STORAGE_KEY),
+        });
+        setFloorPlanProfiles(resolved.preferences);
+        setFloorPlanStorageReady(true);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('Unable to load floor plan preferences from the backend', error);
+          setFloorPlanStorageReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -213,7 +240,22 @@ export function App() {
   useEffect(() => savePreference(LOCATION_KEY, locationId), [locationId]);
   useEffect(() => savePreference(GROUP_KEY, groupId), [groupId]);
   useEffect(() => savePreference(CENTER_VIEW_KEY, centerView), [centerView]);
-  useEffect(() => saveFloorPlanProfilePreferences(window.localStorage, floorPlanProfiles), [floorPlanProfiles]);
+  useEffect(() => {
+    if (!floorPlanStorageReady) return undefined;
+    const data = serializeFloorPlanProfilePreferences(floorPlanProfiles);
+    savePreference(FLOOR_PLAN_RECOVERY_KEY, data);
+    const timer = window.setTimeout(() => {
+      floorPlanSaveRef.current = floorPlanSaveRef.current
+        .catch(() => undefined)
+        .then(() => saveFloorPlanPreferences(data))
+        .then(() => {
+          if (loadPreference(FLOOR_PLAN_RECOVERY_KEY) === data) removePreference(FLOOR_PLAN_RECOVERY_KEY);
+          removePreference(FLOOR_PLAN_STORAGE_KEY);
+        })
+        .catch((error) => console.warn('Unable to save floor plan preferences to the backend', error));
+    }, FLOOR_PLAN_SAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [floorPlanProfiles, floorPlanStorageReady]);
   useEffect(() => saveBooleanPreference(COMMAND_AUTO_EXECUTE_KEY, commandAutoExecute), [commandAutoExecute]);
 
   useEffect(() => {
@@ -1144,6 +1186,14 @@ function savePreference(key: string, value: string) {
     if (value) window.localStorage.setItem(key, value);
   } catch (error) {
     console.warn(`Unable to save preference ${key}`, error);
+  }
+}
+
+function removePreference(key: string) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch (error) {
+    console.warn(`Unable to remove preference ${key}`, error);
   }
 }
 

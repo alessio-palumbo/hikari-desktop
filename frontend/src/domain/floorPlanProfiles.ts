@@ -2,6 +2,7 @@ import { DEFAULT_FLOOR_ID, FLOOR_PLAN_STORAGE_KEY, FLOOR_PLAN_VERSION, createFlo
 import type { Device, DeviceSnapshot } from './lifx.js';
 
 export const FLOOR_PLAN_PROFILE_VERSION = 2;
+export const FLOOR_PLAN_RECOVERY_KEY = 'hikari:floorPlanPending';
 
 export interface FloorPlanProfilePreferences {
   version: 2;
@@ -57,6 +58,27 @@ export function saveFloorPlanProfilePreferences(
   } catch (error) {
     console.warn('Unable to save floor plan profiles', error);
   }
+}
+
+export function serializeFloorPlanProfilePreferences(preferences: FloorPlanProfilePreferences): string {
+  return JSON.stringify(normalizeFloorPlanProfilePreferences(preferences));
+}
+
+export function resolveFloorPlanStartupPreferences(input: {
+  recovery?: string | null;
+  backend?: string | null;
+  legacy?: string | null;
+}): { preferences: FloorPlanProfilePreferences; source: 'recovery' | 'backend' | 'legacy' | 'empty' } {
+  for (const source of ['recovery', 'backend', 'legacy'] as const) {
+    const value = input[source];
+    if (!value) continue;
+    try {
+      return { preferences: parseFloorPlanProfilePreferences(value), source };
+    } catch (error) {
+      console.warn(`Unable to read ${source} floor plan preferences`, error);
+    }
+  }
+  return { preferences: emptyFloorPlanProfilePreferences(), source: 'empty' };
 }
 
 export function parseFloorPlanProfilePreferences(value: string | null): FloorPlanProfilePreferences {

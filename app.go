@@ -14,6 +14,7 @@ type App struct {
 	transport     backend.DeviceTransport
 	sensors       sensorProvider
 	commandEngine *backend.CommandEngineService
+	floorPlans    backend.FloorPlanStore
 }
 
 type sensorProvider interface {
@@ -42,7 +43,12 @@ func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvide
 	if transport == nil {
 		transport = backend.NewMockTransport()
 	}
-	return &App{transport: transport, sensors: sensors, commandEngine: backend.NewCommandEngineService()}
+	return &App{
+		transport:     transport,
+		sensors:       sensors,
+		commandEngine: backend.NewCommandEngineService(),
+		floorPlans:    backend.NewFloorPlanStore(),
+	}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -89,6 +95,14 @@ func (a *App) GetSensorSnapshot() (backend.SensorSnapshot, error) {
 		return backend.SensorSnapshot{Nodes: []backend.SensorNode{}}, nil
 	}
 	return a.sensors.Snapshot(a.context())
+}
+
+func (a *App) GetFloorPlanPreferences() (backend.FloorPlanPreferencesDocument, error) {
+	return a.floorPlans.Load()
+}
+
+func (a *App) SaveFloorPlanPreferences(req backend.SaveFloorPlanPreferencesRequest) error {
+	return a.floorPlans.Save(req.Data)
 }
 
 func (a *App) NetworkSettings() (backend.NetworkSettings, error) {
