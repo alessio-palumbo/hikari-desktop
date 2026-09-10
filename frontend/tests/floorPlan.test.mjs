@@ -4,9 +4,11 @@ import {
   DEFAULT_FLOOR_ID,
   addFloorToLocation,
   addRoomToFloor,
+  assignRoomPresence,
   bringRoomToFront,
   createFloorPlanFloor,
   createRectangleRoom,
+  devicesAssignedToRoom,
   emptyFloorPlanPreferences,
   ensureLocationFloorPlan,
   loadFloorPlanPreferences,
@@ -436,6 +438,38 @@ test('persists dim presence lighting configuration', () => {
     clearAction: 'dim',
     dimBrightness: 0.15,
   });
+});
+
+test('assigning a sensor to a room removes it from the previous room', () => {
+  const initial = ensureLocationFloorPlan(emptyFloorPlanPreferences(), 'office');
+  const withFirst = addRoomToFloor(initial, 'office', DEFAULT_FLOOR_ID, createRectangleRoom(
+    'meeting', 'Meeting', 'office', { x: 0.05, y: 0.05 }, { x: 0.4, y: 0.4 },
+  ));
+  const withRooms = addRoomToFloor(withFirst, 'office', DEFAULT_FLOOR_ID, createRectangleRoom(
+    'kitchen', 'Kitchen', 'kitchen', { x: 0.55, y: 0.05 }, { x: 0.4, y: 0.4 },
+  ));
+  const presence = {
+    sensorIds: ['office-sensor'], lightingEnabled: true, offDelaySeconds: 30, clearAction: 'off', dimBrightness: 0.1,
+  };
+  const assignedFirst = assignRoomPresence(withRooms, 'office', DEFAULT_FLOOR_ID, 'meeting', presence);
+  const reassigned = assignRoomPresence(assignedFirst, 'office', DEFAULT_FLOOR_ID, 'kitchen', presence);
+  const [meeting, kitchen] = reassigned.locations.office.floors[0].rooms;
+
+  assert.deepEqual(meeting.presence.sensorIds, []);
+  assert.deepEqual(kitchen.presence.sensorIds, ['office-sensor']);
+});
+
+test('room device selection cannot include devices assigned to another room', () => {
+  const floor = createFloorPlanFloor('ground', 'Ground');
+  floor.devices = {
+    meeting: { x: 0.2, y: 0.2, roomId: 'meeting-room' },
+    kitchen: { x: 0.7, y: 0.2, roomId: 'kitchen-room' },
+    unassigned: { x: 0.5, y: 0.8 },
+  };
+  const devices = [{ serial: 'meeting' }, { serial: 'kitchen' }, { serial: 'unassigned' }];
+
+  assert.deepEqual(devicesAssignedToRoom(devices, floor, 'meeting-room').map((entry) => entry.serial), ['meeting']);
+  assert.deepEqual(devicesAssignedToRoom(devices, floor, 'kitchen-room').map((entry) => entry.serial), ['kitchen']);
 });
 
 test('falls back to empty preferences for missing or incompatible data', () => {

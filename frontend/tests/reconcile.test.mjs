@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { commandIntent, draftIntent, prepareDeviceCommand } from '../dist-test/domain/commands.js';
+import { commandIntent, draftIntent, prepareDeviceCommand, prepareDeviceUpdate } from '../dist-test/domain/commands.js';
 import { activateEditedDevice } from '../dist-test/domain/editor.js';
 import { defaultEffectSpeedMs, formatEffectSpeed, speedToUnit, supportedDeviceEffects, supportedFirmwareEffects, unitToSpeedMs } from '../dist-test/domain/effects.js';
 import { DeviceKind, kelvinCss, previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
@@ -227,6 +227,14 @@ test('classifies direct power changes as power intent', () => {
   const next = { ...previous, on: false };
 
   assert.equal(commandIntent(next, previous), 'power');
+});
+
+test('an explicit room power intent cannot become a color command from stale state', () => {
+  const previous = { ...base.devices[0], on: false, color: { h: 0, s: 1, l: 0.5 } };
+  const next = { ...previous, on: true, color: { h: 120, s: 1, l: 0.5 } };
+
+  assert.equal(commandIntent(next, previous), 'color');
+  assert.equal(prepareDeviceUpdate(next, previous, 'power').intent, 'power');
 });
 
 test('classifies direct brightness changes as brightness intent', () => {

@@ -10,10 +10,10 @@ import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
 import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
 import { RoomInspector } from './components/RoomInspector';
-import { commandIntent, draftIntent, prepareDeviceCommand } from './domain/commands';
+import { draftIntent, prepareDeviceUpdate, type DeviceCommandIntent } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
-import { DEFAULT_FLOOR_ID, FLOOR_PLAN_STORAGE_KEY, addFloorToLocation, addRoomToFloor, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanPresenceConfig, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
+import { DEFAULT_FLOOR_ID, FLOOR_PLAN_STORAGE_KEY, addFloorToLocation, addRoomToFloor, assignRoomPresence, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, devicesAssignedToRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanPresenceConfig, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
 import { FLOOR_PLAN_RECOVERY_KEY, createDefaultFloorPlanLocation, createFloorPlanProfile, devicesForFloorPlanProfile, floorPlanObservation, floorPlanProfileMatchesObservation, loadFloorPlanProfilePreferences, observeFloorPlanProfile, renameFloorPlanProfile, resolveFloorPlanProfile, resolveFloorPlanStartupPreferences, selectedFloorPlanProfileId, serializeFloorPlanProfilePreferences, updateFloorPlanProfileLayout, type FloorPlanProfilePreferences } from './domain/floorPlanProfiles.js';
 import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
 import { collectLocations, devicesInLocationCollection, groupsInLocationCollection, locationCollectionByKey, locationCollectionForID } from './domain/locationCollections.js';
@@ -84,7 +84,7 @@ export function App() {
   const roomOccupancyRef = useRef<Record<string, RoomOccupancyState>>({});
   const roomDimOwnershipRef = useRef<Record<string, RoomDimOwnership>>({});
   const floorPlanSaveRef = useRef<Promise<void>>(Promise.resolve());
-  const updateListDeviceRef = useRef<(device: Device) => Promise<void>>(async () => undefined);
+  const updateListDeviceRef = useRef<(device: Device, intent?: DeviceCommandIntent) => Promise<void>>(async () => undefined);
   const locationCollections = useMemo(() => collectLocations(snapshot.locations), [snapshot.locations]);
   const selectedLocationCollection = locationCollectionForID(locationCollections, locationId);
   const currentFloorPlanObservation = useMemo(() => floorPlanObservation(snapshot), [snapshot]);
@@ -465,15 +465,14 @@ export function App() {
     const floor = floorPlanProfile?.layout.floors.find((entry) => entry.id === floorId);
     if (!floor) return;
     void Promise.all(
-      floorPlanDevices
-        .filter(isLightDevice)
-        .filter((device) => floor.devices[device.serial]?.roomId === roomId)
-        .map((device) => updateListDevice({ ...device, on })),
+      devicesAssignedToRoom(floorPlanDevices.filter(isLightDevice), floor, roomId)
+        .map((device) => updateListDevice({ ...device, on }, 'power')),
     );
   };
 
   const setRoomPresence = (floorId: string, roomId: string, presence: FloorPlanPresenceConfig) => {
-    updateFloorRoom(floorId, roomId, { presence });
+    if (!floorPlanProfileId) return;
+    updateActiveFloorPlan((current, profileId) => assignRoomPresence(current, profileId, floorId, roomId, presence));
   };
 
   const visibleDevices = useMemo(() => {
@@ -500,7 +499,7 @@ export function App() {
   const inspectorFloor = floorPlanProfile?.layout.floors.find((floor) => floor.id === selectedRoomInspector?.floorId);
   const inspectorRoom = inspectorFloor?.rooms.find((room) => room.id === selectedRoomInspector?.roomId);
   const inspectorRoomDevices = inspectorFloor && inspectorRoom
-    ? floorPlanDevices.filter((device) => inspectorFloor.devices[device.serial]?.roomId === inspectorRoom.id).filter(isLightDevice)
+    ? devicesAssignedToRoom(floorPlanDevices, inspectorFloor, inspectorRoom.id).filter(isLightDevice)
     : [];
   const inspectorDevice = draft?.draft ?? selectedDevice;
 
@@ -587,10 +586,10 @@ export function App() {
     return true;
   };
 
-  const updateListDevice = async (next: Device) => {
+  const updateListDevice = async (next: Device, requestedIntent?: DeviceCommandIntent) => {
     const previous = snapshotRef.current.devices.find((device) => device.serial === next.serial);
-    const intent = commandIntent(next, previous);
-    const command = prepareDeviceCommand(next, previous);
+    const prepared = prepareDeviceUpdate(next, previous, requestedIntent);
+    const { device: command, intent } = prepared;
     replaceDevice(command);
     recordPendingState(command, previous);
     setDeviceLoading(command.serial, true);
@@ -626,7 +625,7 @@ export function App() {
       roomDimOwnershipRef.current = {};
       for (const ownedDevices of ownership) {
         const restored = planRoomDimRestore(snapshotRef.current.devices, ownedDevices);
-        void Promise.all(restored.map((device) => updateListDeviceRef.current(device)));
+        void Promise.all(restored.map((device) => updateListDeviceRef.current(device, 'brightness')));
       }
       roomOccupancyRef.current = {};
       setRoomOccupancy({});
@@ -659,31 +658,33 @@ export function App() {
       if (key in next) continue;
       delete roomDimOwnershipRef.current[key];
       const restored = planRoomDimRestore(snapshotRef.current.devices, ownership);
-      void Promise.all(restored.map((device) => updateListDeviceRef.current(device)));
+      void Promise.all(restored.map((device) => updateListDeviceRef.current(device, 'brightness')));
     }
 
     for (const command of commands) {
       const floor = floorPlanProfile.layout.floors.find((entry) => entry.id === command.floorId);
       if (!floor) continue;
-      const devices = devicesForFloorPlanProfile(floorPlanProfile, snapshotRef.current.devices)
-        .filter(isLightDevice)
-        .filter((device) => floor.devices[device.serial]?.roomId === command.roomId);
+      const devices = devicesAssignedToRoom(
+        devicesForFloorPlanProfile(floorPlanProfile, snapshotRef.current.devices).filter(isLightDevice),
+        floor,
+        command.roomId,
+      );
       if (command.action === 'dim') {
         const plan = planRoomDim(devices, command.dimBrightness);
         roomDimOwnershipRef.current[command.key] = plan.ownership;
-        void Promise.all(plan.devices.map((device) => updateListDeviceRef.current(device)));
+        void Promise.all(plan.devices.map((device) => updateListDeviceRef.current(device, 'brightness')));
         continue;
       }
       if (command.action === 'restore') {
         const ownership = roomDimOwnershipRef.current[command.key] ?? {};
         delete roomDimOwnershipRef.current[command.key];
         const restored = planRoomDimRestore(snapshotRef.current.devices, ownership);
-        void Promise.all(restored.map((device) => updateListDeviceRef.current(device)));
+        void Promise.all(restored.map((device) => updateListDeviceRef.current(device, 'brightness')));
         continue;
       }
       delete roomDimOwnershipRef.current[command.key];
       const on = command.action === 'on';
-      void Promise.all(devices.map((device) => updateListDeviceRef.current({ ...device, on })));
+      void Promise.all(devices.map((device) => updateListDeviceRef.current({ ...device, on }, 'power')));
     }
   }, [floorPlanProfile, floorPlanProfileId, occupancyNow, sensorSnapshot.nodes]);
 

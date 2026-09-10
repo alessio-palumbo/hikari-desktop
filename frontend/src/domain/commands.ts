@@ -2,6 +2,22 @@ import { DeviceKind, type Device, type HslColor } from './lifx.js';
 
 export type DeviceCommandIntent = 'power' | 'brightness' | 'color' | 'zones' | 'matrix' | 'relay-power' | 'button-config';
 
+export interface PreparedDeviceUpdate {
+  device: Device;
+  intent: DeviceCommandIntent;
+}
+
+export function prepareDeviceUpdate(
+  next: Device,
+  previous?: Device,
+  requestedIntent?: DeviceCommandIntent,
+): PreparedDeviceUpdate {
+  return {
+    device: prepareDeviceCommand(next, previous),
+    intent: requestedIntent ?? commandIntent(next, previous),
+  };
+}
+
 export function prepareDeviceCommand(next: Device, previous?: Device): Device {
   if (next.kind === DeviceKind.Switch) return next;
   if (!previous || near(previous.brightness, next.brightness) || next.kind === DeviceKind.Single) return next;

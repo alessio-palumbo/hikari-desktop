@@ -97,6 +97,10 @@ export function defaultFloorPlanPresenceConfig(): FloorPlanPresenceConfig {
   };
 }
 
+export function devicesAssignedToRoom<T extends { serial: string }>(devices: T[], floor: FloorPlanFloor, roomId: string): T[] {
+  return devices.filter((device) => floor.devices[device.serial]?.roomId === roomId);
+}
+
 const roomTypes = new Set<FloorPlanRoomType>(FLOOR_PLAN_ROOM_TYPES);
 
 export function emptyFloorPlanPreferences(): FloorPlanPreferences {
@@ -395,6 +399,40 @@ export function updateRoomInFloor(
     ...floor,
     ...updateFloorRoomGeometry(floor, cleanRoomId, patch),
   }));
+}
+
+// A physical sensor can observe one room. Assigning it here moves it from any
+// previous room while still allowing a room to aggregate multiple sensors.
+export function assignRoomPresence(
+  preferences: FloorPlanPreferences,
+  locationId: string,
+  floorId: string,
+  roomId: string,
+  presence: FloorPlanPresenceConfig,
+): FloorPlanPreferences {
+  const updated = updateRoomInFloor(preferences, locationId, floorId, roomId, { presence });
+  const location = updated.locations[locationId];
+  const target = location?.floors.find((floor) => floor.id === floorId)?.rooms.find((room) => room.id === roomId);
+  if (!location || !target?.presence?.sensorIds.length) return updated;
+
+  const assigned = new Set(target.presence.sensorIds);
+  let changed = false;
+  const floors = location.floors.map((floor) => ({
+    ...floor,
+    rooms: floor.rooms.map((room) => {
+      if ((floor.id === floorId && room.id === roomId) || !room.presence?.sensorIds.some((id) => assigned.has(id))) return room;
+      changed = true;
+      return {
+        ...room,
+        presence: {
+          ...room.presence,
+          sensorIds: room.presence.sensorIds.filter((id) => !assigned.has(id)),
+        },
+      };
+    }),
+  }));
+  if (!changed) return updated;
+  return { ...updated, locations: { ...updated.locations, [locationId]: { ...location, floors } } };
 }
 
 function updateFloorRoomGeometry(
