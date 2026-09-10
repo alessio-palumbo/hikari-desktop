@@ -22,6 +22,7 @@ interface FloorPlanProps {
   editing: boolean;
   onViewChange: (view: CenterView) => void;
   onProfileChange: (profileId: string) => void;
+  onRenameProfile: (name: string) => void;
   onEditingChange: (editing: boolean) => void;
   onAddRoom: () => string | undefined;
   onAddFloor: () => void;
@@ -60,6 +61,7 @@ export function FloorPlan({
   editing,
   onViewChange,
   onProfileChange,
+  onRenameProfile,
   onEditingChange,
   onAddRoom,
   onAddFloor,
@@ -82,7 +84,9 @@ export function FloorPlan({
   const floor = activeFloor(layout);
   const [editedRoomId, setEditedRoomId] = useState<string | undefined>();
   const [dropTargetRoomId, setDropTargetRoomId] = useState<string | undefined>();
+  const [profileLabel, setProfileLabel] = useState(profileName);
   const [floorLabel, setFloorLabel] = useState(floor?.label ?? '');
+  const cancelProfileLabelRef = useRef(false);
   const cancelFloorLabelRef = useRef(false);
   const editedRoom = floor?.rooms.find((room) => room.id === editedRoomId);
   const roomLabelRef = useRef<HTMLInputElement | null>(null);
@@ -122,6 +126,7 @@ export function FloorPlan({
   }, [editing]);
 
   useEffect(() => setFloorLabel(floor?.label ?? ''), [floor?.id, floor?.label]);
+  useEffect(() => setProfileLabel(profileName), [profileId, profileName]);
 
   useEffect(() => {
     if (!editing || !editedRoom) return;
@@ -141,6 +146,17 @@ export function FloorPlan({
     if (next && next !== floor.label) onRenameFloor(floor.id, next);
   };
 
+  const commitProfileLabel = () => {
+    if (cancelProfileLabelRef.current) {
+      cancelProfileLabelRef.current = false;
+      setProfileLabel(profileName);
+      return;
+    }
+    const next = profileLabel.trim();
+    setProfileLabel(next || profileName);
+    if (next && next !== profileName) onRenameProfile(next);
+  };
+
   return (
     <main
       className="center-panel"
@@ -155,7 +171,32 @@ export function FloorPlan({
       <div className="floor-plan-shell">
         <header className="floor-plan-header">
           <div className="floor-plan-title">
-            {profileOptions.length > 1 ? (
+            {editing ? (
+              <input
+                className="floor-profile-label-input"
+                value={profileLabel}
+                aria-label="Floor plan name"
+                onChange={(event) => {
+                  cancelProfileLabelRef.current = false;
+                  setProfileLabel(event.target.value);
+                }}
+                onBlur={commitProfileLabel}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    cancelProfileLabelRef.current = true;
+                    setProfileLabel(profileName);
+                    event.currentTarget.blur();
+                  }
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commitProfileLabel();
+                    event.currentTarget.blur();
+                  }
+                }}
+              />
+            ) : profileOptions.length > 1 ? (
               <label className="floor-profile-select">
                 <span>{profileName.toLowerCase()}</span>
                 <ChevronDown size={10} aria-hidden="true" />

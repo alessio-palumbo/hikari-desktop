@@ -141,6 +141,24 @@
   color: var(--fg-1);
 }
 
+.floor-profile-label-input {
+  width: 128px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid oklch(1 0 0 / 0.085);
+  border-radius: 4px;
+  outline: 0;
+  background: oklch(1 0 0 / 0.025);
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12px;
+}
+
+.floor-profile-label-input:focus {
+  border-color: oklch(0.88 0.08 235 / 0.45);
+  color: var(--fg-0);
+}
+
 .floor-title-select {
   display: flex;
   gap: 8px;

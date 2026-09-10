@@ -382,6 +382,11 @@ export function App() {
     setFloorPlanProfiles((current) => observeFloorPlanProfile(current, profileId, currentFloorPlanObservation));
   };
 
+  const renameActiveFloorPlanProfile = (name: string) => {
+    if (!floorPlanProfileId) return;
+    setFloorPlanProfiles((current) => renameFloorPlanProfile(current, floorPlanProfileId, name));
+  };
+
   const createNewFloorPlanProfile = () => {
     const profileId = newFloorPlanProfileId();
     const name = selectedLocationCollection?.name ?? 'Floor plan';
@@ -973,6 +978,7 @@ export function App() {
           editing={floorEditing}
           onViewChange={setCenterView}
           onProfileChange={selectFloorPlanProfile}
+          onRenameProfile={renameActiveFloorPlanProfile}
           onEditingChange={setFloorEditing}
           onAddRoom={addFloorRoom}
           onAddFloor={addFloor}

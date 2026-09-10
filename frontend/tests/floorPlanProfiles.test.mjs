@@ -12,6 +12,7 @@ import {
   normalizeFloorPlanProfilePreferences,
   observeFloorPlanProfile,
   parseFloorPlanProfilePreferences,
+  renameFloorPlanProfile,
   resolveFloorPlanProfile,
   resolveFloorPlanStartupPreferences,
   saveFloorPlanProfilePreferences,
@@ -142,6 +143,19 @@ test('observing unchanged evidence preserves preference identity', () => {
     deviceSerials: ['known'],
     locationIds: ['home-location'],
   }), current);
+});
+
+test('renames a floor plan profile without changing its identity evidence', () => {
+  const home = createFloorPlanProfile('home', 'Home', layout(), {
+    deviceSerials: ['known'],
+    locationIds: ['home-location'],
+  });
+
+  const got = renameFloorPlanProfile(preferences(home), 'home', '  Office  ');
+
+  assert.equal(got.profiles.home.name, 'Office');
+  assert.deepEqual(got.profiles.home.knownDeviceSerials, ['known']);
+  assert.deepEqual(got.profiles.home.locationHints, ['home-location']);
 });
 
 test('normalizes persisted profiles defensively', () => {
