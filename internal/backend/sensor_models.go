@@ -11,6 +11,7 @@ type SensorNode struct {
 	PresenceKnown bool               `json:"presenceKnown"`
 	Present       bool               `json:"present"`
 	TargetCount   *SensorTargetCount `json:"targetCount,omitempty"`
+	RSSIDBm       *int               `json:"rssiDbm,omitempty"`
 }
 
 type SensorTargetCount struct {

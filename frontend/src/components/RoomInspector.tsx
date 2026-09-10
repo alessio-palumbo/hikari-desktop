@@ -4,7 +4,7 @@ import type { SensorNode } from '../backend/api';
 import { defaultFloorPlanPresenceConfig, type FloorPlanPresenceConfig } from '../domain/floorPlan';
 import type { Device, HslColor } from '../domain/lifx';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl } from '../domain/paint';
-import { presenceReading } from '../domain/sensors';
+import { presenceReading, sensorSignalReading } from '../domain/sensors';
 import { ColorWheel, Slider } from './primitives';
 import { ModeToggle, WhiteScale } from './Inspector';
 import './Inspector.css';
@@ -182,7 +182,7 @@ function SensorsSection(props: {
                   <Trash2 size={12} aria-hidden="true" />
                 </button>
               </div>
-              {infoSensorId === sensorId ? <SensorInfo sensorId={sensorId} /> : null}
+              {infoSensorId === sensorId ? <SensorInfo sensorId={sensorId} sensor={sensor} /> : null}
               {sensor ? <SensorReadings sensor={sensor} /> : null}
             </div>
           );
@@ -236,7 +236,7 @@ function SensorReadings({ sensor }: { sensor: SensorNode }) {
   );
 }
 
-function SensorInfo({ sensorId }: { sensorId: string }) {
+function SensorInfo({ sensorId, sensor }: { sensorId: string; sensor?: SensorNode }) {
   return (
     <dl className="sensor-info">
       <div>
@@ -246,6 +246,10 @@ function SensorInfo({ sensorId }: { sensorId: string }) {
       <div>
         <dt>protocol</dt>
         <dd>Sensaa</dd>
+      </div>
+      <div>
+        <dt>signal</dt>
+        <dd>{sensor ? sensorSignalReading(sensor) : 'unknown'}</dd>
       </div>
     </dl>
   );

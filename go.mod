@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/alessio-palumbo/lifxprotocol-go v0.4.0
-	github.com/alessio-palumbo/sensaa v0.1.0
+	github.com/alessio-palumbo/sensaa v0.2.0
 	github.com/wailsapp/wails/v2 v2.12.0
 )
 

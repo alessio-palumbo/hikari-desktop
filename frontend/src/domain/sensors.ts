@@ -10,3 +10,9 @@ export function presenceReading(sensor: SensorNode): string {
   const saturated = typeof sensor.targetCount.max === 'number' && sensor.targetCount.max > 0 && count >= sensor.targetCount.max;
   return `occupied (${count}${saturated ? '+' : ''})`;
 }
+
+export function sensorSignalReading(sensor: SensorNode): string {
+  return sensor.online && typeof sensor.rssiDbm === 'number'
+    ? `${Math.round(sensor.rssiDbm)} dBm`
+    : 'unknown';
+}

@@ -7,7 +7,6 @@ import (
 	"log"
 	"math"
 	"net"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -1207,7 +1206,7 @@ func samplePaletteColors(colors []HSLColor, limit int) []HSLColor {
 }
 
 func logMatrixEffectPalette(device Device, visibleColors []HSLColor, palette []HSLColor, brightness float64) {
-	if !lifxDebugEnabled() {
+	if !hikariDebugEnabled() {
 		return
 	}
 	hues := make([]string, len(palette))
@@ -1789,7 +1788,7 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 }
 
 func logMatrixSnapshot(device Device) {
-	if !lifxDebugEnabled() {
+	if !hikariDebugEnabled() {
 		return
 	}
 	visible := visibleMatrixPixels(device.Chain)
@@ -2319,7 +2318,7 @@ func brightnessOnlyMessage(device Device) *protocol.Message {
 }
 
 func logLifxRequest(serial lifxdevice.Serial, device Device, direct bool, intent DeviceCommandIntent, current *Device) {
-	if !lifxDebugEnabled() {
+	if !hikariDebugEnabled() {
 		return
 	}
 	currentPower := "unknown"
@@ -2340,19 +2339,17 @@ func logLifxRequest(serial lifxdevice.Serial, device Device, direct bool, intent
 }
 
 func logLifxSend(serial lifxdevice.Serial, device Device, action string, msg *protocol.Message) {
-	if !lifxDebugEnabled() {
+	if !hikariDebugEnabled() {
 		return
 	}
 	payload := "<nil>"
 	if msg != nil && msg.Payload != nil {
 		payload = fmt.Sprintf("%T", msg.Payload)
 	}
-	log.Printf("hikari: lifx send serial=%s kind=%s action=%s payload=%s", serial.String(), device.Kind, action, payload)
-}
-
-func lifxDebugEnabled() bool {
-	level := strings.ToLower(os.Getenv("HIKARI_LOG_LEVEL"))
-	return level == "debug" || level == "trace"
+	log.Printf(
+		"hikari: lifx send at=%s serial=%s kind=%s action=%s payload=%s",
+		time.Now().Format(time.RFC3339Nano), serial.String(), device.Kind, action, payload,
+	)
 }
 
 func deviceKelvinMin(capability DeviceCapability) int {

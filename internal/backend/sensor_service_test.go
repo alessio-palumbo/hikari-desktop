@@ -58,14 +58,20 @@ func TestSensorServiceTracksPresenceAndRetainsOfflineNode(t *testing.T) {
 	}
 	defer service.Close(context.Background())
 
-	client.updates <- sensaa.Update{Sequence: 1, Presence: true, Targets: []sensaa.Target{{}, {}}}
+	rssi := -58
+	client.updates <- sensaa.Update{
+		Sequence: 1, Presence: true, Targets: []sensaa.Target{{}, {}},
+		Network: &sensaa.NetworkTelemetry{Transport: sensaa.NetworkTransportWiFi, RSSIDBm: &rssi},
+	}
 	waitForSensor(t, service, func(node SensorNode) bool {
-		return node.Online && node.PresenceKnown && node.Present && node.TargetCount != nil && node.TargetCount.Known && node.TargetCount.Value == 2 && node.TargetCount.Max == 3
+		return node.Online && node.PresenceKnown && node.Present && node.TargetCount != nil && node.TargetCount.Known &&
+			node.TargetCount.Value == 2 && node.TargetCount.Max == 3 && node.RSSIDBm != nil && *node.RSSIDBm == -58
 	})
 
 	client.errors <- errors.New("connection lost")
 	waitForSensor(t, service, func(node SensorNode) bool {
-		return !node.Online && !node.PresenceKnown && node.TargetCount != nil && !node.TargetCount.Known && node.ID == "sensaa-aabbccddeeff"
+		return !node.Online && !node.PresenceKnown && node.TargetCount != nil && !node.TargetCount.Known &&
+			node.RSSIDBm == nil && node.ID == "sensaa-aabbccddeeff"
 	})
 }
 
@@ -152,6 +158,78 @@ func TestSensorServiceEmitsRevisionedSnapshotsOnlyForPublicChanges(t *testing.T)
 
 	if clear.Revision != present.Revision+1 {
 		t.Fatalf("clear revision = %d, want %d; duplicate update changed public state", clear.Revision, present.Revision+1)
+	}
+}
+
+func TestSensorServicePreservesLatestStreamPositionWithoutEmittingDuplicateState(t *testing.T) {
+	client := newTestSensorClient()
+	service := newSensorService(func(context.Context) ([]sensorEndpoint, error) {
+		return []sensorEndpoint{{
+			id: "sensor", name: "Sensor", capabilities: []string{"presence"},
+			connect: func(context.Context) (sensorClient, error) { return client, nil },
+		}}, nil
+	}, time.Hour, time.Second)
+	events := make(chan SensorSnapshot, 8)
+	service.SetSnapshotObserver(func(snapshot SensorSnapshot) { events <- snapshot })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := service.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close(context.Background())
+
+	client.updates <- sensaa.Update{Sequence: 41, Uptime: 4 * time.Second, Presence: true}
+	waitForSensorEvent(t, events, func(snapshot SensorSnapshot) bool {
+		return len(snapshot.Nodes) == 1 && snapshot.Nodes[0].Present
+	})
+	client.updates <- sensaa.Update{Sequence: 42, Uptime: 4100 * time.Millisecond, Presence: true}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		service.mu.RLock()
+		stream := service.nodes["sensor"].stream
+		service.mu.RUnlock()
+		if stream.hasUpdate && stream.sequence == 42 && stream.uptime == 4100*time.Millisecond {
+			select {
+			case duplicate := <-events:
+				t.Fatalf("duplicate public state emitted snapshot %#v", duplicate)
+			default:
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("latest Sensaa sequence and uptime were not retained")
+}
+
+func TestObserveSensorUpdateReportsGapsAndPeriodicTiming(t *testing.T) {
+	startedAt := time.Unix(100, 0)
+	state, first := observeSensorUpdate(sensorStreamState{}, sensaa.Update{Sequence: 10, Uptime: time.Second}, startedAt)
+	if first.sequenceGap != 0 || first.summary != nil {
+		t.Fatalf("first observation = %#v", first)
+	}
+
+	state, gap := observeSensorUpdate(state, sensaa.Update{Sequence: 12, Uptime: 1100 * time.Millisecond}, startedAt.Add(130*time.Millisecond))
+	if gap.sequenceGap != 1 || gap.jitter != 30*time.Millisecond {
+		t.Fatalf("gap observation = %#v", gap)
+	}
+
+	_, summary := observeSensorUpdate(state, sensaa.Update{Sequence: 13, Uptime: 11 * time.Second}, startedAt.Add(10130*time.Millisecond))
+	if summary.summary == nil || summary.summary.samples != 2 || summary.summary.maximumJitter != 100*time.Millisecond {
+		t.Fatalf("timing summary = %#v", summary.summary)
+	}
+}
+
+func TestObserveSensorUpdateResetsTimingWindowAfterSensorRestart(t *testing.T) {
+	startedAt := time.Unix(100, 0)
+	state, _ := observeSensorUpdate(sensorStreamState{}, sensaa.Update{Sequence: 50, Uptime: 20 * time.Second}, startedAt)
+	state, observation := observeSensorUpdate(state, sensaa.Update{Sequence: 1, Uptime: 100 * time.Millisecond}, startedAt.Add(time.Second))
+
+	if !observation.streamReset {
+		t.Fatalf("observation = %#v, want stream reset", observation)
+	}
+	if state.summarySamples != 0 || state.summaryStartedAt != startedAt.Add(time.Second) {
+		t.Fatalf("state = %#v, want fresh summary window", state)
 	}
 }
 

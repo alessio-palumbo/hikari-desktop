@@ -8,8 +8,8 @@ github.com/alessio-palumbo/lifxprotocol-go v0.4.0 h1:oTweXfIyw5oC7OXdDezuY3lx1uh
 github.com/alessio-palumbo/lifxprotocol-go v0.4.0/go.mod h1:Wvmw7KNc2ieF6CPM8Of0EdWW0e/w5nlTwK7sLwMDbJ0=
 github.com/alessio-palumbo/lifxregistry-go v0.4.0 h1:Yu7KbNbwEu6RUJQ1Z99+s9RNjxZysdTggEJHWgqGgj4=
 github.com/alessio-palumbo/lifxregistry-go v0.4.0/go.mod h1:42P1qmWK+kzuqJp9cvWjFUgcru+10bZ+w4MSRAQGCZo=
-github.com/alessio-palumbo/sensaa v0.1.0 h1:SBF9yxzkGNa9Q4bkw9KnTXtOdYBT7IX2X9h45tUgqXE=
-github.com/alessio-palumbo/sensaa v0.1.0/go.mod h1:hOryAiysrI6bYKPLVXB4CFutnQlLAVCYdNAsLFDEfXo=
+github.com/alessio-palumbo/sensaa v0.2.0 h1:lZ4DkAiYfRfzgPpQZYKndN8qMJ+T0WEJlZfIucF1Df4=
+github.com/alessio-palumbo/sensaa v0.2.0/go.mod h1:hOryAiysrI6bYKPLVXB4CFutnQlLAVCYdNAsLFDEfXo=
 github.com/bep/debounce v1.2.1 h1:v67fRdBA9UQu2NhLFXrSg0Brw7CexQekrBwDMM8bzeY=
 github.com/bep/debounce v1.2.1/go.mod h1:H8yggRPQKLUhUoqrJC1bO2xNya7vanpDl7xR3ISbCJ0=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=

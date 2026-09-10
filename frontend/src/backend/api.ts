@@ -37,6 +37,7 @@ export interface SensorNode {
   presenceKnown: boolean;
   present: boolean;
   targetCount?: SensorTargetCount;
+  rssiDbm?: number;
 }
 
 export interface SensorTargetCount {
@@ -409,6 +410,7 @@ function normalizeSensorSnapshot(snapshot: SensorSnapshot | null | undefined): S
       online: Boolean(node.online),
       presenceKnown: Boolean(node.presenceKnown),
       present: Boolean(node.present),
+      ...(typeof node.rssiDbm === 'number' && Number.isFinite(node.rssiDbm) ? { rssiDbm: Math.round(node.rssiDbm) } : {}),
       ...(node.targetCount ? {
         targetCount: {
           known: Boolean(node.targetCount.known),
