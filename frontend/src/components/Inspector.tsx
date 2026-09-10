@@ -35,6 +35,8 @@ type PaintTool = 'brush' | 'fill' | 'gradient' | 'picker';
 
 interface InspectorProps {
   device?: Device;
+  locationName?: string;
+  groupName?: string;
   editing: boolean;
   dirty: boolean;
   canUndo: boolean;
@@ -189,7 +191,7 @@ export function Inspector(props: InspectorProps) {
         </button>
       </div>
 
-      {showInfo ? <DeviceInfo device={device} /> : null}
+      {showInfo ? <DeviceInfo device={device} locationName={props.locationName} groupName={props.groupName} /> : null}
 
       {!isLight ? <SwitchDetails device={device} onChange={props.onChange} /> : null}
 
@@ -529,21 +531,23 @@ function SwitchDetails({ device, onChange }: { device: Device; onChange: (device
   );
 }
 
-function DeviceInfo({ device }: { device: Device }) {
+function DeviceInfo({ device, locationName, groupName }: { device: Device; locationName?: string; groupName?: string }) {
   const rows = [
-    ['type', deviceKindLabel(device)],
-    ...deviceShapeRows(device),
-    ['ip', device.ipAddress || 'unknown'],
-    ['product id', device.productId ? String(device.productId) : 'unknown'],
-    ['firmware', device.firmware || 'unknown'],
-    ['rssi', formatRSSI(device)],
+    { label: 'type', value: deviceKindLabel(device) },
+    { label: 'product id', value: device.productId ? String(device.productId) : 'unknown' },
+    { label: 'firmware', value: device.firmware || 'unknown' },
+    ...deviceShapeRows(device).map(([label, value]) => ({ label, value })),
+    { label: 'location', value: locationName || 'unknown' },
+    { label: 'group', value: groupName || 'unknown' },
+    { label: 'ip', value: device.ipAddress || 'unknown', sectionStart: true },
+    { label: 'rssi', value: formatRSSI(device) },
   ];
   return (
     <dl className="device-info">
-      {rows.map(([label, value]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
+      {rows.map((row) => (
+        <div key={row.label} className={row.sectionStart ? 'device-info-section-start' : undefined}>
+          <dt>{row.label}</dt>
+          <dd>{row.value}</dd>
         </div>
       ))}
     </dl>

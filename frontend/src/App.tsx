@@ -502,6 +502,12 @@ export function App() {
     ? devicesAssignedToRoom(floorPlanDevices, inspectorFloor, inspectorRoom.id).filter(isLightDevice)
     : [];
   const inspectorDevice = draft?.draft ?? selectedDevice;
+  const inspectorDeviceGroup = inspectorDevice
+    ? snapshot.groups.find((group) => group.id === inspectorDevice.groupId)
+    : undefined;
+  const inspectorDeviceLocation = inspectorDeviceGroup
+    ? snapshot.locations.find((location) => location.id === inspectorDeviceGroup.locationId)
+    : undefined;
 
   const replaceDevice = (next: Device) => {
     snapshotRef.current = { ...snapshotRef.current, devices: snapshotRef.current.devices.map((device) => (device.serial === next.serial ? next : device)) };
@@ -1047,6 +1053,8 @@ export function App() {
       {inspectorDevice ? (
         <Inspector
           device={inspectorDevice}
+          locationName={inspectorDeviceLocation?.name}
+          groupName={inspectorDeviceGroup?.name}
           editing={!!draft}
           dirty={draft?.dirty ?? false}
           canUndo={(draft?.history.length ?? 0) > 0}
