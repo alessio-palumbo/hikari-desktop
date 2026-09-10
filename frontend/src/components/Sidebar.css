@@ -128,11 +128,8 @@
   align-items: center;
   gap: 4px;
   height: 28px;
-  border: 0;
   background: transparent;
   color: var(--fg-1);
-  text-align: left;
-  cursor: pointer;
   font-size: 13px;
   padding: 0 8px;
 }
@@ -142,8 +139,23 @@
   background: oklch(1 0 0 / 0.025);
 }
 
-.group-item span {
+.group-navigation {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
   flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.group-navigation span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

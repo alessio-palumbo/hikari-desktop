@@ -113,15 +113,16 @@ export function Sidebar(props: SidebarProps) {
           const groupDevices = props.devices.filter((device) => device.groupId === group.id);
           const on = groupDevices.some((device) => device.on);
           return (
-            <button
+            <div
               key={group.id}
               className="group-item"
               data-active={group.id === props.selectedGroupId}
-              onClick={() => props.onGroupChange(group.id)}
             >
               <PowerDot on={on} size={5} onChange={(next) => props.onGroupPower(group.id, next)} />
-              <span>{group.name.toLowerCase()}</span>
-            </button>
+              <button className="group-navigation" type="button" onClick={() => props.onGroupChange(group.id)}>
+                <span>{group.name.toLowerCase()}</span>
+              </button>
+            </div>
           );
         })}
       </nav>

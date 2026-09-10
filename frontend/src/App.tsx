@@ -933,6 +933,7 @@ export function App() {
         }}
         onGroupChange={(id) => {
           setGroupId(id);
+          setCenterView('list');
           setSelectedSerial(undefined);
           setSelectedGroupInspectorId(undefined);
           setSelectedRoomInspector(undefined);
