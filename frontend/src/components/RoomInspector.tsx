@@ -5,7 +5,7 @@ import { defaultFloorPlanPresenceConfig, type FloorPlanPresenceConfig } from '..
 import type { Device, HslColor } from '../domain/lifx';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl } from '../domain/paint';
 import { presenceReading, sensorSignalReading } from '../domain/sensors';
-import { ColorWheel, Slider } from './primitives';
+import { ColorWheel, PowerSlider } from './primitives';
 import { ModeToggle, WhiteScale } from './Inspector';
 import './Inspector.css';
 
@@ -18,10 +18,11 @@ interface RoomInspectorProps {
   presence?: FloorPlanPresenceConfig;
   onClose: () => void;
   onDeviceChange: (device: Device) => void;
+  onPowerChange: (on: boolean) => void;
   onPresenceChange: (presence: FloorPlanPresenceConfig) => void;
 }
 
-export function RoomInspector({ roomName, devices, sensors, presence, onClose, onDeviceChange, onPresenceChange }: RoomInspectorProps) {
+export function RoomInspector({ roomName, devices, sensors, presence, onClose, onDeviceChange, onPowerChange, onPresenceChange }: RoomInspectorProps) {
   const onlineDevices = devices.filter((device) => device.online);
   const colorDevices = onlineDevices.filter((device) => device.capability?.hasColor ?? true);
   const hasColor = colorDevices.length > 0;
@@ -107,7 +108,16 @@ export function RoomInspector({ roomName, devices, sensors, presence, onClose, o
         <WhiteScale value={whiteValue} kelvinMin={kelvinRange.min} kelvinMax={kelvinRange.max} onChange={setRoomKelvin} />
       )}
 
-      <Slider label="brightness" disabled={!onlineDevices.length} value={avgBrightness} valueLabel={allOff ? 'off' : undefined} onChange={setRoomBrightness} />
+      <PowerSlider
+        powerOn={onlineDevices.some((device) => device.on)}
+        powerDisabled={!onlineDevices.length}
+        onPowerChange={onPowerChange}
+        label="brightness"
+        disabled={!onlineDevices.length}
+        value={avgBrightness}
+        valueLabel={allOff ? 'off' : undefined}
+        onChange={setRoomBrightness}
+      />
     </aside>
   );
 }

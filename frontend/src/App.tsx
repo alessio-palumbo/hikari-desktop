@@ -1055,14 +1055,19 @@ export function App() {
           device={inspectorDevice}
           locationName={inspectorDeviceLocation?.name}
           groupName={inspectorDeviceGroup?.name}
+          powerOn={selectedDevice?.on}
           editing={!!draft}
           dirty={draft?.dirty ?? false}
           canUndo={(draft?.history.length ?? 0) > 0}
           saving={saving}
+          loading={deviceStatus[inspectorDevice.serial]?.loading}
           error={deviceStatus[inspectorDevice.serial]?.error}
           effectStatus={deviceEffectStatus[inspectorDevice.serial]}
           onClose={() => setSelectedSerial(undefined)}
           onChange={updateInspectorDevice}
+          onPowerChange={(on) => {
+            if (selectedDevice) void updateListDevice({ ...selectedDevice, on }, 'power');
+          }}
           onStartEffect={(effect, speedMs) => void startInspectorEffect(inspectorDevice, effect, speedMs)}
           onStopEffect={() => void stopInspectorEffect(inspectorDevice)}
           onEnterEditMode={enterEditMode}
@@ -1086,6 +1091,9 @@ export function App() {
           presence={inspectorRoom.presence}
           onClose={() => setSelectedRoomInspector(undefined)}
           onDeviceChange={updateListDevice}
+          onPowerChange={(on) => {
+            if (selectedRoomInspector) setRoomPower(selectedRoomInspector.floorId, selectedRoomInspector.roomId, on);
+          }}
           onPresenceChange={(presence) => {
             if (!selectedRoomInspector) return;
             setRoomPresence(selectedRoomInspector.floorId, selectedRoomInspector.roomId, presence);

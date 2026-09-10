@@ -10,9 +10,10 @@ interface SliderProps {
   label?: string;
   valueLabel?: string;
   disabled?: boolean;
+  ariaLabel?: string;
 }
 
-export function Slider({ value, onChange, label, valueLabel, disabled = false }: SliderProps) {
+export function Slider({ value, onChange, label, valueLabel, disabled = false, ariaLabel }: SliderProps) {
   const percent = Math.round(value * 100);
   return (
     <label className="slider">
@@ -23,7 +24,7 @@ export function Slider({ value, onChange, label, valueLabel, disabled = false }:
         </span>
       ) : null}
       <input
-        aria-label={label ?? 'Brightness'}
+        aria-label={ariaLabel ?? label ?? 'Brightness'}
         type="range"
         min={0}
         max={100}
@@ -47,6 +48,28 @@ export function PowerDot({ on, onChange, size = 9, disabled = false }: PowerDotP
     <button className="power-dot-button" aria-label={on ? 'Turn off' : 'Turn on'} disabled={disabled} onClick={() => onChange(!on)}>
       <span className="power-dot" data-on={on ? 'true' : 'false'} style={{ width: size, height: size }} />
     </button>
+  );
+}
+
+interface PowerSliderProps extends SliderProps {
+  powerOn: boolean;
+  onPowerChange: (on: boolean) => void;
+  powerDisabled?: boolean;
+}
+
+export function PowerSlider({ powerOn, onPowerChange, powerDisabled = false, label, valueLabel, ...sliderProps }: PowerSliderProps) {
+  const percent = Math.round(sliderProps.value * 100);
+  return (
+    <div className="power-slider">
+      <span className="slider-label">
+        <span>{label ?? 'brightness'}</span>
+        <span className="mono">{valueLabel ?? `${percent}%`}</span>
+      </span>
+      <div className="power-slider-controls">
+        <PowerDot on={powerOn} disabled={powerDisabled} onChange={onPowerChange} />
+        <Slider {...sliderProps} ariaLabel={sliderProps.ariaLabel ?? label ?? 'Brightness'} />
+      </div>
+    </div>
   );
 }
 

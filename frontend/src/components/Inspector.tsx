@@ -26,7 +26,7 @@ import {
   type GradientDirection,
   type GradientStops,
 } from '../domain/paint';
-import { ColorWheel, Slider } from './primitives';
+import { ColorWheel, PowerSlider, Slider } from './primitives';
 import './Inspector.css';
 
 type PaintMode = 'color' | 'white';
@@ -37,14 +37,17 @@ interface InspectorProps {
   device?: Device;
   locationName?: string;
   groupName?: string;
+  powerOn?: boolean;
   editing: boolean;
   dirty: boolean;
   canUndo: boolean;
   saving: boolean;
+  loading?: boolean;
   error?: string;
   effectStatus?: DeviceEffectStatus & { loading?: boolean };
   onClose: () => void;
   onChange: (device: Device) => void;
+  onPowerChange: (on: boolean) => void;
   onStartEffect: (effect: DeviceEffect, speedMs: number) => void;
   onStopEffect: () => void;
   onEnterEditMode: () => void;
@@ -209,7 +212,17 @@ export function Inspector(props: InspectorProps) {
         <WhiteScale value={whiteValue} kelvinMin={kelvinMin} kelvinMax={kelvinMax} onChange={setKelvin} onCommit={commitKelvin} />
       ) : null}
 
-      {isLight && mode !== 'effects' ? <Slider label={props.editing ? 'paint brightness' : 'brightness'} value={brightnessValue} valueLabel={!props.editing && !device.on ? 'off' : undefined} onChange={setBrightness} /> : null}
+      {isLight && mode !== 'effects' ? (
+        <PowerSlider
+          powerOn={props.powerOn ?? device.on}
+          powerDisabled={!device.online || props.loading || props.saving}
+          onPowerChange={props.onPowerChange}
+          label={props.editing ? 'paint brightness' : 'brightness'}
+          value={brightnessValue}
+          valueLabel={!props.editing && !(props.powerOn ?? device.on) ? 'off' : undefined}
+          onChange={setBrightness}
+        />
+      ) : null}
       {props.error && mode !== 'effects' ? <div className="inspector-error">{props.error}</div> : null}
 
       {mode === 'effects' && hasEffects ? (
