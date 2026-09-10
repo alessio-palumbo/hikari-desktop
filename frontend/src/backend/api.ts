@@ -46,8 +46,11 @@ export interface SensorTargetCount {
 }
 
 export interface SensorSnapshot {
+  revision?: number;
   nodes: SensorNode[];
 }
+
+const SENSOR_SNAPSHOT_EVENT = 'hikari:sensors:snapshot';
 
 export interface NetworkInterfaceOption {
   name: string;
@@ -179,6 +182,9 @@ declare global {
         App?: WailsApp;
       };
     };
+    runtime?: {
+      EventsOnMultiple?: (eventName: string, callback: (...data: unknown[]) => void, maxCallbacks: number) => () => void;
+    };
   }
 }
 
@@ -192,6 +198,14 @@ export async function getSensorSnapshot(): Promise<SensorSnapshot> {
   const app = window.go?.main?.App;
   if (app?.GetSensorSnapshot) return normalizeSensorSnapshot(await app.GetSensorSnapshot());
   return { nodes: [] };
+}
+
+export function subscribeToSensorSnapshots(listener: (snapshot: SensorSnapshot) => void): (() => void) | undefined {
+  const eventsOnMultiple = window.runtime?.EventsOnMultiple;
+  if (!eventsOnMultiple) return undefined;
+  return eventsOnMultiple(SENSOR_SNAPSHOT_EVENT, (snapshot) => {
+    listener(normalizeSensorSnapshot(snapshot as SensorSnapshot | null | undefined));
+  }, -1);
 }
 
 export async function getFloorPlanPreferences(): Promise<FloorPlanPreferencesDocument> {
@@ -385,6 +399,9 @@ function normalizeSnapshot(snapshot: DeviceSnapshot | null | undefined): DeviceS
 
 function normalizeSensorSnapshot(snapshot: SensorSnapshot | null | undefined): SensorSnapshot {
   return {
+    revision: typeof snapshot?.revision === 'number' && Number.isFinite(snapshot.revision)
+      ? Math.max(0, Math.round(snapshot.revision))
+      : 0,
     nodes: Array.isArray(snapshot?.nodes) ? snapshot.nodes.map((node) => ({
       id: node.id ?? '',
       name: node.name || node.id || 'Sensaa sensor',

@@ -7,7 +7,11 @@ import (
 	"strings"
 
 	"hikari-desktop/internal/backend"
+
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+const sensorSnapshotEvent = "hikari:sensors:snapshot"
 
 type App struct {
 	ctx           context.Context
@@ -15,12 +19,17 @@ type App struct {
 	sensors       sensorProvider
 	commandEngine *backend.CommandEngineService
 	floorPlans    backend.FloorPlanStore
+	emitEvent     func(context.Context, string, ...interface{})
 }
 
 type sensorProvider interface {
 	Start(context.Context) error
 	Close(context.Context) error
 	Snapshot(context.Context) (backend.SensorSnapshot, error)
+}
+
+type sensorSnapshotObserver interface {
+	SetSnapshotObserver(func(backend.SensorSnapshot))
 }
 
 func NewApp() *App {
@@ -48,6 +57,7 @@ func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvide
 		sensors:       sensors,
 		commandEngine: backend.NewCommandEngineService(),
 		floorPlans:    backend.NewFloorPlanStore(),
+		emitEvent:     wailsruntime.EventsEmit,
 	}
 }
 
@@ -57,6 +67,11 @@ func (a *App) startup(ctx context.Context) {
 		log.Printf("hikari: transport startup failed: %v", err)
 	}
 	if a.sensors != nil {
+		if observable, ok := a.sensors.(sensorSnapshotObserver); ok {
+			observable.SetSnapshotObserver(func(snapshot backend.SensorSnapshot) {
+				a.emitEvent(a.context(), sensorSnapshotEvent, snapshot)
+			})
+		}
 		if err := a.sensors.Start(ctx); err != nil {
 			log.Printf("hikari: sensor discovery startup failed: %v", err)
 		}
@@ -68,6 +83,9 @@ func (a *App) shutdown(ctx context.Context) {
 		log.Printf("hikari: transport shutdown failed: %v", err)
 	}
 	if a.sensors != nil {
+		if observable, ok := a.sensors.(sensorSnapshotObserver); ok {
+			observable.SetSnapshotObserver(nil)
+		}
 		if err := a.sensors.Close(ctx); err != nil {
 			log.Printf("hikari: sensor discovery shutdown failed: %v", err)
 		}

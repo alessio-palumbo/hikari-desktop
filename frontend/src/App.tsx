@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getCommandEngineSettings, getDeviceSnapshot, getFloorPlanPreferences, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, saveFloorPlanPreferences, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorNode, type SensorSnapshot } from './backend/api';
+import { getCommandEngineSettings, getDeviceSnapshot, getFloorPlanPreferences, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, saveFloorPlanPreferences, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, subscribeToSensorSnapshots, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorNode, type SensorSnapshot } from './backend/api';
 import type { CenterView } from './components/CenterViewToggle';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
@@ -30,7 +30,8 @@ const LOCATION_KEY = 'hikari:selectedLocation';
 const GROUP_KEY = 'hikari:selectedGroup';
 const COMMAND_AUTO_EXECUTE_KEY = 'hikari:commandAutoExecute';
 const CENTER_VIEW_KEY = 'hikari:centerView';
-const SENSOR_REFRESH_INTERVAL_MS = 1000;
+const SENSOR_RECONCILIATION_INTERVAL_MS = 30000;
+const SENSOR_POLL_FALLBACK_INTERVAL_MS = 1000;
 const FLOOR_PLAN_SAVE_DELAY_MS = 200;
 
 type DeviceStatus = Record<string, { loading?: boolean; error?: string }>;
@@ -161,18 +162,27 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    const applySensorSnapshot = (next: SensorSnapshot) => {
+      if (cancelled) return;
+      setSensorSnapshot((current) => {
+        const currentRevision = current.revision ?? 0;
+        const nextRevision = next.revision ?? 0;
+        return nextRevision < currentRevision ? current : next;
+      });
+      setOccupancyNow(Date.now());
+    };
     const refreshSensors = () => void getSensorSnapshot()
-      .then((next) => {
-        if (!cancelled) {
-          setSensorSnapshot(next);
-          setOccupancyNow(Date.now());
-        }
-      })
+      .then(applySensorSnapshot)
       .catch(() => undefined);
+    const unsubscribe = subscribeToSensorSnapshots(applySensorSnapshot);
     refreshSensors();
-    const timer = window.setInterval(refreshSensors, SENSOR_REFRESH_INTERVAL_MS);
+    const timer = window.setInterval(
+      refreshSensors,
+      unsubscribe ? SENSOR_RECONCILIATION_INTERVAL_MS : SENSOR_POLL_FALLBACK_INTERVAL_MS,
+    );
     return () => {
       cancelled = true;
+      unsubscribe?.();
       window.clearInterval(timer);
     };
   }, []);

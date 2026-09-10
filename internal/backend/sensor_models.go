@@ -20,5 +20,6 @@ type SensorTargetCount struct {
 }
 
 type SensorSnapshot struct {
-	Nodes []SensorNode `json:"nodes"`
+	Revision uint64       `json:"revision"`
+	Nodes    []SensorNode `json:"nodes"`
 }

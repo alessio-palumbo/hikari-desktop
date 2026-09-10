@@ -120,6 +120,14 @@ func TestAppUsesSensorProvider(t *testing.T) {
 	transport := &recordingTransport{}
 	sensors := &recordingSensorProvider{snapshot: backend.SensorSnapshot{Nodes: []backend.SensorNode{{ID: "sensaa-1", Name: "Bedroom"}}}}
 	app := newAppWithServices(transport, sensors)
+	var eventName string
+	var eventSnapshot backend.SensorSnapshot
+	app.emitEvent = func(_ context.Context, name string, data ...interface{}) {
+		eventName = name
+		if len(data) == 1 {
+			eventSnapshot, _ = data[0].(backend.SensorSnapshot)
+		}
+	}
 	app.startup(context.Background())
 
 	if !sensors.startCalled {
@@ -132,9 +140,19 @@ func TestAppUsesSensorProvider(t *testing.T) {
 	if len(snapshot.Nodes) != 1 || snapshot.Nodes[0].ID != "sensaa-1" {
 		t.Fatalf("GetSensorSnapshot returned %#v", snapshot)
 	}
+	if sensors.observer == nil {
+		t.Fatal("expected sensor snapshot observer to be registered")
+	}
+	sensors.observer(snapshot)
+	if eventName != sensorSnapshotEvent || len(eventSnapshot.Nodes) != 1 || eventSnapshot.Nodes[0].ID != "sensaa-1" {
+		t.Fatalf("sensor event = %q %#v", eventName, eventSnapshot)
+	}
 	app.shutdown(context.Background())
 	if !sensors.closeCalled {
 		t.Fatal("expected sensor provider Close to be called")
+	}
+	if sensors.observer != nil {
+		t.Fatal("expected sensor snapshot observer to be cleared")
 	}
 }
 
@@ -212,6 +230,11 @@ type recordingSensorProvider struct {
 	snapshot    backend.SensorSnapshot
 	startCalled bool
 	closeCalled bool
+	observer    func(backend.SensorSnapshot)
+}
+
+func (s *recordingSensorProvider) SetSnapshotObserver(observer func(backend.SensorSnapshot)) {
+	s.observer = observer
 }
 
 type recordingFloorPlanStore struct {

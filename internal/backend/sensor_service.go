@@ -42,6 +42,8 @@ type sensorRuntime struct {
 type SensorService struct {
 	mu                sync.RWMutex
 	nodes             map[string]*sensorRuntime
+	revision          uint64
+	observer          func(SensorSnapshot)
 	discover          func(context.Context) ([]sensorEndpoint, error)
 	discoveryInterval time.Duration
 	streamTimeout     time.Duration
@@ -98,24 +100,42 @@ func (s *SensorService) Close(context.Context) error {
 
 func (s *SensorService) Snapshot(context.Context) (SensorSnapshot, error) {
 	s.mu.RLock()
+	snapshot := s.snapshotLocked()
+	s.mu.RUnlock()
+	return snapshot, nil
+}
+
+// SetSnapshotObserver registers the UI delivery boundary. SensorService stays
+// independent of Wails; App translates these snapshots into runtime events.
+func (s *SensorService) SetSnapshotObserver(observer func(SensorSnapshot)) {
+	s.mu.Lock()
+	s.observer = observer
+	s.mu.Unlock()
+}
+
+func (s *SensorService) snapshotLocked() SensorSnapshot {
 	nodes := make([]SensorNode, 0, len(s.nodes))
 	for _, runtime := range s.nodes {
-		node := runtime.node
-		node.Capabilities = append([]string(nil), node.Capabilities...)
-		if node.TargetCount != nil {
-			targetCount := *node.TargetCount
-			node.TargetCount = &targetCount
-		}
-		nodes = append(nodes, node)
+		nodes = append(nodes, cloneSensorNode(runtime.node))
 	}
-	s.mu.RUnlock()
 	sort.Slice(nodes, func(i, j int) bool {
 		if nodes[i].Name != nodes[j].Name {
 			return nodes[i].Name < nodes[j].Name
 		}
 		return nodes[i].ID < nodes[j].ID
 	})
-	return SensorSnapshot{Nodes: nodes}, nil
+	return SensorSnapshot{Revision: s.revision, Nodes: nodes}
+}
+
+func (s *SensorService) changedSnapshotLocked() (func(SensorSnapshot), SensorSnapshot) {
+	s.revision++
+	return s.observer, s.snapshotLocked()
+}
+
+func notifySensorObserver(observer func(SensorSnapshot), snapshot SensorSnapshot) {
+	if observer != nil {
+		observer(snapshot)
+	}
 }
 
 func (s *SensorService) discoveryLoop(ctx context.Context) {
@@ -144,10 +164,12 @@ func (s *SensorService) discoverOnce(ctx context.Context) {
 		}
 		s.mu.Lock()
 		runtime := s.nodes[endpoint.id]
+		newNode := runtime == nil
 		if runtime == nil {
 			runtime = &sensorRuntime{}
 			s.nodes[endpoint.id] = runtime
 		}
+		previous := cloneSensorNode(runtime.node)
 		runtime.endpoint = endpoint
 		runtime.node.ID = endpoint.id
 		runtime.node.Name = endpoint.name
@@ -164,7 +186,13 @@ func (s *SensorService) discoverOnce(ctx context.Context) {
 		if startConnection {
 			runtime.connecting = true
 		}
+		var observer func(SensorSnapshot)
+		var snapshot SensorSnapshot
+		if newNode || !sensorNodesEqual(previous, runtime.node) {
+			observer, snapshot = s.changedSnapshotLocked()
+		}
 		s.mu.Unlock()
+		notifySensorObserver(observer, snapshot)
 		if startConnection {
 			s.wg.Add(1)
 			go s.consume(ctx, endpoint)
@@ -182,11 +210,18 @@ func (s *SensorService) consume(ctx context.Context, endpoint sensorEndpoint) {
 	defer client.Close()
 
 	s.mu.Lock()
+	var observer func(SensorSnapshot)
+	var snapshot SensorSnapshot
 	if runtime := s.nodes[endpoint.id]; runtime != nil {
+		previous := cloneSensorNode(runtime.node)
 		runtime.connecting = false
 		runtime.node.Online = true
+		if !sensorNodesEqual(previous, runtime.node) {
+			observer, snapshot = s.changedSnapshotLocked()
+		}
 	}
 	s.mu.Unlock()
+	notifySensorObserver(observer, snapshot)
 
 	for {
 		readCtx, cancel := context.WithTimeout(ctx, s.streamTimeout)
@@ -200,7 +235,10 @@ func (s *SensorService) consume(ctx context.Context, endpoint sensorEndpoint) {
 			return
 		}
 		s.mu.Lock()
+		observer = nil
+		snapshot = SensorSnapshot{}
 		if runtime := s.nodes[endpoint.id]; runtime != nil {
+			previous := cloneSensorNode(runtime.node)
 			runtime.node.Online = true
 			runtime.node.PresenceKnown = true
 			runtime.node.Present = update.Presence
@@ -211,22 +249,54 @@ func (s *SensorService) consume(ctx context.Context, endpoint sensorEndpoint) {
 				runtime.node.TargetCount.Known = true
 				runtime.node.TargetCount.Value = update.TargetCount()
 			}
+			if !sensorNodesEqual(previous, runtime.node) {
+				observer, snapshot = s.changedSnapshotLocked()
+			}
 		}
 		s.mu.Unlock()
+		notifySensorObserver(observer, snapshot)
 	}
 }
 
 func (s *SensorService) markDisconnected(id string) {
 	s.mu.Lock()
+	var observer func(SensorSnapshot)
+	var snapshot SensorSnapshot
 	if runtime := s.nodes[id]; runtime != nil {
+		previous := cloneSensorNode(runtime.node)
 		runtime.connecting = false
 		runtime.node.Online = false
 		runtime.node.PresenceKnown = false
 		if runtime.node.TargetCount != nil {
 			runtime.node.TargetCount.Known = false
 		}
+		if !sensorNodesEqual(previous, runtime.node) {
+			observer, snapshot = s.changedSnapshotLocked()
+		}
 	}
 	s.mu.Unlock()
+	notifySensorObserver(observer, snapshot)
+}
+
+func sensorNodesEqual(left, right SensorNode) bool {
+	if left.ID != right.ID || left.Name != right.Name || left.Online != right.Online ||
+		left.PresenceKnown != right.PresenceKnown || left.Present != right.Present ||
+		!slices.Equal(left.Capabilities, right.Capabilities) {
+		return false
+	}
+	if left.TargetCount == nil || right.TargetCount == nil {
+		return left.TargetCount == nil && right.TargetCount == nil
+	}
+	return *left.TargetCount == *right.TargetCount
+}
+
+func cloneSensorNode(node SensorNode) SensorNode {
+	node.Capabilities = append([]string(nil), node.Capabilities...)
+	if node.TargetCount != nil {
+		targetCount := *node.TargetCount
+		node.TargetCount = &targetCount
+	}
+	return node
 }
 
 func discoverSensaaNodes(ctx context.Context) ([]sensorEndpoint, error) {

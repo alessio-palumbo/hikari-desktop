@@ -123,6 +123,38 @@ func TestSensorSnapshotIsSortedAndDefensivelyCopied(t *testing.T) {
 	}
 }
 
+func TestSensorServiceEmitsRevisionedSnapshotsOnlyForPublicChanges(t *testing.T) {
+	client := newTestSensorClient()
+	service := newSensorService(func(context.Context) ([]sensorEndpoint, error) {
+		return []sensorEndpoint{{
+			id: "sensor", name: "Sensor", capabilities: []string{"presence"},
+			connect: func(context.Context) (sensorClient, error) { return client, nil },
+		}}, nil
+	}, time.Hour, time.Second)
+	events := make(chan SensorSnapshot, 8)
+	service.SetSnapshotObserver(func(snapshot SensorSnapshot) { events <- snapshot })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := service.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close(context.Background())
+
+	client.updates <- sensaa.Update{Sequence: 1, Presence: true}
+	present := waitForSensorEvent(t, events, func(snapshot SensorSnapshot) bool {
+		return len(snapshot.Nodes) == 1 && snapshot.Nodes[0].PresenceKnown && snapshot.Nodes[0].Present
+	})
+	client.updates <- sensaa.Update{Sequence: 2, Presence: true}
+	client.updates <- sensaa.Update{Sequence: 3, Presence: false}
+	clear := waitForSensorEvent(t, events, func(snapshot SensorSnapshot) bool {
+		return len(snapshot.Nodes) == 1 && snapshot.Nodes[0].PresenceKnown && !snapshot.Nodes[0].Present
+	})
+
+	if clear.Revision != present.Revision+1 {
+		t.Fatalf("clear revision = %d, want %d; duplicate update changed public state", clear.Revision, present.Revision+1)
+	}
+}
+
 func waitForSensor(t *testing.T, service *SensorService, predicate func(SensorNode) bool) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
@@ -135,4 +167,20 @@ func waitForSensor(t *testing.T, service *SensorService, predicate func(SensorNo
 	}
 	snapshot, _ := service.Snapshot(context.Background())
 	t.Fatalf("sensor state did not settle: %#v", snapshot)
+}
+
+func waitForSensorEvent(t *testing.T, events <-chan SensorSnapshot, predicate func(SensorSnapshot) bool) SensorSnapshot {
+	t.Helper()
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case snapshot := <-events:
+			if predicate(snapshot) {
+				return snapshot
+			}
+		case <-timer.C:
+			t.Fatal("sensor event did not arrive")
+		}
+	}
 }
