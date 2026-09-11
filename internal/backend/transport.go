@@ -13,6 +13,7 @@ type DeviceTransport interface {
 	SetNetworkInterface(ctx context.Context, req SetNetworkInterfaceRequest) (NetworkSettings, error)
 	RestartDeviceDiscovery(ctx context.Context) (NetworkSettings, error)
 	SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error)
+	SetDeviceMetadata(ctx context.Context, req SetDeviceMetadataRequest) (Device, error)
 	StartDeviceEffect(ctx context.Context, req StartDeviceEffectRequest) (DeviceEffectStatus, error)
 	StopDeviceEffect(ctx context.Context, req StopDeviceEffectRequest) (DeviceEffectStatus, error)
 }

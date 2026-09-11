@@ -35,6 +35,7 @@ const (
 	matrixEffectPaletteMaxColors    = 16
 	matrixEffectPaletteHueBuckets   = 16
 	matrixEffectPaletteMinLightness = 0.01
+	deviceMetadataPendingDuration   = 5 * time.Second
 )
 
 // lifxController is the subset of lifxlan-go's controller.Controller used by
@@ -52,7 +53,8 @@ type broadcastInterfaceLister func() ([]lifxclient.BroadcastInterface, error)
 // LifxTransport adapts lifxlan-go behind DeviceTransport.
 //
 // Snapshot maps controller.GetDevices() into the frontend DTO. SetDeviceState
-// sends power and color state for single-zone, multizone, and matrix devices.
+// sends power and color state for single-zone, multizone, and matrix devices,
+// while SetDeviceMetadata handles LIFX label and hierarchy messages separately.
 // Matrix colors are rotated into UI orientation for previews and rotated back
 // to device order when applying edited pixels.
 //
@@ -68,6 +70,7 @@ type LifxTransport struct {
 	effects               map[string]runningAppEffect
 	firmware              map[string]runningFirmwareEffect
 	restores              map[string]effectRestore
+	metadata              map[string]pendingDeviceMetadata
 	selectedInterfaceName string
 	networkWarning        string
 }
@@ -89,6 +92,13 @@ type runningFirmwareEffect struct {
 type effectRestore struct {
 	device Device
 	until  time.Time
+}
+
+type pendingDeviceMetadata struct {
+	device   Device
+	location Location
+	group    Group
+	until    time.Time
 }
 
 func NewLifxTransport() *LifxTransport {
@@ -119,6 +129,7 @@ func newLifxTransport(factory lifxControllerFactory, lister broadcastInterfaceLi
 		effects:           make(map[string]runningAppEffect),
 		firmware:          make(map[string]runningFirmwareEffect),
 		restores:          make(map[string]effectRestore),
+		metadata:          make(map[string]pendingDeviceMetadata),
 	}
 }
 
@@ -255,8 +266,101 @@ func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	log.Printf("hikari: lifx snapshot read %d devices", len(devices))
 	snapshot := mapLifxDevices(devices)
 	t.reconcileRestoreSnapshot(&snapshot, time.Now())
+	t.reconcileMetadataSnapshot(&snapshot, time.Now())
+	snapshot = sortDeviceSnapshot(snapshot)
 	t.replaceCache(snapshot.Devices)
 	return snapshot, nil
+}
+
+func (t *LifxTransport) SetDeviceMetadata(ctx context.Context, req SetDeviceMetadataRequest) (Device, error) {
+	ctrl, err := t.requireController()
+	if err != nil {
+		return Device{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return Device{}, err
+	}
+
+	devices := ctrl.GetDevices()
+	snapshot := mapLifxDevices(devices)
+	mapped, location, group, label, err := resolveDeviceMetadata(snapshot, req)
+	if err != nil {
+		return Device{}, err
+	}
+	serial, err := parseDeviceSerial(mapped)
+	if err != nil {
+		return Device{}, fmt.Errorf("parse device serial: %w", err)
+	}
+	locationID, err := parseMappedLocationID(location.ID)
+	if err != nil {
+		return Device{}, err
+	}
+	groupID, err := parseMappedGroupID(group.ID)
+	if err != nil {
+		return Device{}, err
+	}
+
+	var current *lifxdevice.Device
+	for index := range devices {
+		if devices[index].Serial == serial {
+			current = &devices[index]
+			break
+		}
+	}
+	if current == nil {
+		return Device{}, fmt.Errorf("device %q is not currently available", req.Serial)
+	}
+
+	type metadataSend struct {
+		action string
+		msg    *protocol.Message
+	}
+	sends := make([]metadataSend, 0, 3)
+	if current.Label != label {
+		msg, buildErr := messages.SetLabel(label)
+		if buildErr != nil {
+			return Device{}, buildErr
+		}
+		sends = append(sends, metadataSend{action: "metadata-label", msg: msg})
+	}
+	updatedAt := time.Now()
+	if current.LocationID != locationID || current.Location != location.Name {
+		msg, buildErr := messages.SetLocation(locationID, location.Name, updatedAt)
+		if buildErr != nil {
+			return Device{}, buildErr
+		}
+		sends = append(sends, metadataSend{action: "metadata-location", msg: msg})
+	}
+	if current.GroupID != groupID || current.Group != group.Name {
+		msg, buildErr := messages.SetGroup(groupID, group.Name, updatedAt)
+		if buildErr != nil {
+			return Device{}, buildErr
+		}
+		sends = append(sends, metadataSend{action: "metadata-group", msg: msg})
+	}
+
+	result := mapped
+	if cached := t.cachedDevice(req.Serial); cached != nil {
+		result = *cached
+	}
+	result.Name = label
+	result.GroupID = group.ID
+	for _, send := range sends {
+		if err := ctx.Err(); err != nil {
+			return Device{}, err
+		}
+		logLifxSend(serial, result, send.action, send.msg)
+		if err := ctrl.Send(serial, send.msg); err != nil {
+			return Device{}, fmt.Errorf("set device metadata: %w", err)
+		}
+	}
+
+	if len(sends) == 0 {
+		t.storeCachedDevice(result)
+		return result, nil
+	}
+	t.storePendingMetadata(result, location, group, time.Now().Add(deviceMetadataPendingDuration))
+	return result, nil
 }
 
 func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error) {
@@ -1335,6 +1439,7 @@ func (t *LifxTransport) clearRuntimeStateLocked() {
 	t.effects = make(map[string]runningAppEffect)
 	t.firmware = make(map[string]runningFirmwareEffect)
 	t.restores = make(map[string]effectRestore)
+	t.metadata = make(map[string]pendingDeviceMetadata)
 }
 
 func (t *LifxTransport) loadValidatedInterfaceName() (string, string, error) {
@@ -1490,6 +1595,10 @@ func (t *LifxTransport) storeCachedDevice(device Device) {
 	defer t.mu.Unlock()
 	if t.cache == nil {
 		t.cache = make(map[string]Device)
+	}
+	if pending, ok := t.metadata[device.Serial]; ok && time.Now().Before(pending.until) {
+		device.Name = pending.device.Name
+		device.GroupID = pending.device.GroupID
 	}
 	t.cache[device.Serial] = device
 }
@@ -1650,6 +1759,78 @@ func (t *LifxTransport) storeRestoreDevice(device Device, until time.Time) {
 		t.restores = make(map[string]effectRestore)
 	}
 	t.restores[device.Serial] = effectRestore{device: device, until: until}
+}
+
+func (t *LifxTransport) reconcileMetadataSnapshot(snapshot *DeviceSnapshot, now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.metadata) == 0 {
+		return
+	}
+
+	groupLocations := make(map[string]string, len(snapshot.Groups))
+	for _, group := range snapshot.Groups {
+		groupLocations[group.ID] = group.LocationID
+	}
+	locationIDs := make(map[string]bool, len(snapshot.Locations))
+	for _, location := range snapshot.Locations {
+		locationIDs[location.ID] = true
+	}
+	groupIDs := make(map[string]bool, len(snapshot.Groups))
+	for _, group := range snapshot.Groups {
+		groupIDs[group.ID] = true
+	}
+
+	for index := range snapshot.Devices {
+		device := snapshot.Devices[index]
+		pending, ok := t.metadata[device.Serial]
+		if !ok {
+			continue
+		}
+		if device.Name == pending.device.Name && device.GroupID == pending.group.ID && groupLocations[device.GroupID] == pending.location.ID {
+			delete(t.metadata, device.Serial)
+			continue
+		}
+		if !now.Before(pending.until) {
+			delete(t.metadata, device.Serial)
+			continue
+		}
+		device.Name = pending.device.Name
+		device.GroupID = pending.group.ID
+		snapshot.Devices[index] = device
+		if !locationIDs[pending.location.ID] {
+			snapshot.Locations = append(snapshot.Locations, pending.location)
+			locationIDs[pending.location.ID] = true
+		}
+		if !groupIDs[pending.group.ID] {
+			snapshot.Groups = append(snapshot.Groups, pending.group)
+			groupIDs[pending.group.ID] = true
+		}
+	}
+}
+
+func (t *LifxTransport) storePendingMetadata(device Device, location Location, group Group, until time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.metadata == nil {
+		t.metadata = make(map[string]pendingDeviceMetadata)
+	}
+	pending := pendingDeviceMetadata{device: device, location: location, group: group, until: until}
+	t.metadata[device.Serial] = pending
+	if t.cache == nil {
+		t.cache = make(map[string]Device)
+	}
+	t.cache[device.Serial] = device
+	if effect, ok := t.effects[device.Serial]; ok {
+		effect.previous.Name = device.Name
+		effect.previous.GroupID = device.GroupID
+		t.effects[device.Serial] = effect
+	}
+	if restore, ok := t.restores[device.Serial]; ok {
+		restore.device.Name = device.Name
+		restore.device.GroupID = device.GroupID
+		t.restores[device.Serial] = restore
+	}
 }
 
 func (t *LifxTransport) effectRunningLocked(serial string) bool {
@@ -2024,6 +2205,30 @@ func parseDeviceSerial(device Device) (lifxdevice.Serial, error) {
 	serial := device.Serial
 	serial = strings.ReplaceAll(serial, ":", "")
 	return lifxdevice.SerialFromHex(serial)
+}
+
+func parseMappedLocationID(value string) (lifxdevice.LocationID, error) {
+	raw, ok := strings.CutPrefix(strings.TrimSpace(value), "lifx-location:")
+	if !ok {
+		return lifxdevice.LocationID{}, fmt.Errorf("location %q does not have a stable LIFX ID", value)
+	}
+	id, err := lifxdevice.ParseLocationID(raw)
+	if err != nil {
+		return lifxdevice.LocationID{}, fmt.Errorf("parse location ID: %w", err)
+	}
+	return id, nil
+}
+
+func parseMappedGroupID(value string) (lifxdevice.GroupID, error) {
+	raw, ok := strings.CutPrefix(strings.TrimSpace(value), "lifx-group:")
+	if !ok {
+		return lifxdevice.GroupID{}, fmt.Errorf("group %q does not have a stable LIFX ID", value)
+	}
+	id, err := lifxdevice.ParseGroupID(raw)
+	if err != nil {
+		return lifxdevice.GroupID{}, fmt.Errorf("parse group ID: %w", err)
+	}
+	return id, nil
 }
 
 func sendDeviceState(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device, direct bool, intent DeviceCommandIntent, current *Device) error {

@@ -161,6 +161,13 @@ type SetDeviceStateRequest struct {
 	Intent  DeviceCommandIntent `json:"intent"`
 }
 
+type SetDeviceMetadataRequest struct {
+	Serial     string `json:"serial"`
+	Label      string `json:"label"`
+	LocationID string `json:"locationId"`
+	GroupID    string `json:"groupId"`
+}
+
 type StartDeviceEffectRequest struct {
 	Device    Device       `json:"device"`
 	Effect    DeviceEffect `json:"effect"`

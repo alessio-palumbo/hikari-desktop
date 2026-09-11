@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -496,6 +497,141 @@ func TestLifxTransportRequiresStart(t *testing.T) {
 	}
 	if _, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: Device{Serial: "d073d501a2c3", Kind: DeviceKindSingle}}); err == nil {
 		t.Fatal("SetDeviceState returned nil error, want not started error")
+	}
+	if _, err := transport.SetDeviceMetadata(context.Background(), SetDeviceMetadataRequest{Serial: "d073d501a2c3"}); err == nil {
+		t.Fatal("SetDeviceMetadata returned nil error, want not started error")
+	}
+}
+
+func TestLifxTransportSetDeviceMetadataSendsChangedFieldsAndReconcilesStaleSnapshot(t *testing.T) {
+	current := testLifxDevice(t, "d073d501a2c3", "Lamp", "Home", "Living")
+	current.LocationID = lifxdevice.LocationID{0x01}
+	current.GroupID = lifxdevice.GroupID{0x11}
+	destination := testLifxDevice(t, "d073d501a2c4", "Desk Lamp", "Office", "Desk")
+	destination.LocationID = lifxdevice.LocationID{0x02}
+	destination.GroupID = lifxdevice.GroupID{0x22}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{current, destination}}
+	transport := newTestLifxTransport(t, controller)
+
+	initial, err := transport.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot returned error: %v", err)
+	}
+	destinationGroupID := mapLifxGroupID(destination, mapLifxLocationID(destination))
+	request := SetDeviceMetadataRequest{
+		Serial:     current.Serial.String(),
+		Label:      "Reading Lamp",
+		LocationID: mapLifxLocationID(destination),
+		GroupID:    destinationGroupID,
+	}
+	controller.resetSends()
+
+	got, err := transport.SetDeviceMetadata(context.Background(), request)
+	if err != nil {
+		t.Fatalf("SetDeviceMetadata returned error: %v", err)
+	}
+	if got.Name != request.Label || got.GroupID != destinationGroupID {
+		t.Fatalf("device = %#v", got)
+	}
+	sends := controller.sentMessages()
+	if len(sends) != 3 {
+		t.Fatalf("sent %d messages, want 3", len(sends))
+	}
+	label := sends[0].msg.Payload.(*packets.DeviceSetLabel)
+	location := sends[1].msg.Payload.(*packets.DeviceSetLocation)
+	group := sends[2].msg.Payload.(*packets.DeviceSetGroup)
+	if strings.TrimRight(string(label.Label[:]), "\x00") != request.Label {
+		t.Fatalf("label payload = %q", label.Label)
+	}
+	if location.Location != [16]byte(destination.LocationID) || strings.TrimRight(string(location.Label[:]), "\x00") != destination.Location || location.UpdatedAt == 0 {
+		t.Fatalf("location payload = %#v", location)
+	}
+	if group.Group != [16]byte(destination.GroupID) || strings.TrimRight(string(group.Label[:]), "\x00") != destination.Group || group.UpdatedAt != location.UpdatedAt {
+		t.Fatalf("group payload = %#v", group)
+	}
+	for _, send := range sends {
+		if send.serial != current.Serial {
+			t.Fatalf("sent to %s, want %s", send.serial, current.Serial)
+		}
+	}
+
+	stale, err := transport.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("stale Snapshot returned error: %v", err)
+	}
+	overlaid := deviceBySerial(stale.Devices, current.Serial.String())
+	if overlaid == nil || overlaid.Name != request.Label || overlaid.GroupID != destinationGroupID {
+		t.Fatalf("stale snapshot device = %#v", overlaid)
+	}
+	if len(initial.Devices) != len(stale.Devices) {
+		t.Fatalf("snapshot device count changed: %d -> %d", len(initial.Devices), len(stale.Devices))
+	}
+
+	current.Label = request.Label
+	current.Location = destination.Location
+	current.LocationID = destination.LocationID
+	current.Group = destination.Group
+	current.GroupID = destination.GroupID
+	controller.setDevices([]lifxdevice.Device{current, destination})
+	confirmed, err := transport.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("confirmed Snapshot returned error: %v", err)
+	}
+	confirmedDevice := deviceBySerial(confirmed.Devices, current.Serial.String())
+	if confirmedDevice == nil || confirmedDevice.Name != request.Label || confirmedDevice.GroupID != destinationGroupID {
+		t.Fatalf("confirmed snapshot device = %#v", confirmedDevice)
+	}
+	if len(transport.metadata) != 0 {
+		t.Fatalf("pending metadata = %#v, want cleared", transport.metadata)
+	}
+}
+
+func TestLifxTransportSetDeviceMetadataOnlySendsChangedLabel(t *testing.T) {
+	current := testLifxDevice(t, "d073d501a2c3", "Lamp", "Home", "Living")
+	current.LocationID = lifxdevice.LocationID{0x01}
+	current.GroupID = lifxdevice.GroupID{0x11}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{current}}
+	transport := newTestLifxTransport(t, controller)
+
+	_, err := transport.SetDeviceMetadata(context.Background(), SetDeviceMetadataRequest{
+		Serial:     current.Serial.String(),
+		Label:      "Renamed",
+		LocationID: mapLifxLocationID(current),
+		GroupID:    mapLifxGroupID(current, mapLifxLocationID(current)),
+	})
+	if err != nil {
+		t.Fatalf("SetDeviceMetadata returned error: %v", err)
+	}
+	sends := controller.sentMessages()
+	if len(sends) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(sends))
+	}
+	if _, ok := sends[0].msg.Payload.(*packets.DeviceSetLabel); !ok {
+		t.Fatalf("payload = %T, want *packets.DeviceSetLabel", sends[0].msg.Payload)
+	}
+}
+
+func TestLifxTransportSetDeviceMetadataRejectsMismatchedGroupWithoutSending(t *testing.T) {
+	current := testLifxDevice(t, "d073d501a2c3", "Lamp", "Home", "Living")
+	current.LocationID = lifxdevice.LocationID{0x01}
+	current.GroupID = lifxdevice.GroupID{0x11}
+	destination := testLifxDevice(t, "d073d501a2c4", "Desk Lamp", "Office", "Desk")
+	destination.LocationID = lifxdevice.LocationID{0x02}
+	destination.GroupID = lifxdevice.GroupID{0x22}
+	controller := &fakeLifxController{devices: []lifxdevice.Device{current, destination}}
+	transport := newTestLifxTransport(t, controller)
+
+	_, err := transport.SetDeviceMetadata(context.Background(), SetDeviceMetadataRequest{
+		Serial:     current.Serial.String(),
+		Label:      current.Label,
+		LocationID: mapLifxLocationID(current),
+		GroupID:    mapLifxGroupID(destination, mapLifxLocationID(destination)),
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not belong") {
+		t.Fatalf("error = %v, want location mismatch", err)
+	}
+	if len(controller.sentMessages()) != 0 {
+		t.Fatalf("sent %d messages, want 0", len(controller.sentMessages()))
 	}
 }
 

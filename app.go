@@ -139,6 +139,10 @@ func (a *App) SetDeviceState(req backend.SetDeviceStateRequest) (backend.Device,
 	return a.transport.SetDeviceState(a.context(), req)
 }
 
+func (a *App) SetDeviceMetadata(req backend.SetDeviceMetadataRequest) (backend.Device, error) {
+	return a.transport.SetDeviceMetadata(a.context(), req)
+}
+
 func (a *App) StartDeviceEffect(req backend.StartDeviceEffectRequest) (backend.DeviceEffectStatus, error) {
 	return a.transport.StartDeviceEffect(a.context(), req)
 }

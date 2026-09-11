@@ -49,6 +49,18 @@ func TestAppUsesTransport(t *testing.T) {
 		t.Fatalf("SetDeviceState returned %#v", got)
 	}
 
+	metadataReq := backend.SetDeviceMetadataRequest{Serial: device.Serial, Label: "Renamed", LocationID: "home", GroupID: "living"}
+	metadataDevice, err := app.SetDeviceMetadata(metadataReq)
+	if err != nil {
+		t.Fatalf("SetDeviceMetadata returned error: %v", err)
+	}
+	if !transport.setMetadataCalled || transport.lastMetadataReq != metadataReq {
+		t.Fatalf("SetDeviceMetadata did not forward request: %#v", transport.lastMetadataReq)
+	}
+	if metadataDevice.Serial != device.Serial {
+		t.Fatalf("SetDeviceMetadata returned %#v", metadataDevice)
+	}
+
 	startStatus, err := app.StartDeviceEffect(backend.StartDeviceEffectRequest{Device: device, Effect: backend.DeviceEffectFlame})
 	if err != nil {
 		t.Fatalf("StartDeviceEffect returned error: %v", err)
@@ -190,6 +202,9 @@ func TestAppReturnsTransportError(t *testing.T) {
 	if _, err := app.SetDeviceState(backend.SetDeviceStateRequest{Device: device}); err == nil {
 		t.Fatal("SetDeviceState returned nil error, want transport error")
 	}
+	if _, err := app.SetDeviceMetadata(backend.SetDeviceMetadataRequest{Serial: device.Serial}); err == nil {
+		t.Fatal("SetDeviceMetadata returned nil error, want transport error")
+	}
 	if _, err := app.NetworkSettings(); err == nil {
 		t.Fatal("NetworkSettings returned nil error, want transport error")
 	}
@@ -215,12 +230,14 @@ type recordingTransport struct {
 	closeCalled        bool
 	snapshotCalled     bool
 	setCalled          bool
+	setMetadataCalled  bool
 	startEffectCalled  bool
 	stopEffectCalled   bool
 	settingsCalled     bool
 	setNetworkCalled   bool
 	restartCalled      bool
 	lastReq            backend.SetDeviceStateRequest
+	lastMetadataReq    backend.SetDeviceMetadataRequest
 	lastStartEffectReq backend.StartDeviceEffectRequest
 	lastEffectReq      backend.StopDeviceEffectRequest
 	lastNetworkReq     backend.SetNetworkInterfaceRequest
@@ -303,6 +320,12 @@ func (t *recordingTransport) RestartDeviceDiscovery(ctx context.Context) (backen
 func (t *recordingTransport) SetDeviceState(ctx context.Context, req backend.SetDeviceStateRequest) (backend.Device, error) {
 	t.setCalled = true
 	t.lastReq = req
+	return t.device, t.err
+}
+
+func (t *recordingTransport) SetDeviceMetadata(ctx context.Context, req backend.SetDeviceMetadataRequest) (backend.Device, error) {
+	t.setMetadataCalled = true
+	t.lastMetadataReq = req
 	return t.device, t.err
 }
 

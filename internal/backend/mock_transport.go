@@ -40,6 +40,22 @@ func (t *MockTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 	return req.Device, nil
 }
 
+func (t *MockTransport) SetDeviceMetadata(ctx context.Context, req SetDeviceMetadataRequest) (Device, error) {
+	device, _, _, label, err := resolveDeviceMetadata(t.snapshot, req)
+	if err != nil {
+		return Device{}, err
+	}
+	device.Name = label
+	device.GroupID = req.GroupID
+	for index := range t.snapshot.Devices {
+		if t.snapshot.Devices[index].Serial == device.Serial {
+			t.snapshot.Devices[index] = device
+			break
+		}
+	}
+	return device, nil
+}
+
 func (t *MockTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEffectRequest) (DeviceEffectStatus, error) {
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(req.Effect)}, nil
 }
