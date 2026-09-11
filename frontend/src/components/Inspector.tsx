@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, Droplet, Info, LogOut, Pipette, Play, RotateCcw, Square, Undo2, Wand2, X } from 'lucide-react';
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, ChevronDown, Droplet, Info, LogOut, Pipette, Play, RotateCcw, Settings, Square, Undo2, Wand2, X } from 'lucide-react';
 import type { DeviceEffectStatus } from '../backend/api';
 import {
   defaultEffectSpeedMs,
@@ -10,7 +10,7 @@ import {
   type DeviceEffect,
   unitToSpeedMs,
 } from '../domain/effects';
-import { DeviceKind, hsl, isLightDevice, previewLightness, previewOpacity, type Device, type HslColor } from '../domain/lifx';
+import { DeviceKind, hsl, isLightDevice, previewLightness, previewOpacity, type Device, type Group, type HslColor, type Location } from '../domain/lifx';
 import {
   applyDeviceBrightness,
   applyDeviceColor,
@@ -35,6 +35,8 @@ type PaintTool = 'brush' | 'fill' | 'gradient' | 'picker';
 
 interface InspectorProps {
   device?: Device;
+  locations: Location[];
+  groups: Group[];
   locationName?: string;
   groupName?: string;
   powerOn?: boolean;
@@ -47,6 +49,7 @@ interface InspectorProps {
   effectStatus?: DeviceEffectStatus & { loading?: boolean };
   onClose: () => void;
   onChange: (device: Device) => void;
+  onMetadataSave: (request: { serial: string; label: string; locationId: string; groupId: string }) => Promise<void>;
   onPowerChange: (on: boolean) => void;
   onStartEffect: (effect: DeviceEffect, speedMs: number) => void;
   onStopEffect: () => void;
@@ -71,6 +74,7 @@ export function Inspector(props: InspectorProps) {
   const [gradientStops, setGradientStops] = useState<GradientStops>({});
   const [gradientDirection, setGradientDirection] = useState<GradientDirection>('e');
   const [showInfo, setShowInfo] = useState(false);
+  const [showMetadataEditor, setShowMetadataEditor] = useState(false);
   const editRequestedRef = useRef(false);
   const isLight = isLightDevice(device);
   const hasColor = isLight && (device.capability?.hasColor ?? true);
@@ -87,6 +91,7 @@ export function Inspector(props: InspectorProps) {
     setGradientStops({});
     setGradientDirection('e');
     setShowInfo(false);
+    setShowMetadataEditor(false);
   }, [device.serial]);
 
   useEffect(() => {
@@ -189,10 +194,26 @@ export function Inspector(props: InspectorProps) {
 
       <div className="inspector-meta">
         <span>{device.model}</span>
-        <button className="info-toggle" type="button" aria-label="Device info" aria-expanded={showInfo} data-active={showInfo ? 'true' : 'false'} onClick={() => setShowInfo((value) => !value)}>
-          <Info size={13} />
-        </button>
+        <div className="inspector-meta-actions">
+          <button className="info-toggle" type="button" aria-label="Edit device details" aria-expanded={showMetadataEditor} data-active={showMetadataEditor ? 'true' : 'false'} onClick={() => {
+            setShowInfo(false);
+            setShowMetadataEditor((value) => !value);
+          }}>
+            <Settings size={13} />
+          </button>
+          <button className="info-toggle" type="button" aria-label="Device info" aria-expanded={showInfo} data-active={showInfo ? 'true' : 'false'} onClick={() => {
+            setShowMetadataEditor(false);
+            setShowInfo((value) => !value);
+          }}>
+            <Info size={13} />
+          </button>
+        </div>
       </div>
+
+      {showMetadataEditor ? <DeviceMetadataEditor device={device} locations={props.locations} groups={props.groups} saving={props.saving} onCancel={() => setShowMetadataEditor(false)} onSave={async (request) => {
+        await props.onMetadataSave(request);
+        setShowMetadataEditor(false);
+      }} /> : null}
 
       {showInfo ? <DeviceInfo device={device} locationName={props.locationName} groupName={props.groupName} /> : null}
 
@@ -282,6 +303,79 @@ export function Inspector(props: InspectorProps) {
         </section>
       ) : null}
     </aside>
+  );
+}
+
+function DeviceMetadataEditor({
+  device,
+  locations,
+  groups,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  device: Device;
+  locations: Location[];
+  groups: Group[];
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (request: { serial: string; label: string; locationId: string; groupId: string }) => Promise<void>;
+}) {
+  const currentGroup = groups.find((group) => group.id === device.groupId);
+  const [label, setLabel] = useState(device.name);
+  const [locationId, setLocationId] = useState(currentGroup?.locationId ?? locations[0]?.id ?? '');
+  const locationGroups = groups.filter((group) => group.locationId === locationId);
+  const [groupId, setGroupId] = useState(locationGroups.some((group) => group.id === device.groupId) ? device.groupId : locationGroups[0]?.id ?? '');
+  const [error, setError] = useState<string>();
+  const normalizedLabel = label.trim();
+  const unchanged = normalizedLabel === device.name && groupId === device.groupId;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!normalizedLabel || !locationId || !groupId || saving) return;
+    setError(undefined);
+    try {
+      await onSave({ serial: device.serial, label: normalizedLabel, locationId, groupId });
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+    }
+  };
+
+  return (
+    <form className="device-metadata-editor" onSubmit={submit}>
+      <label>
+        <span>label</span>
+        <input autoFocus maxLength={32} value={label} onChange={(event) => setLabel(event.target.value)} />
+      </label>
+      <label>
+        <span>location</span>
+        <span className="device-metadata-select">
+          <select value={locationId} onChange={(event) => {
+            const nextLocationId = event.target.value;
+            const nextGroups = groups.filter((group) => group.locationId === nextLocationId);
+            setLocationId(nextLocationId);
+            setGroupId(nextGroups[0]?.id ?? '');
+          }}>
+            {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+          </select>
+          <ChevronDown size={12} aria-hidden="true" />
+        </span>
+      </label>
+      <label>
+        <span>group</span>
+        <span className="device-metadata-select">
+          <select value={groupId} onChange={(event) => setGroupId(event.target.value)}>
+            {locationGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+          </select>
+          <ChevronDown size={12} aria-hidden="true" />
+        </span>
+      </label>
+      {error ? <p className="device-metadata-error">{error}</p> : null}
+      <div className="device-metadata-actions">
+        <button type="button" onClick={onCancel}>cancel</button>
+        <button type="submit" disabled={saving || unchanged || !normalizedLabel || !groupId}>{saving ? 'saving' : 'save'}</button>
+      </div>
+    </form>
   );
 }
 

@@ -35,7 +35,7 @@ const (
 	matrixEffectPaletteMaxColors    = 16
 	matrixEffectPaletteHueBuckets   = 16
 	matrixEffectPaletteMinLightness = 0.01
-	deviceMetadataPendingDuration   = 5 * time.Second
+	deviceMetadataPendingDuration   = 10 * time.Second
 )
 
 // lifxController is the subset of lifxlan-go's controller.Controller used by

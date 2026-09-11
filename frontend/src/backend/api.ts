@@ -11,6 +11,7 @@ interface WailsApp {
   SetNetworkInterface?: (request: SetNetworkInterfaceRequest) => Promise<NetworkSettings>;
   RestartDeviceDiscovery?: () => Promise<NetworkSettings>;
   SetDeviceState?: (request: SetDeviceStateRequest) => Promise<Device>;
+  SetDeviceMetadata?: (request: SetDeviceMetadataRequest) => Promise<Device>;
   StartDeviceEffect?: (request: StartDeviceEffectRequest) => Promise<DeviceEffectStatus>;
   StopDeviceEffect?: (request: StopDeviceEffectRequest) => Promise<DeviceEffectStatus>;
   CommandEngineSettings?: () => Promise<CommandEngineSettings>;
@@ -75,6 +76,13 @@ interface SetDeviceStateRequest {
   device: Device;
   preview: boolean;
   intent: DeviceCommandIntent;
+}
+
+export interface SetDeviceMetadataRequest {
+  serial: string;
+  label: string;
+  locationId: string;
+  groupId: string;
 }
 
 interface StopDeviceEffectRequest {
@@ -248,6 +256,15 @@ export async function setDeviceState(device: Device, preview = false, intent: De
   if (app?.SetDeviceState) return app.SetDeviceState({ device, preview, intent });
   await new Promise((resolve) => window.setTimeout(resolve, preview ? 60 : 180));
   return device;
+}
+
+export async function setDeviceMetadata(request: SetDeviceMetadataRequest): Promise<Device> {
+  const app = window.go?.main?.App;
+  if (app?.SetDeviceMetadata) return app.SetDeviceMetadata(request);
+  await new Promise((resolve) => window.setTimeout(resolve, 120));
+  const device = mockSnapshot().devices.find((entry) => entry.serial === request.serial);
+  if (!device) throw new Error(`device ${request.serial} is not available`);
+  return { ...device, name: request.label, groupId: request.groupId };
 }
 
 export async function startDeviceEffect(device: Device, options: StartDeviceEffectOptions = {}): Promise<DeviceEffectStatus> {

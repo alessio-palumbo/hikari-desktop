@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getCommandEngineSettings, getDeviceSnapshot, getFloorPlanPreferences, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, saveFloorPlanPreferences, setCommandEngineSettings, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, subscribeToSensorSnapshots, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorNode, type SensorSnapshot } from './backend/api';
+import { getCommandEngineSettings, getDeviceSnapshot, getFloorPlanPreferences, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, saveFloorPlanPreferences, setCommandEngineSettings, setDeviceMetadata, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, subscribeToSensorSnapshots, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorNode, type SensorSnapshot, type SetDeviceMetadataRequest } from './backend/api';
 import type { CenterView } from './components/CenterViewToggle';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
@@ -11,11 +11,11 @@ import { Inspector } from './components/Inspector';
 import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
 import { RoomInspector } from './components/RoomInspector';
 import { draftIntent, prepareDeviceUpdate, type DeviceCommandIntent } from './domain/commands';
-import { activateEditedDevice, commitDraft, createDraft, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
+import { activateEditedDevice, commitDraft, createDraft, mergeDraftMetadata, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect } from './domain/effects';
 import { DEFAULT_FLOOR_ID, FLOOR_PLAN_STORAGE_KEY, addFloorToLocation, addRoomToFloor, assignRoomPresence, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, devicesAssignedToRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanPresenceConfig, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
 import { FLOOR_PLAN_RECOVERY_KEY, createDefaultFloorPlanLocation, createFloorPlanProfile, devicesForFloorPlanProfile, floorPlanObservation, floorPlanProfileMatchesObservation, loadFloorPlanProfilePreferences, observeFloorPlanProfile, renameFloorPlanProfile, resolveFloorPlanProfile, resolveFloorPlanStartupPreferences, selectedFloorPlanProfileId, serializeFloorPlanProfilePreferences, updateFloorPlanProfileLayout, type FloorPlanProfilePreferences } from './domain/floorPlanProfiles.js';
-import { DeviceKind, isLightDevice, type Device, type DeviceSnapshot } from './domain/lifx';
+import { DeviceKind, isLightDevice, sortDevicesByHierarchy, type Device, type DeviceSnapshot } from './domain/lifx';
 import { collectLocations, devicesInLocationCollection, groupsInLocationCollection, locationCollectionByKey, locationCollectionForID } from './domain/locationCollections.js';
 import { initialRoomOccupancyState, reconcileRoomOccupancy, type RoomOccupancyState } from './domain/occupancy';
 import { planRoomDim, planRoomDimRestore, type RoomDimOwnership } from './domain/presenceLighting';
@@ -519,6 +519,19 @@ export function App() {
     setSnapshot((prev) => ({ ...prev, devices: prev.devices.map((device) => (device.serial === next.serial ? next : device)) }));
   };
 
+  const replaceAndSortDevice = (next: Device) => {
+    const update = (current: DeviceSnapshot): DeviceSnapshot => ({
+      ...current,
+      devices: sortDevicesByHierarchy(
+        current.devices.map((device) => (device.serial === next.serial ? next : device)),
+        current.groups,
+        current.locations,
+      ),
+    });
+    snapshotRef.current = update(snapshotRef.current);
+    setSnapshot(update);
+  };
+
   const recordPendingState = (next: Device, previous?: Device) => {
     const pending = createPendingState(next, previous);
     if (!pending) return;
@@ -712,6 +725,24 @@ export function App() {
       return;
     }
     setDraft((prev) => (prev ? updateDraft(prev, activateEditedDevice(next)) : createDraft(activateEditedDevice(next))));
+  };
+
+  const updateInspectorDeviceMetadata = async (request: SetDeviceMetadataRequest) => {
+    setSaving(true);
+    setDeviceLoading(request.serial, true);
+    try {
+      await deviceCommandRef.current[request.serial];
+      const committed = await setDeviceMetadata(request);
+      replaceAndSortDevice(committed);
+      setDraft((current) => current ? mergeDraftMetadata(current, committed) : current);
+      setDeviceLoading(request.serial, false);
+    } catch (error) {
+      if (handleRecoverableNetworkError(error)) return;
+      setDeviceLoading(request.serial, false);
+      throw error;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const enterEditMode = () => {
@@ -1060,6 +1091,8 @@ export function App() {
       {inspectorDevice ? (
         <Inspector
           device={inspectorDevice}
+          locations={snapshot.locations}
+          groups={snapshot.groups}
           locationName={inspectorDeviceLocation?.name}
           groupName={inspectorDeviceGroup?.name}
           powerOn={selectedDevice?.on}
@@ -1072,6 +1105,7 @@ export function App() {
           effectStatus={deviceEffectStatus[inspectorDevice.serial]}
           onClose={() => setSelectedSerial(undefined)}
           onChange={updateInspectorDevice}
+          onMetadataSave={updateInspectorDeviceMetadata}
           onPowerChange={(on) => {
             if (selectedDevice) void updateListDevice({ ...selectedDevice, on }, 'power');
           }}

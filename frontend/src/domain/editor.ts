@@ -61,6 +61,18 @@ export function commitDraft(state: DeviceDraft, committed: Device): DeviceDraft 
   };
 }
 
+export function mergeDraftMetadata(state: DeviceDraft, committed: Device): DeviceDraft {
+  if (state.draft.serial !== committed.serial) return state;
+  const metadata = { name: committed.name, groupId: committed.groupId };
+  return {
+    ...state,
+    base: { ...state.base, ...metadata },
+    draft: { ...state.draft, ...metadata },
+    history: state.history.map((device) => ({ ...device, ...metadata })),
+    future: state.future.map((device) => ({ ...device, ...metadata })),
+  };
+}
+
 export function activateEditedDevice(device: Device): Device {
   const brightness = device.brightness > 0 ? device.brightness : averageLightness(deviceColors(device)) || 0.55;
   return { ...device, on: true, brightness };

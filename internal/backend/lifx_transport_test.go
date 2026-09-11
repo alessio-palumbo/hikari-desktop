@@ -553,6 +553,13 @@ func TestLifxTransportSetDeviceMetadataSendsChangedFieldsAndReconcilesStaleSnaps
 		if send.serial != current.Serial {
 			t.Fatalf("sent to %s, want %s", send.serial, current.Serial)
 		}
+		data, marshalErr := send.msg.MarshalBinary()
+		if marshalErr != nil {
+			t.Fatalf("marshal metadata message: %v", marshalErr)
+		}
+		if data[22]&0x1 == 0 {
+			t.Fatalf("metadata message %T does not request a state response", send.msg.Payload)
+		}
 	}
 
 	stale, err := transport.Snapshot(context.Background())
@@ -565,6 +572,13 @@ func TestLifxTransportSetDeviceMetadataSendsChangedFieldsAndReconcilesStaleSnaps
 	}
 	if len(initial.Devices) != len(stale.Devices) {
 		t.Fatalf("snapshot device count changed: %d -> %d", len(initial.Devices), len(stale.Devices))
+	}
+
+	delayed := mapLifxDevices(controller.GetDevices())
+	transport.reconcileMetadataSnapshot(&delayed, time.Now().Add(5*time.Second))
+	delayedDevice := deviceBySerial(delayed.Devices, current.Serial.String())
+	if delayedDevice == nil || delayedDevice.Name != request.Label || delayedDevice.GroupID != destinationGroupID {
+		t.Fatalf("delayed stale snapshot device = %#v", delayedDevice)
 	}
 
 	current.Label = request.Label

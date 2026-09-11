@@ -93,6 +93,25 @@ export interface DeviceSnapshot {
   devices: Device[];
 }
 
+export function sortDevicesByHierarchy(devices: Device[], groups: Group[], locations: Location[]): Device[] {
+  const locationNames = new Map(locations.map((location) => [location.id, location.name]));
+  const groupsByID = new Map(groups.map((group) => [group.id, group]));
+  return [...devices].sort((left, right) => {
+    const leftGroup = groupsByID.get(left.groupId);
+    const rightGroup = groupsByID.get(right.groupId);
+    return compareText(locationNames.get(leftGroup?.locationId ?? '') ?? '', locationNames.get(rightGroup?.locationId ?? '') ?? '')
+      || compareText(leftGroup?.locationId ?? '', rightGroup?.locationId ?? '')
+      || compareText(leftGroup?.name ?? '', rightGroup?.name ?? '')
+      || compareText(leftGroup?.id ?? '', rightGroup?.id ?? '')
+      || compareText(left.name, right.name)
+      || compareText(left.serial, right.serial);
+  });
+}
+
+function compareText(left: string, right: string): number {
+  return left.trim().localeCompare(right.trim(), undefined, { sensitivity: 'base' });
+}
+
 export function hsl(color: HslColor, lightness?: number): string {
   if (color.kelvin && color.s === 0) return kelvinCss(color.kelvin, lightness ?? color.l);
   return `hsl(${color.h} ${Math.round(color.s * 100)}% ${Math.round((lightness ?? color.l) * 100)}%)`;
