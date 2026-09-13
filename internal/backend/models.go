@@ -48,30 +48,42 @@ type ButtonConfig struct {
 	BacklightOffColor HSLColor `json:"backlightOffColor"`
 }
 
+// FirmwareEffectState is effect state reported by the device firmware. A nil
+// value on Device means that effect state has not been observed yet.
+type FirmwareEffectState struct {
+	Running       bool         `json:"running"`
+	Effect        DeviceEffect `json:"effect,omitempty"`
+	SpeedMS       int          `json:"speedMs,omitempty"`
+	Direction     string       `json:"direction,omitempty"`
+	OwnedByHikari bool         `json:"ownedByHikari,omitempty"`
+	instanceID    uint32
+}
+
 type Device struct {
-	GroupID      string           `json:"groupId"`
-	Serial       string           `json:"serial"`
-	Name         string           `json:"name"`
-	Model        string           `json:"model"`
-	Kind         DeviceKind       `json:"kind"`
-	IPAddress    string           `json:"ipAddress,omitempty"`
-	ProductID    uint32           `json:"productId,omitempty"`
-	Firmware     string           `json:"firmware,omitempty"`
-	RSSI         int              `json:"rssi,omitempty"`
-	RSSIText     string           `json:"rssiText,omitempty"`
-	ZoneCount    int              `json:"zoneCount,omitempty"`
-	PixelCount   int              `json:"pixelCount,omitempty"`
-	ChainLen     int              `json:"chainLength,omitempty"`
-	Online       bool             `json:"online"`
-	On           bool             `json:"on"`
-	Brightness   float64          `json:"brightness"`
-	Capability   DeviceCapability `json:"capability"`
-	Color        *HSLColor        `json:"color,omitempty"`
-	Kelvin       int              `json:"kelvin,omitempty"`
-	Zones        []HSLColor       `json:"zones,omitempty"`
-	Chain        []Matrix         `json:"chain,omitempty"`
-	Relays       []Relay          `json:"relays,omitempty"`
-	ButtonConfig *ButtonConfig    `json:"buttonConfig,omitempty"`
+	GroupID        string               `json:"groupId"`
+	Serial         string               `json:"serial"`
+	Name           string               `json:"name"`
+	Model          string               `json:"model"`
+	Kind           DeviceKind           `json:"kind"`
+	IPAddress      string               `json:"ipAddress,omitempty"`
+	ProductID      uint32               `json:"productId,omitempty"`
+	Firmware       string               `json:"firmware,omitempty"`
+	RSSI           int                  `json:"rssi,omitempty"`
+	RSSIText       string               `json:"rssiText,omitempty"`
+	ZoneCount      int                  `json:"zoneCount,omitempty"`
+	PixelCount     int                  `json:"pixelCount,omitempty"`
+	ChainLen       int                  `json:"chainLength,omitempty"`
+	Online         bool                 `json:"online"`
+	On             bool                 `json:"on"`
+	Brightness     float64              `json:"brightness"`
+	Capability     DeviceCapability     `json:"capability"`
+	Color          *HSLColor            `json:"color,omitempty"`
+	Kelvin         int                  `json:"kelvin,omitempty"`
+	Zones          []HSLColor           `json:"zones,omitempty"`
+	Chain          []Matrix             `json:"chain,omitempty"`
+	Relays         []Relay              `json:"relays,omitempty"`
+	ButtonConfig   *ButtonConfig        `json:"buttonConfig,omitempty"`
+	FirmwareEffect *FirmwareEffectState `json:"firmwareEffect,omitempty"`
 }
 
 type DeviceCapability struct {

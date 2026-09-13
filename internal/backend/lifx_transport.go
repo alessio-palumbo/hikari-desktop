@@ -36,6 +36,9 @@ const (
 	matrixEffectPaletteHueBuckets   = 16
 	matrixEffectPaletteMinLightness = 0.01
 	deviceMetadataPendingDuration   = 10 * time.Second
+	// Keep ownership pending briefly so a stale pre-command effect report does
+	// not invalidate the instance ID before the device acknowledges the start.
+	firmwareEffectConfirmationDelay = 3 * time.Second
 )
 
 // lifxController is the subset of lifxlan-go's controller.Controller used by
@@ -95,8 +98,10 @@ type runningAppEffect struct {
 }
 
 type runningFirmwareEffect struct {
-	effect DeviceEffect
-	wasOff bool
+	effect            DeviceEffect
+	wasOff            bool
+	instanceID        uint32
+	confirmationUntil time.Time
 }
 
 type effectRestore struct {
@@ -283,6 +288,7 @@ func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	log.Printf("hikari: lifx snapshot read %d devices", len(devices))
 	snapshot := mapLifxDevices(devices)
 	snapshot.Revision = revision
+	t.reconcileFirmwareEffectSnapshot(&snapshot, time.Now())
 	t.reconcileRestoreSnapshot(&snapshot, time.Now())
 	t.reconcileMetadataSnapshot(&snapshot, time.Now())
 	snapshot = sortDeviceSnapshot(snapshot)
@@ -440,6 +446,11 @@ func (t *LifxTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEf
 	if err := ctx.Err(); err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(effect), Error: err.Error()}, err
 	}
+	instanceID, ok := messages.EffectInstanceID(msg)
+	if !ok {
+		err := fmt.Errorf("effect message does not carry an instance ID")
+		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(effect), Error: err.Error()}, err
+	}
 	appPrevious := t.stopAppEffect(req.Device.Serial)
 	if appPrevious != nil {
 		if err := restoreDeviceState(ctx, ctrl, serial, *appPrevious); err != nil {
@@ -463,7 +474,12 @@ func (t *LifxTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEf
 		active.On = true
 		t.storeCachedDevice(active)
 	}
-	t.storeFirmwareEffect(req.Device.Serial, runningFirmwareEffect{effect: effect, wasOff: wasOff})
+	t.storeFirmwareEffect(req.Device.Serial, runningFirmwareEffect{
+		effect:            effect,
+		wasOff:            wasOff,
+		instanceID:        instanceID,
+		confirmationUntil: time.Now().Add(firmwareEffectConfirmationDelay),
+	})
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(effect)}, nil
 }
 
@@ -1655,6 +1671,32 @@ func (t *LifxTransport) storeFirmwareEffect(serial string, effect runningFirmwar
 	t.firmware[serial] = effect
 }
 
+func (t *LifxTransport) reconcileFirmwareEffectSnapshot(snapshot *DeviceSnapshot, now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for i := range snapshot.Devices {
+		observed := snapshot.Devices[i].FirmwareEffect
+		if observed == nil {
+			continue
+		}
+		started, ok := t.firmware[snapshot.Devices[i].Serial]
+		if !ok {
+			continue
+		}
+		if observed.Running && observed.instanceID == started.instanceID {
+			observed.OwnedByHikari = true
+			if !started.confirmationUntil.IsZero() {
+				started.confirmationUntil = time.Time{}
+				t.firmware[snapshot.Devices[i].Serial] = started
+			}
+			continue
+		}
+		if started.confirmationUntil.IsZero() || !now.Before(started.confirmationUntil) {
+			delete(t.firmware, snapshot.Devices[i].Serial)
+		}
+	}
+}
+
 func (t *LifxTransport) captureFirmwareEffectWasOff(serial string, restored *Device, requested Device) bool {
 	t.mu.RLock()
 	running, ok := t.firmware[serial]
@@ -1944,23 +1986,24 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 		kelvin = capability.KelvinMin
 	}
 	device := Device{
-		GroupID:    groupID,
-		Serial:     d.Serial.String(),
-		Name:       nameOrUnknown(d.Label, d.Serial.String()),
-		Model:      nameOrUnknown(d.RegistryName, "LIFX"),
-		Kind:       mapDeviceKind(d),
-		IPAddress:  deviceIPAddress(d),
-		ProductID:  d.ProductID,
-		Firmware:   d.FirmwareVersion,
-		RSSI:       int(d.WifiRSSI),
-		RSSIText:   d.WifiRSSI.String(),
-		Online:     true,
-		On:         d.PoweredOn,
-		Brightness: color.L,
-		Capability: capability,
-		Color:      &color,
-		Kelvin:     kelvin,
-		Relays:     mapLifxRelays(d.Relays),
+		GroupID:        groupID,
+		Serial:         d.Serial.String(),
+		Name:           nameOrUnknown(d.Label, d.Serial.String()),
+		Model:          nameOrUnknown(d.RegistryName, "LIFX"),
+		Kind:           mapDeviceKind(d),
+		IPAddress:      deviceIPAddress(d),
+		ProductID:      d.ProductID,
+		Firmware:       d.FirmwareVersion,
+		RSSI:           int(d.WifiRSSI),
+		RSSIText:       d.WifiRSSI.String(),
+		Online:         true,
+		On:             d.PoweredOn,
+		Brightness:     color.L,
+		Capability:     capability,
+		Color:          &color,
+		Kelvin:         kelvin,
+		Relays:         mapLifxRelays(d.Relays),
+		FirmwareEffect: mapLifxFirmwareEffect(d),
 	}
 
 	if device.Kind == DeviceKindSwitch {
@@ -1990,6 +2033,40 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 	}
 
 	return device
+}
+
+func mapLifxFirmwareEffect(d lifxdevice.Device) *FirmwareEffectState {
+	switch mapDeviceKind(d) {
+	case DeviceKindMultizone:
+		effect := d.MultizoneProperties.Effect
+		if !effect.Known {
+			return nil
+		}
+		return &FirmwareEffectState{
+			Running:    effect.Running(),
+			Effect:     DeviceEffect(effect.Type.String()),
+			SpeedMS:    int(effect.Speed / time.Millisecond),
+			Direction:  effect.Direction.String(),
+			instanceID: effect.InstanceID,
+		}
+	case DeviceKindMatrix:
+		effect := d.MatrixProperties.Effect
+		if !effect.Known {
+			return nil
+		}
+		name := effect.Type.String()
+		if effect.Type == lifxdevice.MatrixEffectTypeSky {
+			name = effect.SkyType.String()
+		}
+		return &FirmwareEffectState{
+			Running:    effect.Running(),
+			Effect:     DeviceEffect(name),
+			SpeedMS:    int(effect.Speed / time.Millisecond),
+			instanceID: effect.InstanceID,
+		}
+	default:
+		return nil
+	}
 }
 
 func logMatrixSnapshot(device Device) {

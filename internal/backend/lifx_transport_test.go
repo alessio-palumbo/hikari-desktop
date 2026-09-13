@@ -1398,6 +1398,84 @@ func TestLifxTransportStartDeviceEffectSendsMultizoneMove(t *testing.T) {
 	if payload.Settings.Parameter.Parameter1 != 0 {
 		t.Fatalf("direction parameter = %d, want reverse", payload.Settings.Parameter.Parameter1)
 	}
+	tracked := transport.firmware[device.Serial]
+	if tracked.instanceID != payload.Settings.Instanceid {
+		t.Fatalf("tracked instance ID = %d, want %d", tracked.instanceID, payload.Settings.Instanceid)
+	}
+}
+
+func TestMapLifxDeviceMapsObservedFirmwareEffect(t *testing.T) {
+	dev := testLifxDevice(t, "d073d501a2c3", "Strip", "Home", "Desk")
+	dev.SetProductInfo(31)
+	dev.MultizoneProperties.Effect = lifxdevice.MultizoneEffect{
+		Known:      true,
+		Type:       lifxdevice.MultizoneEffectTypeMove,
+		InstanceID: 42,
+		Speed:      4 * time.Second,
+		Direction:  lifxdevice.EffectDirectionReverse,
+	}
+
+	mapped := mapLifxDevice(dev, "desk")
+	if mapped.FirmwareEffect == nil {
+		t.Fatal("firmware effect = nil, want observed effect")
+	}
+	if !mapped.FirmwareEffect.Running || mapped.FirmwareEffect.Effect != DeviceEffectMove {
+		t.Fatalf("firmware effect = %#v, want running move", mapped.FirmwareEffect)
+	}
+	if mapped.FirmwareEffect.SpeedMS != 4000 || mapped.FirmwareEffect.Direction != "reverse" {
+		t.Fatalf("firmware effect settings = %#v", mapped.FirmwareEffect)
+	}
+}
+
+func TestReconcileFirmwareEffectSnapshotIdentifiesHikariInstance(t *testing.T) {
+	transport := newTestLifxTransport(t, &fakeLifxController{})
+	transport.firmware["d073d501a2c3"] = runningFirmwareEffect{
+		effect:            DeviceEffectMove,
+		instanceID:        42,
+		confirmationUntil: time.Now().Add(time.Second),
+	}
+	snapshot := DeviceSnapshot{Devices: []Device{{
+		Serial: "d073d501a2c3",
+		FirmwareEffect: &FirmwareEffectState{
+			Running:    true,
+			Effect:     DeviceEffectMove,
+			instanceID: 42,
+		},
+	}}}
+
+	transport.reconcileFirmwareEffectSnapshot(&snapshot, time.Now())
+
+	if !snapshot.Devices[0].FirmwareEffect.OwnedByHikari {
+		t.Fatal("ownedByHikari = false, want true")
+	}
+	if !transport.firmware["d073d501a2c3"].confirmationUntil.IsZero() {
+		t.Fatal("matching observed instance should confirm the pending effect")
+	}
+}
+
+func TestReconcileFirmwareEffectSnapshotDropsConfirmedConflictingInstance(t *testing.T) {
+	transport := newTestLifxTransport(t, &fakeLifxController{})
+	transport.firmware["d073d501a2c3"] = runningFirmwareEffect{
+		effect:     DeviceEffectMove,
+		instanceID: 42,
+	}
+	snapshot := DeviceSnapshot{Devices: []Device{{
+		Serial: "d073d501a2c3",
+		FirmwareEffect: &FirmwareEffectState{
+			Running:    true,
+			Effect:     DeviceEffectMove,
+			instanceID: 99,
+		},
+	}}}
+
+	transport.reconcileFirmwareEffectSnapshot(&snapshot, time.Now())
+
+	if snapshot.Devices[0].FirmwareEffect.OwnedByHikari {
+		t.Fatal("ownedByHikari = true for a conflicting instance")
+	}
+	if _, ok := transport.firmware["d073d501a2c3"]; ok {
+		t.Fatal("conflicting observed instance retained local ownership")
+	}
 }
 
 func TestLifxTransportStartDeviceEffectDefaultsMultizoneMove(t *testing.T) {

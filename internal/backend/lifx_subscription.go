@@ -203,6 +203,7 @@ func (t *LifxTransport) notifyDeviceSnapshot(ctrl lifxController, generation uin
 	devices, revision := t.snapshotSourceDevices(ctrl)
 	snapshot := mapLifxDevices(devices)
 	snapshot.Revision = revision
+	t.reconcileFirmwareEffectSnapshot(&snapshot, time.Now())
 	t.reconcileRestoreSnapshot(&snapshot, time.Now())
 	t.reconcileMetadataSnapshot(&snapshot, time.Now())
 	snapshot = sortDeviceSnapshot(snapshot)
