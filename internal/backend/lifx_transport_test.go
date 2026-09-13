@@ -12,6 +12,7 @@ import (
 	"time"
 
 	lifxclient "github.com/alessio-palumbo/lifxlan-go/pkg/client"
+	lifxcontroller "github.com/alessio-palumbo/lifxlan-go/pkg/controller"
 	lifxdevice "github.com/alessio-palumbo/lifxlan-go/pkg/device"
 	lifxeffects "github.com/alessio-palumbo/lifxlan-go/pkg/effects"
 	"github.com/alessio-palumbo/lifxlan-go/pkg/protocol"
@@ -2499,12 +2500,15 @@ func newTestLifxTransport(t *testing.T, controller lifxController) *LifxTranspor
 // fakeLifxController is shared between the test goroutine and any app effect
 // goroutines the transport starts, so every field it mutates is guarded.
 type fakeLifxController struct {
-	mu      sync.Mutex
-	devices []lifxdevice.Device
-	sends   []sentMessage
-	sent    chan sentMessage
-	closed  bool
-	now     func() time.Time
+	mu              sync.Mutex
+	devices         []lifxdevice.Device
+	sends           []sentMessage
+	sent            chan sentMessage
+	events          chan lifxcontroller.DeviceEvent
+	closed          bool
+	now             func() time.Time
+	getDevicesCalls int
+	subscribeCalls  int
 }
 
 func (f *fakeLifxController) Close() error {
@@ -2517,7 +2521,53 @@ func (f *fakeLifxController) Close() error {
 func (f *fakeLifxController) GetDevices() []lifxdevice.Device {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.devices
+	f.getDevicesCalls++
+	devices := make([]lifxdevice.Device, len(f.devices))
+	for index := range f.devices {
+		devices[index] = f.devices[index].Clone()
+	}
+	return devices
+}
+
+func (f *fakeLifxController) SubscribeDevices(ctx context.Context, _ ...lifxcontroller.SubscriptionOption) <-chan lifxcontroller.DeviceEvent {
+	f.mu.Lock()
+	f.subscribeCalls++
+	devices := make([]lifxdevice.Device, len(f.devices))
+	for index := range f.devices {
+		devices[index] = f.devices[index].Clone()
+	}
+	events := f.events
+	f.mu.Unlock()
+
+	out := make(chan lifxcontroller.DeviceEvent, len(devices)+1)
+	for _, device := range devices {
+		out <- lifxcontroller.DeviceEvent{Type: lifxcontroller.DeviceEventAdded, Device: device, Initial: true}
+	}
+	out <- lifxcontroller.DeviceEvent{Type: lifxcontroller.DeviceEventSnapshotComplete}
+	if events == nil {
+		close(out)
+		return out
+	}
+
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case event, ok := <-events:
+				if !ok {
+					return
+				}
+				select {
+				case out <- event:
+				case <-ctx.Done():
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
 }
 
 func (f *fakeLifxController) Send(serial lifxdevice.Serial, msg *protocol.Message) error {

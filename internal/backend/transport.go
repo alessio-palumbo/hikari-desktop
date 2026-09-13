@@ -3,8 +3,8 @@ package backend
 import "context"
 
 // DeviceTransport is the backend boundary between Wails methods and the device
-// implementation. Start begins any background transport work, such as lifxlan-go
-// discovery, before the frontend starts polling snapshots.
+// implementation. Start begins background transport work, such as lifxlan-go
+// discovery and observed-state subscriptions, before snapshots are requested.
 type DeviceTransport interface {
 	Start(ctx context.Context) error
 	Close(ctx context.Context) error

@@ -44,6 +44,7 @@ const (
 type lifxController interface {
 	Close() error
 	GetDevices() []lifxdevice.Device
+	SubscribeDevices(context.Context, ...lifxcontroller.SubscriptionOption) <-chan lifxcontroller.DeviceEvent
 	Send(lifxdevice.Serial, *protocol.Message) error
 }
 
@@ -52,27 +53,34 @@ type broadcastInterfaceLister func() ([]lifxclient.BroadcastInterface, error)
 
 // LifxTransport adapts lifxlan-go behind DeviceTransport.
 //
-// Snapshot maps controller.GetDevices() into the frontend DTO. SetDeviceState
-// sends power and color state for single-zone, multizone, and matrix devices,
-// while SetDeviceMetadata handles LIFX label and hierarchy messages separately.
-// Matrix colors are rotated into UI orientation for previews and rotated back
-// to device order when applying edited pixels.
+// Snapshot maps the controller's subscribed device inventory into the frontend
+// DTO, using GetDevices only before the initial event boundary or after stream
+// overflow. SetDeviceState sends power and color state for single-zone,
+// multizone, and matrix devices, while SetDeviceMetadata handles LIFX label and
+// hierarchy messages separately. Matrix colors are rotated into UI orientation
+// for previews and rotated back to device order when applying edited pixels.
 //
 // Start creates the controller and begins lifxlan-go discovery. Tests can inject
 // a fake controller directly with NewLifxTransportWithController.
 type LifxTransport struct {
-	controller            lifxController
-	controllerFactory     lifxControllerFactory
-	interfaceLister       broadcastInterfaceLister
-	settingsStore         networkSettingsStore
-	mu                    sync.RWMutex
-	cache                 map[string]Device
-	effects               map[string]runningAppEffect
-	firmware              map[string]runningFirmwareEffect
-	restores              map[string]effectRestore
-	metadata              map[string]pendingDeviceMetadata
-	selectedInterfaceName string
-	networkWarning        string
+	controller             lifxController
+	controllerFactory      lifxControllerFactory
+	interfaceLister        broadcastInterfaceLister
+	settingsStore          networkSettingsStore
+	mu                     sync.RWMutex
+	cache                  map[string]Device
+	effects                map[string]runningAppEffect
+	firmware               map[string]runningFirmwareEffect
+	restores               map[string]effectRestore
+	metadata               map[string]pendingDeviceMetadata
+	observed               map[lifxdevice.Serial]lifxdevice.Device
+	observedReady          bool
+	observedRevision       uint64
+	subscriptionCancel     context.CancelFunc
+	subscriptionDone       <-chan struct{}
+	subscriptionGeneration uint64
+	selectedInterfaceName  string
+	networkWarning         string
 }
 
 type runningAppEffect struct {
@@ -130,6 +138,7 @@ func newLifxTransport(factory lifxControllerFactory, lister broadcastInterfaceLi
 		firmware:          make(map[string]runningFirmwareEffect),
 		restores:          make(map[string]effectRestore),
 		metadata:          make(map[string]pendingDeviceMetadata),
+		observed:          make(map[lifxdevice.Serial]lifxdevice.Device),
 	}
 }
 
@@ -151,9 +160,13 @@ func defaultLifxControllerFactory(cfg *lifxclient.Config) (lifxController, error
 
 func (t *LifxTransport) Start(ctx context.Context) error {
 	t.mu.RLock()
-	started := t.controller != nil
+	ctrl := t.controller
+	subscribed := t.subscriptionCancel != nil
 	t.mu.RUnlock()
-	if started {
+	if ctrl != nil {
+		if !subscribed {
+			t.startDeviceSubscription(ctrl)
+		}
 		return nil
 	}
 
@@ -161,7 +174,7 @@ func (t *LifxTransport) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	ctrl, err := t.createController(selectedName)
+	ctrl, err = t.createController(selectedName)
 	if err != nil {
 		return err
 	}
@@ -171,6 +184,7 @@ func (t *LifxTransport) Start(ctx context.Context) error {
 	t.selectedInterfaceName = selectedName
 	t.networkWarning = warning
 	t.mu.Unlock()
+	t.startDeviceSubscription(ctrl)
 	log.Print("hikari: lifx controller created")
 	return nil
 }
@@ -183,6 +197,7 @@ func (t *LifxTransport) Close(ctx context.Context) error {
 	if err := t.restoreAllAppEffects(ctx, ctrl); err != nil {
 		log.Printf("hikari: restore app effects on close failed: %v", err)
 	}
+	t.stopDeviceSubscription()
 	if err := ctrl.Close(); err != nil {
 		return fmt.Errorf("close lifx controller: %w", err)
 	}
@@ -262,7 +277,7 @@ func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	if err := t.ensureNetworkInterfaceAvailable(); err != nil {
 		return DeviceSnapshot{}, err
 	}
-	devices := ctrl.GetDevices()
+	devices := t.snapshotSourceDevices(ctrl)
 	log.Printf("hikari: lifx snapshot read %d devices", len(devices))
 	snapshot := mapLifxDevices(devices)
 	t.reconcileRestoreSnapshot(&snapshot, time.Now())
@@ -1403,6 +1418,7 @@ func (t *LifxTransport) restartController(ctx context.Context, interfaceName str
 		if err := t.restoreAllAppEffects(ctx, old); err != nil {
 			log.Printf("hikari: restore app effects before network switch failed: %v", err)
 		}
+		t.stopDeviceSubscription()
 		t.mu.Lock()
 		if t.controller == old {
 			t.controller = nil
@@ -1424,6 +1440,7 @@ func (t *LifxTransport) restartController(ctx context.Context, interfaceName str
 	t.selectedInterfaceName = interfaceName
 	t.networkWarning = warning
 	t.mu.Unlock()
+	t.startDeviceSubscription(ctrl)
 	log.Printf("hikari: lifx controller restarted with network interface %q", interfaceName)
 	return nil
 }
@@ -1440,6 +1457,9 @@ func (t *LifxTransport) clearRuntimeStateLocked() {
 	t.firmware = make(map[string]runningFirmwareEffect)
 	t.restores = make(map[string]effectRestore)
 	t.metadata = make(map[string]pendingDeviceMetadata)
+	t.observed = make(map[lifxdevice.Serial]lifxdevice.Device)
+	t.observedReady = false
+	t.observedRevision = 0
 }
 
 func (t *LifxTransport) loadValidatedInterfaceName() (string, string, error) {
