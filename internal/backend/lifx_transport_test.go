@@ -1478,6 +1478,51 @@ func TestReconcileFirmwareEffectSnapshotDropsConfirmedConflictingInstance(t *tes
 	}
 }
 
+func TestReconcileFirmwareEffectSnapshotKeepsStoppingInstancePending(t *testing.T) {
+	transport := newTestLifxTransport(t, &fakeLifxController{})
+	transport.firmware["d073d501a2c3"] = runningFirmwareEffect{
+		effect:            DeviceEffectMove,
+		instanceID:        42,
+		stopping:          true,
+		confirmationUntil: time.Now().Add(time.Second),
+	}
+	snapshot := DeviceSnapshot{Devices: []Device{{
+		Serial: "d073d501a2c3",
+		FirmwareEffect: &FirmwareEffectState{
+			Running:    true,
+			Effect:     DeviceEffectMove,
+			instanceID: 42,
+		},
+	}}}
+
+	transport.reconcileFirmwareEffectSnapshot(&snapshot, time.Now())
+
+	observed := snapshot.Devices[0].FirmwareEffect
+	if !observed.OwnedByHikari || !observed.HikariPending {
+		t.Fatalf("observed effect = %#v, want owned pending stop", observed)
+	}
+}
+
+func TestReconcileFirmwareEffectSnapshotClearsOwnershipOnObservedStop(t *testing.T) {
+	transport := newTestLifxTransport(t, &fakeLifxController{})
+	transport.firmware["d073d501a2c3"] = runningFirmwareEffect{
+		effect:            DeviceEffectMove,
+		instanceID:        42,
+		stopping:          true,
+		confirmationUntil: time.Now().Add(time.Second),
+	}
+	snapshot := DeviceSnapshot{Devices: []Device{{
+		Serial:         "d073d501a2c3",
+		FirmwareEffect: &FirmwareEffectState{Running: false},
+	}}}
+
+	transport.reconcileFirmwareEffectSnapshot(&snapshot, time.Now())
+
+	if _, ok := transport.firmware["d073d501a2c3"]; ok {
+		t.Fatal("observed stop retained local firmware ownership")
+	}
+}
+
 func TestLifxTransportStartDeviceEffectDefaultsMultizoneMove(t *testing.T) {
 	controller := &fakeLifxController{}
 	transport := newTestLifxTransport(t, controller)

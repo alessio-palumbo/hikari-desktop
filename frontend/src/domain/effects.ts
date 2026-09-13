@@ -158,6 +158,10 @@ export function supportedFirmwareEffects(device: Device): DeviceEffectDefinition
   return supportedDeviceEffects(device);
 }
 
+export function deviceEffectSource(effect: string): DeviceEffectSource | undefined {
+  return deviceEffects.find((definition) => definition.id === effect)?.source;
+}
+
 export function defaultEffectSpeedMs(effects: DeviceEffectDefinition[]): number {
   return effects[0]?.speed.defaultMs ?? 5000;
 }

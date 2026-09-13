@@ -412,7 +412,9 @@ function EffectControls({
             {sourceEffects.map((effect) => {
               const effectRunning = running && status?.effect === effect.id;
               const active = effectRunning || (!running && selectedEffect === effect.id);
-              const speedMs = effectSpeeds[effect.id] ?? effect.speed.defaultMs;
+              const speedMs = effectRunning && status?.speedMs
+                ? status.speedMs
+                : effectSpeeds[effect.id] ?? effect.speed.defaultMs;
               return (
                 <EffectOption
                   key={effect.id}

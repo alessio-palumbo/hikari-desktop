@@ -55,6 +55,15 @@ export interface ButtonConfig {
   backlightOffColor: HslColor;
 }
 
+export interface FirmwareEffectState {
+  running: boolean;
+  effect?: string;
+  speedMs?: number;
+  direction?: string;
+  ownedByHikari?: boolean;
+  hikariPending?: boolean;
+}
+
 export interface Device {
   groupId: string;
   serial: string;
@@ -79,6 +88,7 @@ export interface Device {
   chain?: Matrix[];
   relays?: Relay[];
   buttonConfig?: ButtonConfig;
+  firmwareEffect?: FirmwareEffectState;
 }
 
 export interface DeviceCapability {

@@ -102,6 +102,7 @@ type runningFirmwareEffect struct {
 	wasOff            bool
 	instanceID        uint32
 	confirmationUntil time.Time
+	stopping          bool
 }
 
 type effectRestore struct {
@@ -501,7 +502,7 @@ func (t *LifxTransport) StopDeviceEffect(ctx context.Context, req StopDeviceEffe
 		t.storeRestoreDevice(*previous, time.Now().Add(3*time.Second))
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false}, nil
 	}
-	firmwareWasOff := t.stopFirmwareEffect(req.Device.Serial)
+	firmwareWasOff := t.stopFirmwareEffect(req.Device.Serial, time.Now())
 	if firmwareWasOff != nil && *firmwareWasOff {
 		if err := sendEffectPowerOff(ctx, ctrl, serial, req.Device); err != nil {
 			return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Error: err.Error()}, fmt.Errorf("restore firmware effect power: %w", err)
@@ -1683,13 +1684,29 @@ func (t *LifxTransport) reconcileFirmwareEffectSnapshot(snapshot *DeviceSnapshot
 		if !ok {
 			continue
 		}
+		if !observed.Running && started.stopping {
+			delete(t.firmware, snapshot.Devices[i].Serial)
+			continue
+		}
 		if observed.Running && observed.instanceID == started.instanceID {
+			if started.stopping {
+				if now.Before(started.confirmationUntil) {
+					observed.OwnedByHikari = true
+					observed.HikariPending = true
+				} else {
+					delete(t.firmware, snapshot.Devices[i].Serial)
+				}
+				continue
+			}
 			observed.OwnedByHikari = true
 			if !started.confirmationUntil.IsZero() {
 				started.confirmationUntil = time.Time{}
 				t.firmware[snapshot.Devices[i].Serial] = started
 			}
 			continue
+		}
+		if now.Before(started.confirmationUntil) {
+			observed.HikariPending = true
 		}
 		if started.confirmationUntil.IsZero() || !now.Before(started.confirmationUntil) {
 			delete(t.firmware, snapshot.Devices[i].Serial)
@@ -1713,11 +1730,13 @@ func (t *LifxTransport) captureFirmwareEffectWasOff(serial string, restored *Dev
 	return !requested.On
 }
 
-func (t *LifxTransport) stopFirmwareEffect(serial string) *bool {
+func (t *LifxTransport) stopFirmwareEffect(serial string, now time.Time) *bool {
 	t.mu.Lock()
 	effect, ok := t.firmware[serial]
 	if ok {
-		delete(t.firmware, serial)
+		effect.stopping = true
+		effect.confirmationUntil = now.Add(firmwareEffectConfirmationDelay)
+		t.firmware[serial] = effect
 	}
 	t.mu.Unlock()
 	if !ok {

@@ -19,6 +19,7 @@ import { DeviceKind, isLightDevice, sortDevicesByHierarchy, type Device, type De
 import { collectLocations, devicesInLocationCollection, groupsInLocationCollection, locationCollectionByKey, locationCollectionForID } from './domain/locationCollections.js';
 import { initialRoomOccupancyState, reconcileRoomOccupancy, type RoomOccupancyState } from './domain/occupancy';
 import { planRoomDim, planRoomDimRestore, type RoomDimOwnership } from './domain/presenceLighting';
+import { displayedEffectStatus } from './domain/effectState.js';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, isSnapshotStale, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
@@ -33,9 +34,10 @@ const CENTER_VIEW_KEY = 'hikari:centerView';
 const SENSOR_RECONCILIATION_INTERVAL_MS = 30000;
 const SENSOR_POLL_FALLBACK_INTERVAL_MS = 1000;
 const FLOOR_PLAN_SAVE_DELAY_MS = 200;
+const EFFECT_OBSERVATION_TIMEOUT_MS = 3500;
 
 type DeviceStatus = Record<string, { loading?: boolean; error?: string }>;
-type DeviceEffectStates = Record<string, DeviceEffectStatus & { loading?: boolean }>;
+type DeviceEffectStates = Record<string, DeviceEffectStatus & { pendingUntil?: number }>;
 type PendingDeviceStates = Record<string, PendingDeviceState>;
 type FloorPlanRoomPatch = Partial<Pick<FloorPlanRoom, 'label' | 'type' | 'points' | 'presence'>>;
 
@@ -101,6 +103,13 @@ export function App() {
   const floorPlanProfileOptions = useMemo(
     () => Object.values(floorPlanProfiles.profiles).sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)),
     [floorPlanProfiles.profiles],
+  );
+  const displayedDeviceEffectStatus = useMemo(
+    () => Object.fromEntries(snapshot.devices.flatMap((device) => {
+      const status = displayedEffectStatus(device, deviceEffectStatus[device.serial]);
+      return status ? [[device.serial, status]] : [];
+    })),
+    [deviceEffectStatus, snapshot.devices],
   );
 
   useEffect(() => {
@@ -581,10 +590,6 @@ export function App() {
     setDeviceStatus((prev) => ({ ...prev, [serial]: { loading, error } }));
   };
 
-  const setDeviceEffectLoading = (serial: string, loading: boolean, error?: string) => {
-    setDeviceEffectStatus((prev) => ({ ...prev, [serial]: { ...(prev[serial] ?? { serial, running: false }), loading, error } }));
-  };
-
   const handleSnapshotRefreshError = (error: unknown) => {
     const message = networkErrorMessage(error);
     setSelectedSerial(undefined);
@@ -796,15 +801,34 @@ export function App() {
   };
 
   const startInspectorEffect = async (device: Device, effect: DeviceEffect, speedMs: number) => {
-    setDeviceEffectLoading(device.serial, true);
+    const previous = displayedDeviceEffectStatus[device.serial] ?? deviceEffectStatus[device.serial];
+    const pendingUntil = Date.now() + EFFECT_OBSERVATION_TIMEOUT_MS;
+    setDeviceEffectStatus((current) => ({
+      ...current,
+      [device.serial]: {
+        serial: device.serial,
+        running: true,
+        effect,
+        speedMs,
+        loading: true,
+        pendingUntil,
+      },
+    }));
     try {
       await deviceCommandRef.current[device.serial];
       const current = latestEffectDevice(device);
       const status = await startDeviceEffect(current, { effect, speedMs });
-      setDeviceEffectStatus((prev) => ({ ...prev, [current.serial]: { ...status, loading: false } }));
+      setDeviceEffectStatus((prev) => ({ ...prev, [current.serial]: { ...status, loading: false, pendingUntil } }));
     } catch (error) {
       if (handleRecoverableNetworkError(error)) return;
-      setDeviceEffectLoading(device.serial, false, errorMessage(error));
+      setDeviceEffectStatus((current) => ({
+        ...current,
+        [device.serial]: {
+          ...(previous ?? { serial: device.serial, running: false }),
+          loading: false,
+          error: errorMessage(error),
+        },
+      }));
     }
   };
 
@@ -814,13 +838,39 @@ export function App() {
   };
 
   const stopInspectorEffect = async (device: Device) => {
-    setDeviceEffectLoading(device.serial, true);
+    const previous = displayedDeviceEffectStatus[device.serial] ?? deviceEffectStatus[device.serial];
+    const pendingUntil = Date.now() + EFFECT_OBSERVATION_TIMEOUT_MS;
+    setDeviceEffectStatus((current) => ({
+      ...current,
+      [device.serial]: {
+        serial: device.serial,
+        running: false,
+        effect: previous?.effect,
+        loading: true,
+        pendingUntil,
+      },
+    }));
     try {
       const status = await stopDeviceEffect(device);
-      setDeviceEffectStatus((prev) => ({ ...prev, [device.serial]: { ...status, loading: false } }));
+      setDeviceEffectStatus((prev) => ({
+        ...prev,
+        [device.serial]: {
+          ...status,
+          effect: status.effect ?? prev[device.serial]?.effect,
+          loading: false,
+          pendingUntil,
+        },
+      }));
     } catch (error) {
       if (handleRecoverableNetworkError(error)) return;
-      setDeviceEffectLoading(device.serial, false, errorMessage(error));
+      setDeviceEffectStatus((current) => ({
+        ...current,
+        [device.serial]: {
+          ...(previous ?? { serial: device.serial, running: true }),
+          loading: false,
+          error: errorMessage(error),
+        },
+      }));
     }
   };
 
@@ -1060,7 +1110,7 @@ export function App() {
           searching={query.trim().length > 0}
           refreshing={refreshing}
           deviceStatus={deviceStatus}
-          deviceEffectStatus={deviceEffectStatus}
+          deviceEffectStatus={displayedDeviceEffectStatus}
           view={centerView}
           onViewChange={setCenterView}
           onSelect={selectDevice}
@@ -1115,7 +1165,7 @@ export function App() {
           saving={saving}
           loading={deviceStatus[inspectorDevice.serial]?.loading}
           error={deviceStatus[inspectorDevice.serial]?.error}
-          effectStatus={deviceEffectStatus[inspectorDevice.serial]}
+          effectStatus={displayedDeviceEffectStatus[inspectorDevice.serial]}
           onClose={() => setSelectedSerial(undefined)}
           onChange={updateInspectorDevice}
           onMetadataSave={updateInspectorDeviceMetadata}

@@ -104,7 +104,10 @@ export interface DeviceEffectStatus {
   serial: string;
   running: boolean;
   effect?: string;
+  speedMs?: number;
+  ownedByHikari?: boolean;
   error?: string;
+  loading?: boolean;
 }
 
 export interface CommandEngineSettings {

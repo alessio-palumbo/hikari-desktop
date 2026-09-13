@@ -56,6 +56,7 @@ type FirmwareEffectState struct {
 	SpeedMS       int          `json:"speedMs,omitempty"`
 	Direction     string       `json:"direction,omitempty"`
 	OwnedByHikari bool         `json:"ownedByHikari,omitempty"`
+	HikariPending bool         `json:"hikariPending,omitempty"`
 	instanceID    uint32
 }
 
