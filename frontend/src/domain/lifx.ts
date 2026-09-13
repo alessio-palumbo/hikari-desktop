@@ -88,6 +88,7 @@ export interface DeviceCapability {
 }
 
 export interface DeviceSnapshot {
+  revision?: number;
   locations: Location[];
   groups: Group[];
   devices: Device[];

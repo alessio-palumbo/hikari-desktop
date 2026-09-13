@@ -15,10 +15,25 @@ func TestAppUsesTransport(t *testing.T) {
 		device:   device,
 	}
 	app := NewAppWithTransport(transport)
+	var eventName string
+	var eventSnapshot backend.DeviceSnapshot
+	app.emitEvent = func(_ context.Context, name string, data ...interface{}) {
+		eventName = name
+		if len(data) == 1 {
+			eventSnapshot, _ = data[0].(backend.DeviceSnapshot)
+		}
+	}
 	app.startup(context.Background())
 
 	if !transport.startCalled {
 		t.Fatal("expected Start to be called")
+	}
+	if transport.observer == nil {
+		t.Fatal("expected device snapshot observer to be registered")
+	}
+	transport.observer(transport.snapshot)
+	if eventName != deviceSnapshotEvent || len(eventSnapshot.Devices) != 1 {
+		t.Fatalf("device event = %q %#v", eventName, eventSnapshot)
 	}
 
 	snapshot, err := app.GetDeviceSnapshot()
@@ -125,6 +140,9 @@ func TestAppUsesTransport(t *testing.T) {
 	app.shutdown(context.Background())
 	if !transport.closeCalled {
 		t.Fatal("expected Close to be called")
+	}
+	if transport.observer != nil {
+		t.Fatal("expected device snapshot observer to be cleared")
 	}
 }
 
@@ -236,11 +254,16 @@ type recordingTransport struct {
 	settingsCalled     bool
 	setNetworkCalled   bool
 	restartCalled      bool
+	observer           func(backend.DeviceSnapshot)
 	lastReq            backend.SetDeviceStateRequest
 	lastMetadataReq    backend.SetDeviceMetadataRequest
 	lastStartEffectReq backend.StartDeviceEffectRequest
 	lastEffectReq      backend.StopDeviceEffectRequest
 	lastNetworkReq     backend.SetNetworkInterfaceRequest
+}
+
+func (t *recordingTransport) SetSnapshotObserver(observer func(backend.DeviceSnapshot)) {
+	t.observer = observer
 }
 
 type recordingSensorProvider struct {

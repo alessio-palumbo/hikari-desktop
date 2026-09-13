@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getCommandEngineSettings, getDeviceSnapshot, getFloorPlanPreferences, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, saveFloorPlanPreferences, setCommandEngineSettings, setDeviceMetadata, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, subscribeToSensorSnapshots, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorNode, type SensorSnapshot, type SetDeviceMetadataRequest } from './backend/api';
+import { getCommandEngineSettings, getDeviceSnapshot, getFloorPlanPreferences, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, saveFloorPlanPreferences, setCommandEngineSettings, setDeviceMetadata, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, subscribeToDeviceSnapshots, subscribeToSensorSnapshots, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorNode, type SensorSnapshot, type SetDeviceMetadataRequest } from './backend/api';
 import type { CenterView } from './components/CenterViewToggle';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
@@ -20,7 +20,7 @@ import { collectLocations, devicesInLocationCollection, groupsInLocationCollecti
 import { initialRoomOccupancyState, reconcileRoomOccupancy, type RoomOccupancyState } from './domain/occupancy';
 import { planRoomDim, planRoomDimRestore, type RoomDimOwnership } from './domain/presenceLighting';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
-import { createPendingState, isPendingConfirmed, isPendingExpired, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
+import { createPendingState, isPendingConfirmed, isPendingExpired, isSnapshotStale, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
 const REFRESH_INTERVAL_MS = 5000;
 const DISCOVERY_REFRESH_INTERVAL_MS = 1000;
@@ -186,48 +186,6 @@ export function App() {
       window.clearInterval(timer);
     };
   }, []);
-
-  const refreshSnapshot = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const next = await readSnapshotWithRecovery(networkRecoveryRef);
-      const currentDraft = draftRef.current;
-      const draftSerials = currentDraft?.dirty ? new Set([currentDraft.draft.serial]) : undefined;
-      const pending = pendingStateRef.current;
-      setSnapshot((prev) => reconcileSnapshot(prev, next, { draftSerials, pending }));
-      clearSettledPending(next, pending);
-      setRefreshError(undefined);
-      void getNetworkSettings()
-        .then((settings) => setNetworkSettings({ ...settings, warning: undefined }))
-        .catch(() => setNetworkSettings((prev) => (prev.warning ? { ...prev, warning: undefined } : prev)));
-    } catch (error) {
-      handleSnapshotRefreshError(error);
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void delay(INITIAL_DISCOVERY_DELAY_MS)
-      .then(() => {
-        if (cancelled) return undefined;
-        return refreshSnapshot();
-      })
-      .finally(() => {
-        if (!cancelled) setStartupReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshSnapshot]);
-
-  useEffect(() => {
-    if (!startupReady) return undefined;
-    const interval = snapshot.devices.length ? REFRESH_INTERVAL_MS : DISCOVERY_REFRESH_INTERVAL_MS;
-    const timer = window.setInterval(() => void refreshSnapshot(), interval);
-    return () => window.clearInterval(timer);
-  }, [refreshSnapshot, snapshot.devices.length, startupReady]);
 
   useEffect(() => {
     if (!startupReady || snapshot.devices.length) return undefined;
@@ -547,7 +505,7 @@ export function App() {
     });
   };
 
-  const clearSettledPending = (next: DeviceSnapshot, pending: PendingDeviceStates) => {
+  const clearSettledPending = useCallback((next: DeviceSnapshot, pending: PendingDeviceStates) => {
     const now = Date.now();
     const bySerial = new Map(next.devices.map((device) => [device.serial, device]));
     setPendingState((prev) => {
@@ -562,7 +520,62 @@ export function App() {
       }
       return changed ? updated : prev;
     });
-  };
+  }, []);
+
+  const applyDeviceSnapshot = useCallback((next: DeviceSnapshot) => {
+    const current = snapshotRef.current;
+    if (isSnapshotStale(current, next)) return false;
+    const currentDraft = draftRef.current;
+    const draftSerials = currentDraft?.dirty ? new Set([currentDraft.draft.serial]) : undefined;
+    const pending = pendingStateRef.current;
+    const reconciled = reconcileSnapshot(current, next, { draftSerials, pending });
+    snapshotRef.current = reconciled;
+    setSnapshot(reconciled);
+    clearSettledPending(next, pending);
+    setRefreshError(undefined);
+    return true;
+  }, [clearSettledPending]);
+
+  const refreshSnapshot = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const next = await readSnapshotWithRecovery(networkRecoveryRef);
+      applyDeviceSnapshot(next);
+      void getNetworkSettings()
+        .then((settings) => setNetworkSettings({ ...settings, warning: undefined }))
+        .catch(() => setNetworkSettings((prev) => (prev.warning ? { ...prev, warning: undefined } : prev)));
+    } catch (error) {
+      handleSnapshotRefreshError(error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [applyDeviceSnapshot]);
+
+  useEffect(() => subscribeToDeviceSnapshots((next) => {
+    applyDeviceSnapshot(next);
+  }), [applyDeviceSnapshot]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void delay(INITIAL_DISCOVERY_DELAY_MS)
+      .then(() => {
+        if (cancelled) return undefined;
+        return refreshSnapshot();
+      })
+      .finally(() => {
+        if (!cancelled) setStartupReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshSnapshot]);
+
+  useEffect(() => {
+    if (!startupReady) return undefined;
+    const interval = snapshot.devices.length ? REFRESH_INTERVAL_MS : DISCOVERY_REFRESH_INTERVAL_MS;
+    const timer = window.setInterval(() => void refreshSnapshot(), interval);
+    return () => window.clearInterval(timer);
+  }, [refreshSnapshot, snapshot.devices.length, startupReady]);
 
   const setDeviceLoading = (serial: string, loading: boolean, error?: string) => {
     setDeviceStatus((prev) => ({ ...prev, [serial]: { loading, error } }));

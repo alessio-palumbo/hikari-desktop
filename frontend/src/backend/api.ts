@@ -53,6 +53,7 @@ export interface SensorSnapshot {
 }
 
 const SENSOR_SNAPSHOT_EVENT = 'hikari:sensors:snapshot';
+const DEVICE_SNAPSHOT_EVENT = 'hikari:devices:snapshot';
 
 export interface NetworkInterfaceOption {
   name: string;
@@ -201,6 +202,14 @@ export async function getDeviceSnapshot(): Promise<DeviceSnapshot> {
   const app = window.go?.main?.App;
   if (app?.GetDeviceSnapshot) return normalizeSnapshot(await app.GetDeviceSnapshot());
   return mockSnapshot();
+}
+
+export function subscribeToDeviceSnapshots(listener: (snapshot: DeviceSnapshot) => void): (() => void) | undefined {
+  const eventsOnMultiple = window.runtime?.EventsOnMultiple;
+  if (!eventsOnMultiple) return undefined;
+  return eventsOnMultiple(DEVICE_SNAPSHOT_EVENT, (snapshot) => {
+    listener(normalizeSnapshot(snapshot as DeviceSnapshot | null | undefined));
+  }, -1);
 }
 
 export async function getSensorSnapshot(): Promise<SensorSnapshot> {
@@ -409,6 +418,9 @@ function mockSnapshot(): DeviceSnapshot {
 
 function normalizeSnapshot(snapshot: DeviceSnapshot | null | undefined): DeviceSnapshot {
   return {
+    revision: typeof snapshot?.revision === 'number' && Number.isFinite(snapshot.revision)
+      ? Math.max(0, Math.round(snapshot.revision))
+      : 0,
     locations: Array.isArray(snapshot?.locations) ? snapshot.locations : [],
     groups: Array.isArray(snapshot?.groups) ? snapshot.groups : [],
     devices: Array.isArray(snapshot?.devices) ? snapshot.devices : [],

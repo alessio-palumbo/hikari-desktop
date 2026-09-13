@@ -50,10 +50,17 @@ export function reconcileSnapshot(current: DeviceSnapshot, incoming: DeviceSnaps
   );
 
   return {
+    revision: incoming.revision ?? current.revision,
     locations,
     groups,
     devices,
   };
+}
+
+export function isSnapshotStale(current: DeviceSnapshot, incoming: DeviceSnapshot): boolean {
+  return current.revision !== undefined
+    && incoming.revision !== undefined
+    && incoming.revision < current.revision;
 }
 
 function mergeReferenced<T>(incoming: T[], current: T[], referencedIds: Set<string>, id: (value: T) => string): T[] {

@@ -81,6 +81,7 @@ type DeviceCapability struct {
 }
 
 type DeviceSnapshot struct {
+	Revision  uint64     `json:"revision,omitempty"`
 	Locations []Location `json:"locations"`
 	Groups    []Group    `json:"groups"`
 	Devices   []Device   `json:"devices"`

@@ -11,7 +11,10 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const sensorSnapshotEvent = "hikari:sensors:snapshot"
+const (
+	deviceSnapshotEvent = "hikari:devices:snapshot"
+	sensorSnapshotEvent = "hikari:sensors:snapshot"
+)
 
 type App struct {
 	ctx           context.Context
@@ -30,6 +33,10 @@ type sensorProvider interface {
 
 type sensorSnapshotObserver interface {
 	SetSnapshotObserver(func(backend.SensorSnapshot))
+}
+
+type deviceSnapshotObserver interface {
+	SetSnapshotObserver(func(backend.DeviceSnapshot))
 }
 
 func NewApp() *App {
@@ -63,6 +70,11 @@ func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvide
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	if observable, ok := a.transport.(deviceSnapshotObserver); ok {
+		observable.SetSnapshotObserver(func(snapshot backend.DeviceSnapshot) {
+			a.emitEvent(a.context(), deviceSnapshotEvent, snapshot)
+		})
+	}
 	if err := a.transport.Start(ctx); err != nil {
 		log.Printf("hikari: transport startup failed: %v", err)
 	}
@@ -79,6 +91,9 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if observable, ok := a.transport.(deviceSnapshotObserver); ok {
+		observable.SetSnapshotObserver(nil)
+	}
 	if err := a.transport.Close(ctx); err != nil {
 		log.Printf("hikari: transport shutdown failed: %v", err)
 	}

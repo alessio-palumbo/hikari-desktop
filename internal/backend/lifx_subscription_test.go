@@ -103,6 +103,39 @@ func TestLifxTransportSubscriptionResyncsCompleteInventory(t *testing.T) {
 	}
 }
 
+func TestLifxTransportSubscriptionCoalescesSnapshotNotifications(t *testing.T) {
+	initial := testLifxDevice(t, "d073d501a2c3", "Desk Lamp", "Home", "Desk")
+	events := make(chan lifxcontroller.DeviceEvent, 4)
+	controller := &fakeLifxController{devices: []lifxdevice.Device{initial}, events: events}
+	transport := newTestLifxTransport(t, controller)
+	notifications := make(chan DeviceSnapshot, 4)
+	transport.SetSnapshotObserver(func(snapshot DeviceSnapshot) { notifications <- snapshot })
+	if err := transport.Start(context.Background()); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = transport.Close(context.Background()) })
+	first := waitForDeviceSnapshot(t, notifications)
+
+	updated := initial.Clone()
+	updated.Label = "First update"
+	events <- lifxcontroller.DeviceEvent{Type: lifxcontroller.DeviceEventUpdated, Device: updated, Revision: 1, Changes: lifxcontroller.DeviceChangeLabel}
+	updated.Label = "Latest update"
+	events <- lifxcontroller.DeviceEvent{Type: lifxcontroller.DeviceEventUpdated, Device: updated, Revision: 2, Changes: lifxcontroller.DeviceChangeLabel}
+
+	latest := waitForDeviceSnapshot(t, notifications)
+	if latest.Revision <= first.Revision {
+		t.Fatalf("revision = %d after %d, want monotonic increase", latest.Revision, first.Revision)
+	}
+	if len(latest.Devices) != 1 || latest.Devices[0].Name != "Latest update" {
+		t.Fatalf("notification = %#v, want latest coalesced state", latest)
+	}
+	select {
+	case extra := <-notifications:
+		t.Fatalf("unexpected uncoalesced notification: %#v", extra)
+	case <-time.After(2 * deviceSnapshotNotificationDelay):
+	}
+}
+
 func TestLifxTransportRestartReplacesDeviceSubscription(t *testing.T) {
 	firstEvents := make(chan lifxcontroller.DeviceEvent, 2)
 	secondEvents := make(chan lifxcontroller.DeviceEvent, 2)
@@ -162,4 +195,15 @@ func waitForObservedRevision(t *testing.T, transport *LifxTransport, revision ui
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatalf("observed inventory did not reach revision %d ready=%v", revision, ready)
+}
+
+func waitForDeviceSnapshot(t *testing.T, snapshots <-chan DeviceSnapshot) DeviceSnapshot {
+	t.Helper()
+	select {
+	case snapshot := <-snapshots:
+		return snapshot
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for device snapshot")
+		return DeviceSnapshot{}
+	}
 }

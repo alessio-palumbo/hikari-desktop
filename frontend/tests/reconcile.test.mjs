@@ -5,7 +5,7 @@ import { activateEditedDevice } from '../dist-test/domain/editor.js';
 import { defaultEffectSpeedMs, formatEffectSpeed, speedToUnit, supportedDeviceEffects, supportedFirmwareEffects, unitToSpeedMs } from '../dist-test/domain/effects.js';
 import { DeviceKind, kelvinCss, previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl, paintMatrixBrush, paintMatrixFill, paintMatrixGradient, paintMultizoneBrush, paintMultizoneFill, paintMultizoneGradient } from '../dist-test/domain/paint.js';
-import { createPendingState, isPendingConfirmed, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
+import { createPendingState, isPendingConfirmed, isSnapshotStale, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
 
 const base = {
   locations: [{ id: 'home', name: 'Home' }],
@@ -48,6 +48,15 @@ test('accepts refresh for devices without active drafts', () => {
 
   assert.equal(got.devices[0].brightness, 0.9);
   assert.equal(got.devices[0].zones[0].h, 200);
+});
+
+test('preserves snapshot revisions and rejects older event ordering', () => {
+  const current = { ...base, revision: 8 };
+  const incoming = { ...base, revision: 9 };
+
+  assert.equal(isSnapshotStale(current, incoming), false);
+  assert.equal(isSnapshotStale(incoming, current), true);
+  assert.equal(reconcileSnapshot(current, incoming).revision, 9);
 });
 
 test('keeps missing devices as offline instead of dropping them', () => {

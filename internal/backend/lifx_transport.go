@@ -76,6 +76,8 @@ type LifxTransport struct {
 	observed               map[lifxdevice.Serial]lifxdevice.Device
 	observedReady          bool
 	observedRevision       uint64
+	snapshotRevision       uint64
+	snapshotObserver       func(DeviceSnapshot)
 	subscriptionCancel     context.CancelFunc
 	subscriptionDone       <-chan struct{}
 	subscriptionGeneration uint64
@@ -277,9 +279,10 @@ func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	if err := t.ensureNetworkInterfaceAvailable(); err != nil {
 		return DeviceSnapshot{}, err
 	}
-	devices := t.snapshotSourceDevices(ctrl)
+	devices, revision := t.snapshotSourceDevices(ctrl)
 	log.Printf("hikari: lifx snapshot read %d devices", len(devices))
 	snapshot := mapLifxDevices(devices)
+	snapshot.Revision = revision
 	t.reconcileRestoreSnapshot(&snapshot, time.Now())
 	t.reconcileMetadataSnapshot(&snapshot, time.Now())
 	snapshot = sortDeviceSnapshot(snapshot)
@@ -1460,6 +1463,7 @@ func (t *LifxTransport) clearRuntimeStateLocked() {
 	t.observed = make(map[lifxdevice.Serial]lifxdevice.Device)
 	t.observedReady = false
 	t.observedRevision = 0
+	t.snapshotRevision++
 }
 
 func (t *LifxTransport) loadValidatedInterfaceName() (string, string, error) {
