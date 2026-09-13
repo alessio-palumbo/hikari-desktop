@@ -883,8 +883,8 @@ export function App() {
     setPendingState({});
     setSnapshot({ locations: [], groups: [], devices: [] });
     setDiscoveryStartedAt(Date.now());
-    setLocationId('');
-    setGroupId('');
+    // Keep the stable hierarchy selection across controller restarts. Once the
+    // inventory returns, the selection effect falls back if it no longer exists.
     setNow(Date.now());
   };
 
