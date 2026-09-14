@@ -1597,17 +1597,8 @@ func TestLifxTransportStartDeviceEffectUsesCachedAppliedState(t *testing.T) {
 		t.Fatalf("StopDeviceEffect returned error: %v", err)
 	}
 
-	sends := controller.sentMessages()
-	var restored *packets.MultiZoneExtendedSetColorZones
-	for index := range sends {
-		if payload, ok := sends[index].msg.Payload.(*packets.MultiZoneExtendedSetColorZones); ok {
-			restored = payload
-		}
-	}
-	if restored == nil {
-		t.Fatalf("stop sends = %d, want multizone restore payload", len(sends))
-	}
-	color := lifxdevice.NewColor(restored.Colors[0])
+	restored := restoredDeviceState(t, controller)
+	color := lifxdevice.NewColor(restored.Zones[0])
 	if color.Hue != 120 {
 		t.Fatalf("restored hue = %v, want cached applied hue 120", color.Hue)
 	}
@@ -1640,17 +1631,8 @@ func TestLifxTransportSetDeviceStateWhileAppEffectRunningUpdatesRestoreColor(t *
 		t.Fatalf("StopDeviceEffect returned error: %v", err)
 	}
 
-	sends := controller.sentMessages()
-	var restored *packets.MultiZoneExtendedSetColorZones
-	for index := range sends {
-		if payload, ok := sends[index].msg.Payload.(*packets.MultiZoneExtendedSetColorZones); ok {
-			restored = payload
-		}
-	}
-	if restored == nil {
-		t.Fatalf("stop sends = %d, want multizone restore payload", len(sends))
-	}
-	color := lifxdevice.NewColor(restored.Colors[0])
+	restored := restoredDeviceState(t, controller)
+	color := lifxdevice.NewColor(restored.Zones[0])
 	if color.Hue != 220 {
 		t.Fatalf("restored hue = %v, want changed hue 220", color.Hue)
 	}
@@ -1684,17 +1666,8 @@ func TestLifxTransportSetDeviceStateWhileAppEffectRunningUpdatesRestoreBrightnes
 		t.Fatalf("StopDeviceEffect returned error: %v", err)
 	}
 
-	sends := controller.sentMessages()
-	var restored *packets.MultiZoneExtendedSetColorZones
-	for index := range sends {
-		if payload, ok := sends[index].msg.Payload.(*packets.MultiZoneExtendedSetColorZones); ok {
-			restored = payload
-		}
-	}
-	if restored == nil {
-		t.Fatalf("stop sends = %d, want multizone restore payload", len(sends))
-	}
-	color := lifxdevice.NewColor(restored.Colors[0])
+	restored := restoredDeviceState(t, controller)
+	color := lifxdevice.NewColor(restored.Zones[0])
 	if math.Abs(color.Brightness-80) > 0.1 {
 		t.Fatalf("restored brightness = %v, want 80", color.Brightness)
 	}
@@ -2385,26 +2358,14 @@ func TestLifxTransportStopDeviceEffectRestoresCachedMatrixAfterSnake(t *testing.
 	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: device}); err != nil {
 		t.Fatalf("StopDeviceEffect returned error: %v", err)
 	}
-	sends := controller.sentMessages()
-	if len(sends) == 0 {
-		t.Fatal("stop did not send restore messages")
-	}
-	for _, sent := range sends {
-		if _, ok := sent.msg.Payload.(*packets.TileSetEffect); ok {
-			t.Fatalf("stop sent firmware effect-off during app restore: %#v", sent.msg.Payload)
-		}
-	}
-	payload, ok := sends[len(sends)-1].msg.Payload.(*packets.TileSet64)
-	if !ok {
-		t.Fatalf("last payload = %T, want *packets.TileSet64", sends[len(sends)-1].msg.Payload)
-	}
-	restored := lifxdevice.NewColor(payload.Colors[0])
+	state := restoredDeviceState(t, controller)
+	restored := lifxdevice.NewColor(state.MatrixChains[0][0])
 	if restored.Hue != 20 {
 		t.Fatalf("restored hue = %v, want cached hue 20", restored.Hue)
 	}
 }
 
-func TestLifxTransportStopFirmwareEffectDoesNotRestoreMatrixState(t *testing.T) {
+func TestLifxTransportRapidMatrixFirmwareStopRetriesWithoutRestoringState(t *testing.T) {
 	lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
 	lifx.SetProductInfo(55)
 	lifx.MatrixProperties.Width = 2
@@ -2428,11 +2389,51 @@ func TestLifxTransportStopFirmwareEffectDoesNotRestoreMatrixState(t *testing.T) 
 	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: device}); err != nil {
 		t.Fatalf("StopDeviceEffect returned error: %v", err)
 	}
-	if len(controller.sentMessages()) != 1 {
-		t.Fatalf("sent %d messages, want effect-off only", len(controller.sentMessages()))
+	sends := controller.sentMessages()
+	if len(sends) != 2 {
+		t.Fatalf("sent %d messages, want two effect-off attempts", len(sends))
 	}
-	if _, ok := controller.sentMessages()[0].msg.Payload.(*packets.TileSetEffect); !ok {
-		t.Fatalf("first payload = %T, want *packets.TileSetEffect", controller.sentMessages()[0].msg.Payload)
+	for index, sent := range sends {
+		payload, ok := sent.msg.Payload.(*packets.TileSetEffect)
+		if !ok || payload.Settings.Type != enums.TileEffectTypeTILEEFFECTTYPEOFF {
+			t.Fatalf("payload %d = %#v, want matrix effect off", index, sent.msg.Payload)
+		}
+	}
+	if gap := sends[1].at.Sub(sends[0].at); gap < matrixEffectStopRetryDelay {
+		t.Fatalf("effect-off retry sent after %s, want at least %s", gap, matrixEffectStopRetryDelay)
+	}
+	if snapshots := controller.restoredStateSnapshots(); len(snapshots) != 0 {
+		t.Fatalf("restored snapshots = %#v, want none for firmware effect", snapshots)
+	}
+}
+
+func TestLifxTransportConfirmedMatrixFirmwareStopDoesNotRetry(t *testing.T) {
+	lifx := testLifxDevice(t, "d073d501a2c3", "Tiles", "Home", "Desk")
+	lifx.SetProductInfo(55)
+	controller := &fakeLifxController{devices: []lifxdevice.Device{lifx}}
+	transport := newTestLifxTransport(t, controller)
+	device := mapLifxDevice(lifx, "desk")
+
+	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: device, Effect: DeviceEffectFlame}); err != nil {
+		t.Fatalf("StartDeviceEffect returned error: %v", err)
+	}
+	started := transport.firmware[device.Serial]
+	observed := DeviceSnapshot{Devices: []Device{{
+		Serial: device.Serial,
+		FirmwareEffect: &FirmwareEffectState{
+			Running:    true,
+			Effect:     DeviceEffectFlame,
+			instanceID: started.instanceID,
+		},
+	}}}
+	transport.reconcileFirmwareEffectSnapshot(&observed, time.Now())
+	controller.resetSends()
+
+	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: device}); err != nil {
+		t.Fatalf("StopDeviceEffect returned error: %v", err)
+	}
+	if sends := controller.sentMessages(); len(sends) != 1 {
+		t.Fatalf("sent %d messages, want one effect-off after confirmed start", len(sends))
 	}
 }
 
@@ -2498,18 +2499,11 @@ func TestLifxTransportStopDeviceEffectRestoresOffMatrixAfterAppEffect(t *testing
 	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: device}); err != nil {
 		t.Fatalf("StopDeviceEffect returned error: %v", err)
 	}
-	sends := controller.sentMessages()
-	if len(sends) < 2 {
-		t.Fatalf("sent %d messages, want power-off and restore colors", len(sends))
+	state := restoredDeviceState(t, controller)
+	if state.PoweredOn {
+		t.Fatal("restored snapshot power = on, want off")
 	}
-	if _, ok := sends[0].msg.Payload.(*packets.DeviceSetPower); !ok {
-		t.Fatalf("first payload = %T, want *packets.DeviceSetPower", sends[0].msg.Payload)
-	}
-	payload, ok := sends[len(sends)-1].msg.Payload.(*packets.TileSet64)
-	if !ok {
-		t.Fatalf("last payload = %T, want *packets.TileSet64", sends[len(sends)-1].msg.Payload)
-	}
-	restored := lifxdevice.NewColor(payload.Colors[0])
+	restored := lifxdevice.NewColor(state.MatrixChains[0][0])
 	if restored.Hue != 20 {
 		t.Fatalf("restored hue = %v, want cached hue 20", restored.Hue)
 	}
@@ -2542,15 +2536,8 @@ func TestLifxTransportCloseRestoresRunningAppEffect(t *testing.T) {
 	if !controller.isClosed() {
 		t.Fatal("controller was not closed")
 	}
-	sends := controller.sentMessages()
-	if len(sends) == 0 {
-		t.Fatal("close did not send restore messages")
-	}
-	payload, ok := sends[len(sends)-1].msg.Payload.(*packets.TileSet64)
-	if !ok {
-		t.Fatalf("last payload = %T, want *packets.TileSet64", sends[len(sends)-1].msg.Payload)
-	}
-	restored := lifxdevice.NewColor(payload.Colors[0])
+	state := restoredDeviceState(t, controller)
+	restored := lifxdevice.NewColor(state.MatrixChains[0][0])
 	if restored.Hue != 20 {
 		t.Fatalf("restored hue = %v, want cached hue 20", restored.Hue)
 	}
@@ -2629,6 +2616,7 @@ type fakeLifxController struct {
 	mu              sync.Mutex
 	devices         []lifxdevice.Device
 	sends           []sentMessage
+	restores        []lifxdevice.StateSnapshot
 	sent            chan sentMessage
 	events          chan lifxcontroller.DeviceEvent
 	closed          bool
@@ -2643,6 +2631,26 @@ func (f *fakeLifxController) Close() error {
 	defer f.mu.Unlock()
 	f.closed = true
 	return nil
+}
+
+func (f *fakeLifxController) CaptureStateSnapshot(_ context.Context, serials []lifxdevice.Serial, _ lifxcontroller.SnapshotOptions) (lifxdevice.StateSnapshot, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	devices := make([]lifxdevice.Device, 0, len(serials))
+	for _, serial := range serials {
+		found := false
+		for _, candidate := range f.devices {
+			if candidate.Serial == serial {
+				devices = append(devices, candidate.Clone())
+				found = true
+				break
+			}
+		}
+		if !found {
+			return lifxdevice.StateSnapshot{}, fmt.Errorf("device %s not found", serial)
+		}
+	}
+	return lifxdevice.NewStateSnapshot(devices), nil
 }
 
 func (f *fakeLifxController) GetDevices() []lifxdevice.Device {
@@ -2672,6 +2680,42 @@ func (f *fakeLifxController) deviceLookupCalls() (int, int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.getDeviceCalls, f.getDevicesCalls
+}
+
+func (f *fakeLifxController) RestoreStateSnapshot(_ context.Context, snapshot lifxdevice.StateSnapshot, _ lifxcontroller.RestoreOptions) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.restores = append(f.restores, cloneStateSnapshot(snapshot))
+	return nil
+}
+
+func (f *fakeLifxController) restoredStateSnapshots() []lifxdevice.StateSnapshot {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	restored := make([]lifxdevice.StateSnapshot, len(f.restores))
+	for index, snapshot := range f.restores {
+		restored[index] = cloneStateSnapshot(snapshot)
+	}
+	return restored
+}
+
+func cloneStateSnapshot(snapshot lifxdevice.StateSnapshot) lifxdevice.StateSnapshot {
+	cloned := lifxdevice.StateSnapshot{Devices: make([]lifxdevice.DeviceStateSnapshot, len(snapshot.Devices))}
+	for index, state := range snapshot.Devices {
+		cloned.Devices[index] = state
+		cloned.Devices[index].Zones = lifxdevice.CloneHSBKs(state.Zones)
+		cloned.Devices[index].MatrixChains = lifxdevice.CloneMatrixChains(state.MatrixChains)
+	}
+	return cloned
+}
+
+func restoredDeviceState(t *testing.T, controller *fakeLifxController) lifxdevice.DeviceStateSnapshot {
+	t.Helper()
+	snapshots := controller.restoredStateSnapshots()
+	if len(snapshots) != 1 || len(snapshots[0].Devices) != 1 {
+		t.Fatalf("restored snapshots = %#v, want one device snapshot", snapshots)
+	}
+	return snapshots[0].Devices[0]
 }
 
 func (f *fakeLifxController) SubscribeDevices(ctx context.Context, _ ...lifxcontroller.SubscriptionOption) <-chan lifxcontroller.DeviceEvent {
