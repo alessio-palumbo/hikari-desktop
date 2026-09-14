@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Bath, BedDouble, BriefcaseBusiness, Car, Check, ChevronDown, CookingPot, DoorOpen, Pencil, Plus, Sofa, Square, Trash2, Trees, Utensils, Wrench, X, type LucideIcon } from 'lucide-react';
+import { Bath, BedDouble, BriefcaseBusiness, Car, Check, ChevronDown, CookingPot, DoorOpen, Pencil, Plus, Radar, Sofa, Square, Trash2, Trees, Utensils, Wrench, X, type LucideIcon } from 'lucide-react';
+import type { SensorNode } from '../backend/api';
 import type { Device, Group } from '../domain/lifx';
 import { deviceColor, hsl, isLightDevice, previewLightness, previewOpacity } from '../domain/lifx';
 import { FLOOR_PLAN_ROOM_TYPES, keepRoomDevicesInsideShape, moveRoomEdge, roomAtPoint, roomCenter, roomInteriorPoint, type FloorPlanDevicePlacement, type FloorPlanFloor, type FloorPlanLocation, type FloorPlanPoint, type FloorPlanRoom, type FloorPlanRoomPatch, type FloorPlanRoomType } from '../domain/floorPlan';
+import { roomSensorState, type RoomSensorState } from '../domain/sensorAssignments.js';
 import { CenterViewToggle, type CenterView } from './CenterViewToggle';
 import './FloorPlan.css';
 
@@ -12,6 +14,7 @@ interface FloorPlanProps {
   profileOptions: Array<{ id: string; name: string }>;
   groups: Group[];
   devices: Device[];
+  sensors: SensorNode[];
   layout?: FloorPlanLocation;
   selectedSerial?: string;
   selectedGroupId?: string;
@@ -51,6 +54,7 @@ export function FloorPlan({
   profileOptions,
   groups,
   devices,
+  sensors,
   layout,
   selectedSerial,
   selectedGroupId,
@@ -343,6 +347,7 @@ export function FloorPlan({
               searchMatch={roomMatchesSearch(room, floor, matches, query)}
               dropTarget={dropTargetRoomId === room.id}
               powerState={roomPowerState(room.id, floor, devices)}
+              sensorState={roomSensorState(room.presence?.sensorIds ?? [], sensors)}
               canvasPoint={canvasPoint}
               floorDevices={floor.devices}
               onSelectRoom={(roomId) => {
@@ -485,6 +490,7 @@ function RoomShape({
   searchMatch,
   dropTarget,
   powerState,
+  sensorState,
   canvasPoint,
   floorDevices,
   onSelectRoom,
@@ -499,6 +505,7 @@ function RoomShape({
   searchMatch: boolean;
   dropTarget: boolean;
   powerState: RoomPowerState;
+  sensorState: RoomSensorState;
   canvasPoint: (clientX: number, clientY: number) => FloorPlanPoint | undefined;
   floorDevices: Record<string, FloorPlanDevicePlacement>;
   onSelectRoom: (roomId: string) => void;
@@ -591,6 +598,17 @@ function RoomShape({
         <span className="floor-room-label" style={roomLabelPosition(room)}>
           <RoomTypeIcon type={room.type} />
           {room.label}
+          {sensorState !== 'none' ? (
+            <span
+              className="floor-room-sensor"
+              data-state={sensorState}
+              role="img"
+              aria-label={`Sensor ${sensorState}`}
+              title={`Sensor ${sensorState}`}
+            >
+              <Radar size={11} strokeWidth={1.8} aria-hidden="true" />
+            </span>
+          ) : null}
         </span>
       </div>
       {editing && selected ? (

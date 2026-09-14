@@ -8,7 +8,7 @@
         <key>CFBundleExecutable</key>
         <string>{{.OutputFilename}}</string>
         <key>CFBundleIdentifier</key>
-        <string>com.alessiopalumbo.hikari</string>
+        <string>com.alessiopalumbo.hikari.dev</string>
         <key>CFBundleVersion</key>
         <string>{{.Info.ProductVersion}}</string>
         <key>CFBundleGetInfoString</key>
@@ -25,6 +25,12 @@
         <string>{{.Info.Copyright}}</string>
         <key>NSMicrophoneUsageDescription</key>
         <string>hikari uses the microphone to transcribe local voice commands.</string>
+        <key>NSLocalNetworkUsageDescription</key>
+        <string>hikari uses your local network to discover and control LIFX lights and Sensaa sensors.</string>
+        <key>NSBonjourServices</key>
+        <array>
+            <string>_sensaa._tcp</string>
+        </array>
         {{if .Info.FileAssociations}}
         <key>CFBundleDocumentTypes</key>
         <array>

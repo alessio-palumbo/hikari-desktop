@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getCommandEngineSettings, getDeviceSnapshot, getFloorPlanPreferences, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, saveFloorPlanPreferences, setCommandEngineSettings, setDeviceMetadata, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, subscribeToDeviceSnapshots, subscribeToSensorSnapshots, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorNode, type SensorSnapshot, type SetDeviceMetadataRequest } from './backend/api';
+import { getCommandEngineSettings, getDeviceSnapshot, getFloorPlanPreferences, getNetworkSettings, getSensorSnapshot, interpretCommand, restartDeviceDiscovery, saveFloorPlanPreferences, setCommandEngineSettings, setDeviceMetadata, setDeviceState, setNetworkInterface, startDeviceEffect, stopDeviceEffect, subscribeToDeviceSnapshots, subscribeToSensorSnapshots, transcribeCommandAudio, type CommandEngineSettings, type CommandPreview, type CommandTranscript, type DeviceEffectStatus, type NetworkSettings, type SensorSnapshot, type SetDeviceMetadataRequest } from './backend/api';
 import type { CenterView } from './components/CenterViewToggle';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
@@ -20,6 +20,7 @@ import { collectLocations, devicesInLocationCollection, groupsInLocationCollecti
 import { initialRoomOccupancyState, reconcileRoomOccupancy, type RoomOccupancyState } from './domain/occupancy';
 import { planRoomDim, planRoomDimRestore, type RoomDimOwnership } from './domain/presenceLighting';
 import { displayedEffectStatus } from './domain/effectState.js';
+import { sensorAssignmentHints } from './domain/sensorAssignments.js';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
 import { createPendingState, isPendingConfirmed, isPendingExpired, isSnapshotStale, reconcileSnapshot, type PendingDeviceState } from './domain/reconcile';
 
@@ -104,6 +105,14 @@ export function App() {
     () => Object.values(floorPlanProfiles.profiles).sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)),
     [floorPlanProfiles.profiles],
   );
+  const inspectorSensorAssignmentHints = floorPlanProfileId && selectedRoomInspector
+    ? sensorAssignmentHints(
+        floorPlanProfiles,
+        floorPlanProfileId,
+        selectedRoomInspector.floorId,
+        selectedRoomInspector.roomId,
+      )
+    : {};
   const displayedDeviceEffectStatus = useMemo(
     () => Object.fromEntries(snapshot.devices.flatMap((device) => {
       const status = displayedEffectStatus(device, deviceEffectStatus[device.serial]);
@@ -1062,6 +1071,7 @@ export function App() {
           profileOptions={floorPlanProfileOptions.map((profile) => ({ id: profile.id, name: profile.name }))}
           groups={snapshot.groups}
           devices={floorPlanDevices}
+          sensors={sensorSnapshot.nodes}
           layout={floorPlanProfile.layout}
           selectedSerial={selectedSerial}
           selectedGroupId={groupId}
@@ -1191,7 +1201,8 @@ export function App() {
         <RoomInspector
           roomName={inspectorRoom.label}
           devices={inspectorRoomDevices}
-          sensors={sensorsAvailableToRoom(floorPlanProfile, selectedRoomInspector, sensorSnapshot.nodes)}
+          sensors={sensorSnapshot.nodes}
+          sensorAssignmentHints={inspectorSensorAssignmentHints}
           presence={inspectorRoom.presence}
           onClose={() => setSelectedRoomInspector(undefined)}
           onDeviceChange={updateListDevice}
@@ -1271,28 +1282,6 @@ function newFloorPlanProfileId(): string {
 
 function roomOccupancyKey(profileId: string, floorId: string, roomId: string): string {
   return `${profileId}\u0000${floorId}\u0000${roomId}`;
-}
-
-function sensorsAvailableToRoom(
-  profile: FloorPlanProfilePreferences['profiles'][string] | undefined,
-  selectedRoom: { floorId: string; roomId: string } | undefined,
-  sensors: SensorNode[],
-): SensorNode[] {
-  if (!profile || !selectedRoom) return sensors;
-  const assignedElsewhere = new Set<string>();
-  const assignedHere = new Set(
-    profile.layout.floors
-      .find((floor) => floor.id === selectedRoom.floorId)
-      ?.rooms.find((room) => room.id === selectedRoom.roomId)
-      ?.presence?.sensorIds ?? [],
-  );
-  for (const floor of profile.layout.floors) {
-    for (const room of floor.rooms) {
-      if (floor.id === selectedRoom.floorId && room.id === selectedRoom.roomId) continue;
-      for (const sensorId of room.presence?.sensorIds ?? []) assignedElsewhere.add(sensorId);
-    }
-  }
-  return sensors.filter((sensor) => assignedHere.has(sensor.id) || !assignedElsewhere.has(sensor.id));
 }
 
 function floorPlanProfileName(locationHints: string[], collections: ReturnType<typeof collectLocations>): string | undefined {

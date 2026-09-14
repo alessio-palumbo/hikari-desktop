@@ -5,6 +5,7 @@ import { defaultFloorPlanPresenceConfig, type FloorPlanPresenceConfig } from '..
 import type { Device, HslColor } from '../domain/lifx';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl } from '../domain/paint';
 import { presenceReading, sensorSignalReading } from '../domain/sensors';
+import type { SensorAssignmentHint } from '../domain/sensorAssignments.js';
 import { ColorWheel, PowerSlider } from './primitives';
 import { ModeToggle, WhiteScale } from './Inspector';
 import './Inspector.css';
@@ -15,6 +16,7 @@ interface RoomInspectorProps {
   roomName: string;
   devices: Device[];
   sensors: SensorNode[];
+  sensorAssignmentHints: Record<string, SensorAssignmentHint>;
   presence?: FloorPlanPresenceConfig;
   onClose: () => void;
   onDeviceChange: (device: Device) => void;
@@ -22,7 +24,7 @@ interface RoomInspectorProps {
   onPresenceChange: (presence: FloorPlanPresenceConfig) => void;
 }
 
-export function RoomInspector({ roomName, devices, sensors, presence, onClose, onDeviceChange, onPowerChange, onPresenceChange }: RoomInspectorProps) {
+export function RoomInspector({ roomName, devices, sensors, sensorAssignmentHints, presence, onClose, onDeviceChange, onPowerChange, onPresenceChange }: RoomInspectorProps) {
   const onlineDevices = devices.filter((device) => device.online);
   const colorDevices = onlineDevices.filter((device) => device.capability?.hasColor ?? true);
   const hasColor = colorDevices.length > 0;
@@ -91,7 +93,7 @@ export function RoomInspector({ roomName, devices, sensors, presence, onClose, o
       {showInfo ? <RoomDeviceInfo devices={devices} /> : null}
 
       {showSensors ? (
-        <SensorsSection sensors={sensors} config={presenceConfig} hasPresenceSensor={hasPresenceSensor} onChange={onPresenceChange} />
+        <SensorsSection sensors={sensors} assignmentHints={sensorAssignmentHints} config={presenceConfig} hasPresenceSensor={hasPresenceSensor} onChange={onPresenceChange} />
       ) : null}
 
       <ModeToggle value={mode} hasColor={hasColor} onChange={(value) => {
@@ -124,11 +126,12 @@ export function RoomInspector({ roomName, devices, sensors, presence, onClose, o
 
 function SensorsSection(props: {
   sensors: SensorNode[];
+  assignmentHints: Record<string, SensorAssignmentHint>;
   config: FloorPlanPresenceConfig;
   hasPresenceSensor: boolean;
   onChange: (config: FloorPlanPresenceConfig) => void;
 }) {
-  const { sensors, config, hasPresenceSensor, onChange } = props;
+  const { sensors, assignmentHints, config, hasPresenceSensor, onChange } = props;
   const [showPresenceSettings, setShowPresenceSettings] = useState(false);
   const [infoSensorId, setInfoSensorId] = useState<string>();
   const byId = new Map(sensors.map((sensor) => [sensor.id, sensor]));
@@ -212,7 +215,13 @@ function SensorsSection(props: {
               }}
             >
               <option value="">select...</option>
-              {available.map((sensor) => <option key={sensor.id} value={sensor.id}>{sensor.name}</option>)}
+              {available.map((sensor) => {
+                const hint = assignmentHints[sensor.id];
+                const suffix = hint?.kind === 'move'
+                  ? ` - move from ${hint.label}`
+                  : hint ? ` - used in ${hint.label}` : '';
+                return <option key={sensor.id} value={sensor.id}>{sensor.name}{suffix}</option>;
+              })}
             </select>
             <ChevronDown size={12} aria-hidden="true" />
           </span>
