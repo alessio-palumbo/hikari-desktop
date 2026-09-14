@@ -46,6 +46,7 @@ const (
 // without starting network discovery in unit tests.
 type lifxController interface {
 	Close() error
+	GetDevice(lifxdevice.Serial) (lifxdevice.Device, bool)
 	GetDevices() []lifxdevice.Device
 	SubscribeDevices(context.Context, ...lifxcontroller.SubscriptionOption) <-chan lifxcontroller.DeviceEvent
 	Send(lifxdevice.Serial, *protocol.Message) error
@@ -400,9 +401,13 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 
 	current := t.cachedDevice(req.Device.Serial)
 	if current == nil {
-		snapshot := mapLifxDevices(ctrl.GetDevices())
-		t.replaceCache(snapshot.Devices)
-		current = t.cachedDevice(req.Device.Serial)
+		if lifxDevice, ok := ctrl.GetDevice(serial); ok && isSupportedDevice(lifxDevice) {
+			locationID := mapLifxLocationID(lifxDevice)
+			groupID := mapLifxGroupID(lifxDevice, locationID)
+			mapped := mapLifxDevice(lifxDevice, groupID)
+			t.storeCachedDevice(mapped)
+			current = &mapped
+		}
 	}
 
 	intent := normalizeDeviceCommandIntent(req.Intent, req.Device)
@@ -569,7 +574,7 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 		err := fmt.Errorf("effect %q is not supported for %s devices", req.Effect, req.Device.Kind)
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
-	lifxDevice, ok := lifxDeviceBySerial(ctrl.GetDevices(), serial)
+	lifxDevice, ok := ctrl.GetDevice(serial)
 	if !ok {
 		err := fmt.Errorf("device %s was not found in lifx snapshot", req.Device.Serial)
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
@@ -1139,15 +1144,6 @@ func sendEffectPowerOff(ctx context.Context, ctrl lifxController, serial lifxdev
 	}
 }
 
-func lifxDeviceBySerial(devices []lifxdevice.Device, serial lifxdevice.Serial) (lifxdevice.Device, bool) {
-	for _, device := range devices {
-		if device.Serial == serial {
-			return device, true
-		}
-	}
-	return lifxdevice.Device{}, false
-}
-
 func isAppEffect(effect DeviceEffect) bool {
 	switch effect {
 	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave, DeviceEffectRing, DeviceEffectFlow, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner:
@@ -1394,6 +1390,13 @@ func effectSpeed(speedMS int) time.Duration {
 func userFriendlyNetworkError(err error) string {
 	if err == nil {
 		return ""
+	}
+	var missingInterface *lifxclient.BroadcastInterfaceNotFoundError
+	if errors.As(err, &missingInterface) {
+		return "Selected network interface unavailable. Choose another interface or Automatic."
+	}
+	if errors.Is(err, lifxclient.ErrNoBroadcastInterface) {
+		return "No network interfaces found."
 	}
 	message := strings.ToLower(err.Error())
 	if strings.Contains(message, "network interface") && strings.Contains(message, "not available") {

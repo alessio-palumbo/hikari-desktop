@@ -1587,6 +1587,9 @@ func TestLifxTransportStartDeviceEffectUsesCachedAppliedState(t *testing.T) {
 	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: stale, Effect: DeviceEffectComet, SpeedMS: 2000}); err != nil {
 		t.Fatalf("StartDeviceEffect returned error: %v", err)
 	}
+	if pointCalls, inventoryCalls := controller.deviceLookupCalls(); pointCalls != 1 || inventoryCalls != 0 {
+		t.Fatalf("device lookup calls = point:%d inventory:%d, want point:1 inventory:0", pointCalls, inventoryCalls)
+	}
 	waitForMultizoneSetColors(t, controller.sent)
 	controller.resetSends()
 
@@ -2631,6 +2634,7 @@ type fakeLifxController struct {
 	closed          bool
 	now             func() time.Time
 	getDevicesCalls int
+	getDeviceCalls  int
 	subscribeCalls  int
 }
 
@@ -2650,6 +2654,24 @@ func (f *fakeLifxController) GetDevices() []lifxdevice.Device {
 		devices[index] = f.devices[index].Clone()
 	}
 	return devices
+}
+
+func (f *fakeLifxController) GetDevice(serial lifxdevice.Serial) (lifxdevice.Device, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getDeviceCalls++
+	for _, device := range f.devices {
+		if device.Serial == serial {
+			return device.Clone(), true
+		}
+	}
+	return lifxdevice.Device{}, false
+}
+
+func (f *fakeLifxController) deviceLookupCalls() (int, int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.getDeviceCalls, f.getDevicesCalls
 }
 
 func (f *fakeLifxController) SubscribeDevices(ctx context.Context, _ ...lifxcontroller.SubscriptionOption) <-chan lifxcontroller.DeviceEvent {
@@ -2912,6 +2934,20 @@ func assertPayloadBrightness(t *testing.T, colors []packets.LightHsbk, want floa
 func TestUserFriendlyNetworkErrorMapsConnectionLoss(t *testing.T) {
 	message := userFriendlyNetworkError(fmt.Errorf("check network interfaces: no network connection available"))
 	if message != "Connection lost. Refresh discovery to reconnect." {
+		t.Fatalf("message = %q", message)
+	}
+}
+
+func TestUserFriendlyNetworkErrorMapsNoBroadcastInterface(t *testing.T) {
+	err := fmt.Errorf("create lifx controller: %w", lifxclient.ErrNoBroadcastInterface)
+	if message := userFriendlyNetworkError(err); message != "No network interfaces found." {
+		t.Fatalf("message = %q", message)
+	}
+}
+
+func TestUserFriendlyNetworkErrorMapsMissingSelectedInterface(t *testing.T) {
+	err := fmt.Errorf("create lifx controller: %w", &lifxclient.BroadcastInterfaceNotFoundError{Name: "en0"})
+	if message := userFriendlyNetworkError(err); message != "Selected network interface unavailable. Choose another interface or Automatic." {
 		t.Fatalf("message = %q", message)
 	}
 }
