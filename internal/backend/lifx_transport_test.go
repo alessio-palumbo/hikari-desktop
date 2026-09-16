@@ -1157,8 +1157,8 @@ func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
 	if !ok {
 		t.Fatalf("first payload = %T, want *packets.TileSet64", controller.sentMessages()[0].msg.Payload)
 	}
-	if firstTile.TileIndex != 0 || firstTile.Length != 2 || firstTile.Rect.Width != 2 {
-		t.Fatalf("first tile metadata = index %d length %d width %d, want 0/2/2", firstTile.TileIndex, firstTile.Length, firstTile.Rect.Width)
+	if firstTile.TileIndex != 0 || firstTile.Length != 1 || firstTile.Rect.Width != 2 {
+		t.Fatalf("first tile metadata = index %d length %d width %d, want 0/1/2", firstTile.TileIndex, firstTile.Length, firstTile.Rect.Width)
 	}
 	firstColor := lifxdevice.NewColor(firstTile.Colors[0])
 	if firstColor.Hue != 200 || firstColor.Saturation != 50 || firstColor.Brightness != 20 || firstColor.Kelvin != 2700 {
@@ -1168,8 +1168,8 @@ func TestLifxTransportSetDeviceStateSendsMatrixPowerAndColors(t *testing.T) {
 	if !ok {
 		t.Fatalf("second payload = %T, want *packets.TileSet64", controller.sentMessages()[1].msg.Payload)
 	}
-	if secondTile.TileIndex != 1 {
-		t.Fatalf("second tile index = %d, want 1", secondTile.TileIndex)
+	if secondTile.TileIndex != 1 || secondTile.Length != 1 {
+		t.Fatalf("second tile index/length = %d/%d, want 1/1", secondTile.TileIndex, secondTile.Length)
 	}
 }
 

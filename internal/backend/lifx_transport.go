@@ -2611,7 +2611,7 @@ func deviceStateMessages(device Device, direct bool) []*protocol.Message {
 			}
 			msgs = append(msgs, messages.SetMatrixColorsFromSlice(
 				matrix.ID,
-				len(device.Chain),
+				1, // Each packet addresses this chain member only.
 				width,
 				rotateMatrixForOrientation(matrix, hslColorsToHSBK(matrix.Pixels, device.Brightness, device.Kelvin, device.Capability)),
 				defaultColorTransitionDuration,
