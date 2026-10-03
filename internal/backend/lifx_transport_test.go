@@ -86,6 +86,27 @@ func TestLifxTransportSnapshotMapsGetDevices(t *testing.T) {
 	}
 }
 
+func TestMapLifxDeviceDiagnosticTimestamps(t *testing.T) {
+	booted := time.Unix(1700000000, 0)
+	seen := booted.Add(2 * time.Hour)
+	changed := seen.Add(-time.Hour)
+	d := lifxdevice.Device{EstimatedBootedAt: booted, LastSeenAt: seen, LastUpdatedAt: changed}
+	got := mapLifxDevice(d, "group")
+	if got.EstimatedBootedAtMS != booted.UnixMilli() || got.LastSeenAtMS != seen.UnixMilli() || got.LastStateChangeAtMS != changed.UnixMilli() {
+		t.Fatalf("diagnostic timestamps = %#v", got)
+	}
+	unknown := mapLifxDevice(lifxdevice.Device{}, "group")
+	encoded, err := json.Marshal(unknown)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"estimatedBootedAtMs", "lastSeenAtMs", "lastStateChangeAtMs"} {
+		if strings.Contains(string(encoded), field) {
+			t.Fatalf("unknown timestamp %s should be omitted: %s", field, encoded)
+		}
+	}
+}
+
 func TestMapLifxDevicesKeepsDuplicateLabelsDistinctByStableID(t *testing.T) {
 	first := testLifxDevice(t, "d073d501a2c3", "First", "Home", "Lights")
 	first.LocationID = lifxdevice.LocationID{0x01}

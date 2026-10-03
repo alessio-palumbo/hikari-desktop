@@ -2074,24 +2074,27 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 		kelvin = capability.KelvinMin
 	}
 	device := Device{
-		GroupID:        groupID,
-		Serial:         d.Serial.String(),
-		Name:           nameOrUnknown(d.Label, d.Serial.String()),
-		Model:          nameOrUnknown(d.RegistryName, "LIFX"),
-		Kind:           mapDeviceKind(d),
-		IPAddress:      deviceIPAddress(d),
-		ProductID:      d.ProductID,
-		Firmware:       d.FirmwareVersion,
-		RSSI:           int(d.WifiRSSI),
-		RSSIText:       d.WifiRSSI.String(),
-		Online:         true,
-		On:             d.PoweredOn,
-		Brightness:     color.L,
-		Capability:     capability,
-		Color:          &color,
-		Kelvin:         kelvin,
-		Relays:         mapLifxRelays(d.Relays),
-		FirmwareEffect: mapLifxFirmwareEffect(d),
+		GroupID:             groupID,
+		Serial:              d.Serial.String(),
+		Name:                nameOrUnknown(d.Label, d.Serial.String()),
+		Model:               nameOrUnknown(d.RegistryName, "LIFX"),
+		Kind:                mapDeviceKind(d),
+		IPAddress:           deviceIPAddress(d),
+		ProductID:           d.ProductID,
+		Firmware:            d.FirmwareVersion,
+		RSSI:                int(d.WifiRSSI),
+		RSSIText:            d.WifiRSSI.String(),
+		EstimatedBootedAtMS: optionalUnixMilliseconds(d.EstimatedBootedAt),
+		LastSeenAtMS:        optionalUnixMilliseconds(d.LastSeenAt),
+		LastStateChangeAtMS: optionalUnixMilliseconds(d.LastUpdatedAt),
+		Online:              true,
+		On:                  d.PoweredOn,
+		Brightness:          color.L,
+		Capability:          capability,
+		Color:               &color,
+		Kelvin:              kelvin,
+		Relays:              mapLifxRelays(d.Relays),
+		FirmwareEffect:      mapLifxFirmwareEffect(d),
 	}
 
 	if device.Kind == DeviceKindSwitch {
@@ -2208,6 +2211,13 @@ func deviceIPAddress(d lifxdevice.Device) string {
 		return ""
 	}
 	return d.Address.IP.String()
+}
+
+func optionalUnixMilliseconds(timestamp time.Time) int64 {
+	if timestamp.IsZero() {
+		return 0
+	}
+	return timestamp.UnixMilli()
 }
 
 func mapLifxMatrixChain(d lifxdevice.Device, capability DeviceCapability) []Matrix {

@@ -75,6 +75,9 @@ export interface Device {
   firmware?: string;
   rssi?: number;
   rssiText?: string;
+  estimatedBootedAtMs?: number;
+  lastSeenAtMs?: number;
+  lastStateChangeAtMs?: number;
   zoneCount?: number;
   pixelCount?: number;
   chainLength?: number;

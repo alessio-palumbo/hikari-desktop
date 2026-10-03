@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, ChevronDown, Droplet, Info, LogOut, Pipette, Play, RotateCcw, Settings, Square, Undo2, Wand2, X } from 'lucide-react';
 import type { DeviceEffectStatus } from '../backend/api';
+import { deviceUptime } from '../domain/diagnostics';
 import {
   defaultEffectSpeedMs,
   formatEffectSpeed,
@@ -641,6 +642,13 @@ function SwitchDetails({ device, onChange }: { device: Device; onChange: (device
 }
 
 function DeviceInfo({ device, locationName, groupName }: { device: Device; locationName?: string; groupName?: string }) {
+  const [nowMs, setNowMs] = useState(Date.now);
+  useEffect(() => {
+    setNowMs(Date.now());
+    if (!device.online || device.estimatedBootedAtMs === undefined) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, [device.serial, device.online, device.estimatedBootedAtMs]);
   const rows = [
     { label: 'type', value: deviceKindLabel(device) },
     { label: 'product id', value: device.productId ? String(device.productId) : 'unknown' },
@@ -650,6 +658,7 @@ function DeviceInfo({ device, locationName, groupName }: { device: Device; locat
     { label: 'group', value: groupName || 'unknown' },
     { label: 'ip', value: device.ipAddress || 'unknown', sectionStart: true },
     { label: 'rssi', value: formatRSSI(device) },
+    { label: 'uptime', value: deviceUptime(device, nowMs) },
   ];
   return (
     <dl className="device-info">

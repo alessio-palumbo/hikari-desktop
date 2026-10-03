@@ -61,30 +61,34 @@ type FirmwareEffectState struct {
 }
 
 type Device struct {
-	GroupID        string               `json:"groupId"`
-	Serial         string               `json:"serial"`
-	Name           string               `json:"name"`
-	Model          string               `json:"model"`
-	Kind           DeviceKind           `json:"kind"`
-	IPAddress      string               `json:"ipAddress,omitempty"`
-	ProductID      uint32               `json:"productId,omitempty"`
-	Firmware       string               `json:"firmware,omitempty"`
-	RSSI           int                  `json:"rssi,omitempty"`
-	RSSIText       string               `json:"rssiText,omitempty"`
-	ZoneCount      int                  `json:"zoneCount,omitempty"`
-	PixelCount     int                  `json:"pixelCount,omitempty"`
-	ChainLen       int                  `json:"chainLength,omitempty"`
-	Online         bool                 `json:"online"`
-	On             bool                 `json:"on"`
-	Brightness     float64              `json:"brightness"`
-	Capability     DeviceCapability     `json:"capability"`
-	Color          *HSLColor            `json:"color,omitempty"`
-	Kelvin         int                  `json:"kelvin,omitempty"`
-	Zones          []HSLColor           `json:"zones,omitempty"`
-	Chain          []Matrix             `json:"chain,omitempty"`
-	Relays         []Relay              `json:"relays,omitempty"`
-	ButtonConfig   *ButtonConfig        `json:"buttonConfig,omitempty"`
-	FirmwareEffect *FirmwareEffectState `json:"firmwareEffect,omitempty"`
+	GroupID             string     `json:"groupId"`
+	Serial              string     `json:"serial"`
+	Name                string     `json:"name"`
+	Model               string     `json:"model"`
+	Kind                DeviceKind `json:"kind"`
+	IPAddress           string     `json:"ipAddress,omitempty"`
+	ProductID           uint32     `json:"productId,omitempty"`
+	Firmware            string     `json:"firmware,omitempty"`
+	RSSI                int        `json:"rssi,omitempty"`
+	RSSIText            string     `json:"rssiText,omitempty"`
+	EstimatedBootedAtMS int64      `json:"estimatedBootedAtMs,omitempty"`
+	// LastSeenAtMS tracks receipt of a device response, even if state is unchanged.
+	LastSeenAtMS        int64                `json:"lastSeenAtMs,omitempty"`
+	LastStateChangeAtMS int64                `json:"lastStateChangeAtMs,omitempty"`
+	ZoneCount           int                  `json:"zoneCount,omitempty"`
+	PixelCount          int                  `json:"pixelCount,omitempty"`
+	ChainLen            int                  `json:"chainLength,omitempty"`
+	Online              bool                 `json:"online"`
+	On                  bool                 `json:"on"`
+	Brightness          float64              `json:"brightness"`
+	Capability          DeviceCapability     `json:"capability"`
+	Color               *HSLColor            `json:"color,omitempty"`
+	Kelvin              int                  `json:"kelvin,omitempty"`
+	Zones               []HSLColor           `json:"zones,omitempty"`
+	Chain               []Matrix             `json:"chain,omitempty"`
+	Relays              []Relay              `json:"relays,omitempty"`
+	ButtonConfig        *ButtonConfig        `json:"buttonConfig,omitempty"`
+	FirmwareEffect      *FirmwareEffectState `json:"firmwareEffect,omitempty"`
 }
 
 type DeviceCapability struct {
