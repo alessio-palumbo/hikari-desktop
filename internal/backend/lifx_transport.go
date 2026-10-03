@@ -2244,7 +2244,7 @@ func mapLifxMatrixChain(d lifxdevice.Device, capability DeviceCapability) []Matr
 			SendWidth:   sendWidth,
 			Orientation: int(surfaceChain.Orientation),
 			Rows:        mapSurfaceRows(surfaceChain.Rows),
-			Pixels:      mapLifxColors(adjustUIGridForOrientation(sendWidth, sendHeight, surfaceChain.Orientation, zones), capability),
+			Pixels:      mapLifxColors(lifxdevice.PhysicalMatrixColorsToLogical(sendWidth, sendHeight, surfaceChain.Orientation, zones), capability),
 		})
 	}
 	return chain
@@ -2267,19 +2267,6 @@ func matrixSendHeight(sendWidth int, pixels int, fallback int) int {
 		return max((pixels+sendWidth-1)/sendWidth, 1)
 	}
 	return max(fallback, 1)
-}
-
-func adjustUIGridForOrientation(width, height int, orientation lifxdevice.Orientation, colors []packets.LightHsbk) []packets.LightHsbk {
-	switch orientation {
-	case lifxdevice.OrientationRight:
-		return lifxdevice.RotateMatrix(lifxdevice.RotateMatrix90(width, height), colors)
-	case lifxdevice.OrientationUpsideDown:
-		return lifxdevice.RotateMatrix(lifxdevice.RotateMatrix180(width, height), colors)
-	case lifxdevice.OrientationLeft:
-		return lifxdevice.RotateMatrix(lifxdevice.RotateMatrix270(width, height), colors)
-	default:
-		return colors
-	}
 }
 
 func mapLifxRelays(relays []lifxdevice.Relay) []Relay {
@@ -2640,7 +2627,7 @@ func rotateMatrixForOrientation(matrix Matrix, colors []packets.LightHsbk) []pac
 	if width <= 0 || height <= 0 {
 		return colors
 	}
-	return lifxdevice.ReorientMatrix(width, height, lifxdevice.Orientation(matrix.Orientation), colors)
+	return lifxdevice.LogicalMatrixColorsToPhysical(width, height, lifxdevice.Orientation(matrix.Orientation), colors)
 }
 
 func matrixWidth(matrix Matrix) int {
@@ -2657,7 +2644,8 @@ func matrixWidth(matrix Matrix) int {
 
 func matrixHeight(matrix Matrix) int {
 	if matrix.SendWidth > 0 && matrix.SendWidth <= len(matrix.Pixels) {
-		return len(matrix.Pixels) / matrix.SendWidth
+		// Native mapping needs the full last row, including dark padding slots.
+		return matrixSendHeight(matrix.SendWidth, len(matrix.Pixels), int(matrix.H))
 	}
 	if len(matrix.Rows) > 0 {
 		return len(matrix.Rows)
