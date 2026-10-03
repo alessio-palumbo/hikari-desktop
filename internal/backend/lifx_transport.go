@@ -70,6 +70,7 @@ type broadcastInterfaceLister func() ([]lifxclient.BroadcastInterface, error)
 // Start creates the controller and begins lifxlan-go discovery. Tests can inject
 // a fake controller directly with NewLifxTransportWithController.
 type LifxTransport struct {
+	diagnosticsMu          sync.Mutex
 	controller             lifxController
 	controllerFactory      lifxControllerFactory
 	interfaceLister        broadcastInterfaceLister

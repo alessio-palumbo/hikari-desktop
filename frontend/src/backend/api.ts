@@ -3,6 +3,7 @@ import type { DeviceCommandIntent } from '../domain/commands';
 import type { DeviceEffect } from '../domain/effects';
 
 interface WailsApp {
+  PingDevice?: (serial: string) => Promise<DevicePingResult>;
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
   GetSensorSnapshot?: () => Promise<SensorSnapshot>;
   GetFloorPlanPreferences?: () => Promise<FloorPlanPreferencesDocument>;
@@ -19,6 +20,23 @@ interface WailsApp {
   InterpretCommand?: (request: InterpretCommandRequest) => Promise<CommandPreview>;
   TranscribeCommand?: (request: TranscribeCommandRequest) => Promise<SpeechCommandPreview>;
   TranscribeCommandAudio?: (request: TranscribeCommandAudioRequest) => Promise<SpeechCommandPreview>;
+}
+
+export interface DevicePingResult {
+  serial: string;
+  samples: number;
+  received: number;
+  timeouts: number;
+  minMs: number;
+  medianMs: number;
+  maxMs: number;
+  measuredAtMs: number;
+}
+
+export async function pingDevice(serial: string): Promise<DevicePingResult> {
+  const ping = window.go?.main?.App?.PingDevice;
+  if (!ping) throw new Error('device ping is unavailable');
+  return ping(serial);
 }
 
 export interface FloorPlanPreferencesDocument {

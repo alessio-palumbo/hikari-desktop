@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"hikari-desktop/internal/backend"
 
@@ -121,6 +123,16 @@ func (a *App) context() context.Context {
 
 func (a *App) GetDeviceSnapshot() (backend.DeviceSnapshot, error) {
 	return a.transport.Snapshot(a.context())
+}
+
+func (a *App) PingDevice(serial string) (backend.DevicePingResult, error) {
+	diagnostics, ok := a.transport.(backend.DeviceDiagnostics)
+	if !ok {
+		return backend.DevicePingResult{}, fmt.Errorf("device ping is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.context(), 7*time.Second)
+	defer cancel()
+	return diagnostics.PingDevice(ctx, serial)
 }
 
 func (a *App) GetSensorSnapshot() (backend.SensorSnapshot, error) {

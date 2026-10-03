@@ -4,11 +4,13 @@
 .device-health-header h1 { margin: 0; font-size: 30px; line-height: 1.1; font-weight: 400; color: var(--fg-0); }
 .device-health-header p { margin: 10px 0 0; font-size: 12px; color: var(--fg-3); }
 .device-health-scroll { overflow-x: auto; }
-.device-health-table { width: 100%; min-width: 560px; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: 12px; color: var(--fg-2); }
-.device-health-table col { width: 20%; }
-.device-health-table col.device-health-device-column { width: 40%; }
+.device-health-table { width: 100%; min-width: 740px; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: 12px; color: var(--fg-2); }
+.device-health-table col { width: 16%; }
+.device-health-table col.device-health-device-column { width: 30%; }
+.device-health-table col.device-health-ping-column { width: 22%; }
 .device-health-sort-icon { display: inline-flex; width: 11px; height: 11px; flex: 0 0 11px; }
 .device-health-table th { font-weight: 400; color: var(--fg-3); padding: 0 12px 12px; white-space: nowrap; }
+.device-health-table th[title] { cursor: help; }
 .device-health-table th button { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .device-health-table th button:hover { color: var(--fg-0); }
 .device-health-table td { padding: 13px 12px; border-top: 1px solid oklch(1 0 0 / 0.06); white-space: nowrap; }
@@ -24,3 +26,11 @@
 .device-health-signal[data-quality="fair"] { color: #c8b583; }
 .device-health-signal[data-quality="poor"] { color: #dc9292; }
 .device-health-empty { padding: 24px 12px; color: var(--fg-3); font-size: 13px; }
+.device-health-ping { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.device-health-ping-result { min-width: 0; }
+.device-health-ping-result small { display: block; margin-top: 5px; color: var(--fg-4); font-size: 10px; white-space: normal; }
+.device-health-ping-button { display: grid; place-items: center; width: 26px; height: 26px; flex: 0 0 26px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--fg-3); cursor: pointer; }
+.device-health-ping-button:hover:not(:disabled) { background: oklch(1 0 0 / 0.06); color: var(--fg-0); }
+.device-health-ping-button:disabled { opacity: 0.4; cursor: default; }
+.device-health-ping-spinner { animation: device-health-spin 1s linear infinite; }
+@keyframes device-health-spin { to { transform: rotate(360deg); } }

@@ -83,6 +83,12 @@ Presence lighting turns the room's currently assigned lights on when any assigne
 
 Assignments use the stable Sensaa node ID and are stored with the local floor-plan profile. IP addresses and observations are not persisted. Restarting Hikari or power-cycling a node retains the assignment and reconnects it after discovery finds the same node ID.
 
+## Device Health
+
+The `health` view shows signal quality, time since the last LAN response, and device uptime. Last response is an observation age, not a latency measurement.
+
+Use a device's ping icon to measure LIFX echo round-trip latency without changing its state. Each run takes five sequential samples with a one-second timeout per sample. The result shows median latency, min/max below it, and any timeouts; hover for the measurement time and reply count. Results are temporary, and checks run only when requested, one at a time.
+
 ## Local Text Commands
 
 Local text commands use the standalone `lifx-command-engine` JSONL sidecar. Release builds bundle the lightweight rule-only sidecar and enable local commands automatically. The sidecar only interprets text into a structured plan; hikari still validates targets, previews the action, asks for confirmation, and sends any LIFX commands itself.
