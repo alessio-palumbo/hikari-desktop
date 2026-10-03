@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -278,7 +279,11 @@ func TestCommandEngineServiceIntegrationRuleOnlySidecar(t *testing.T) {
 	service := NewCommandEngineServiceWithStore(store)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	preview, err := service.Interpret(ctx, "turn ceiling on", MockDeviceSnapshot())
+	snapshot := MockDeviceSnapshot()
+	for i := range snapshot.Devices {
+		snapshot.Devices[i].Serial = strings.ReplaceAll(snapshot.Devices[i].Serial, ":", "")
+	}
+	preview, err := service.Interpret(ctx, "turn ceiling on", snapshot)
 	if err != nil {
 		t.Fatalf("Interpret returned error: %v", err)
 	}

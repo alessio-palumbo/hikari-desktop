@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -310,6 +311,13 @@ func transcriptionConfigured(settings CommandEngineSettings) bool {
 
 func commandEngineCommand(settings CommandEngineSettings) (string, []string, error) {
 	path := strings.TrimSpace(settings.EnginePath)
+	if path != "" {
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			if bundled, ok := bundledCommandEnginePath(); ok {
+				path = bundled
+			}
+		}
+	}
 	if path == "" {
 		if resolved, ok := bundledCommandEnginePath(); ok {
 			path = resolved

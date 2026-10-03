@@ -46,6 +46,35 @@ func TestCommandEngineCommandResolvesExplicitPath(t *testing.T) {
 	}
 }
 
+func TestCommandEngineCommandFallsBackToBundledSidecarWhenSavedPathIsGone(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "lifx-command-engine"
+	if filepath.Ext(exe) == ".exe" {
+		name += ".exe"
+	}
+	bundled := filepath.Join(filepath.Dir(exe), name)
+	if _, err := os.Stat(bundled); os.IsNotExist(err) {
+		if err := os.WriteFile(bundled, []byte("test"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Remove(bundled) })
+	} else if err != nil {
+		t.Fatal(err)
+	}
+
+	missing := filepath.Join(t.TempDir(), "lifx-command-engine")
+	path, _, err := commandEngineCommand(CommandEngineSettings{Enabled: true, EnginePath: missing})
+	if err != nil {
+		t.Fatalf("commandEngineCommand returned error: %v", err)
+	}
+	if path != bundled {
+		t.Fatalf("path = %q, want bundled sidecar %q", path, bundled)
+	}
+}
+
 func TestCommandEngineCommandAddsWhisperEnvFlags(t *testing.T) {
 	t.Setenv("HIKARI_WHISPER_COMMAND", "/tmp/whisper-cli")
 	t.Setenv("HIKARI_WHISPER_MODEL", "/tmp/model.bin")
