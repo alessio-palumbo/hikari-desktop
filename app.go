@@ -135,6 +135,16 @@ func (a *App) PingDevice(serial string) (backend.DevicePingResult, error) {
 	return diagnostics.PingDevice(ctx, serial)
 }
 
+func (a *App) PreviewDeviceEffect(req backend.StartDeviceEffectRequest) (backend.DeviceEffectPreview, error) {
+	previewer, ok := a.transport.(backend.DeviceEffectPreviewer)
+	if !ok {
+		return backend.DeviceEffectPreview{}, fmt.Errorf("local effect preview is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.context(), 3*time.Second)
+	defer cancel()
+	return previewer.PreviewDeviceEffect(ctx, req)
+}
+
 func (a *App) GetSensorSnapshot() (backend.SensorSnapshot, error) {
 	if a.sensors == nil {
 		return backend.SensorSnapshot{Nodes: []backend.SensorNode{}}, nil

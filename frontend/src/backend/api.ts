@@ -3,6 +3,7 @@ import type { DeviceCommandIntent } from '../domain/commands';
 import type { DeviceEffect } from '../domain/effects';
 
 interface WailsApp {
+  PreviewDeviceEffect?: (request: StartDeviceEffectRequest) => Promise<DeviceEffectPreview>;
   PingDevice?: (serial: string) => Promise<DevicePingResult>;
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
   GetSensorSnapshot?: () => Promise<SensorSnapshot>;
@@ -31,6 +32,20 @@ export interface DevicePingResult {
   medianMs: number;
   maxMs: number;
   measuredAtMs: number;
+}
+
+export interface DeviceEffectPreview {
+  width: number;
+  height: number;
+  stepMs: number;
+  cells: boolean[];
+  frames: HslColor[][];
+}
+
+export async function previewDeviceEffect(device: Device, effect: DeviceEffect, speedMs: number): Promise<DeviceEffectPreview> {
+  const preview = window.go?.main?.App?.PreviewDeviceEffect;
+  if (!preview) throw new Error('local effect preview is unavailable');
+  return preview({ device, effect, speedMs });
 }
 
 export async function pingDevice(serial: string): Promise<DevicePingResult> {

@@ -673,6 +673,11 @@
   text-align: left;
 }
 
+.effect-option-row { display: flex; align-items: center; min-width: 0; }
+.effect-option-row .effect-option-main { flex: 1; min-width: 0; }
+.effect-preview-toggle { display: grid; place-items: center; width: 26px; height: 26px; flex: 0 0 26px; margin-right: 6px; border: 0; border-radius: 4px; background: transparent; color: var(--fg-4); cursor: pointer; }
+.effect-preview-toggle:hover, .effect-preview-toggle[aria-pressed="true"] { color: var(--fg-1); background: oklch(1 0 0 / 0.05); }
+
 .effect-option:hover,
 .effect-option[data-active="true"] {
   border-color: var(--line-strong);

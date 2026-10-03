@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, ChevronDown, Droplet, Info, LogOut, Pipette, Play, RotateCcw, Settings, Square, Undo2, Wand2, X } from 'lucide-react';
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, ChevronDown, Droplet, Eye, Info, LogOut, Pipette, Play, RotateCcw, Settings, Square, Undo2, Wand2, X } from 'lucide-react';
+import { EffectPreview } from './EffectPreview';
 import type { DeviceEffectStatus } from '../backend/api';
 import { deviceUptime } from '../domain/diagnostics';
 import {
@@ -395,10 +396,12 @@ function EffectControls({
   const running = status?.running ?? false;
   const loading = status?.loading ?? false;
   const [selectedEffect, setSelectedEffect] = useState<DeviceEffect | undefined>();
+  const [previewEffect, setPreviewEffect] = useState<DeviceEffect>();
   const [effectSpeeds, setEffectSpeeds] = useState<Record<DeviceEffect, number>>(() => defaultEffectSpeeds(effects));
 
   useEffect(() => {
     setSelectedEffect(undefined);
+    setPreviewEffect(undefined);
     setEffectSpeeds(defaultEffectSpeeds(effects));
   }, [device.serial]);
 
@@ -412,7 +415,7 @@ function EffectControls({
             <div className="effect-group-label">{source === 'firmware' ? 'device effects' : 'hikari effects'}</div>
             {sourceEffects.map((effect) => {
               const effectRunning = running && status?.effect === effect.id;
-              const active = effectRunning || (!running && selectedEffect === effect.id);
+              const active = effectRunning || (!running && selectedEffect === effect.id) || previewEffect === effect.id;
               const speedMs = effectRunning && status?.speedMs
                 ? status.speedMs
                 : effectSpeeds[effect.id] ?? effect.speed.defaultMs;
@@ -424,6 +427,9 @@ function EffectControls({
                   running={effectRunning}
                   loading={loading}
                   speedMs={speedMs}
+                  previewing={previewEffect === effect.id}
+                  onPreview={source === 'app' ? () => setPreviewEffect((current) => current === effect.id ? undefined : effect.id) : undefined}
+                  preview={previewEffect === effect.id ? <EffectPreview device={device} effect={effect.id} speedMs={speedMs} /> : null}
                   onSpeedChange={(nextSpeedMs) => setEffectSpeeds((current) => ({ ...current, [effect.id]: nextSpeedMs }))}
                   onSpeedCommit={(nextSpeedMs) => {
                     if (effectRunning) onStart(effect.id, nextSpeedMs);
@@ -464,6 +470,9 @@ function EffectOption({
   onSelect,
   onStart,
   onStop,
+  previewing,
+  onPreview,
+  preview,
 }: {
   effect: DeviceEffectDefinition;
   active: boolean;
@@ -475,6 +484,9 @@ function EffectOption({
   onSelect: () => void;
   onStart: (effect: DeviceEffect, speedMs: number) => void;
   onStop: () => void;
+  previewing: boolean;
+  onPreview?: () => void;
+  preview: ReactNode;
 }) {
   const actionLabel = running ? `Stop ${effect.label}` : `Start ${effect.label}`;
   const committedSpeed = useRef(speedMs);
@@ -486,6 +498,7 @@ function EffectOption({
 
   return (
     <div className="effect-option" data-active={active ? 'true' : 'false'} data-running={running ? 'true' : 'false'} onClick={onSelect}>
+      <div className="effect-option-row">
       <button
         className="effect-option-main"
         type="button"
@@ -508,6 +521,9 @@ function EffectOption({
         </span>
         <span className="effect-action" data-running={running ? 'true' : 'false'}>{running ? <Square size={11} /> : <Play size={13} />}</span>
       </button>
+      {onPreview ? <button className="effect-preview-toggle" type="button" title="Preview locally without controlling the device" aria-label={`Preview ${effect.label}`} aria-pressed={previewing} onClick={(event) => { event.stopPropagation(); onPreview(); }}><Eye size={14} /></button> : null}
+      </div>
+      {preview}
       {active ? (
         <EffectSpeedControl
           value={speedToUnit(speedMs, effect.speed)}
