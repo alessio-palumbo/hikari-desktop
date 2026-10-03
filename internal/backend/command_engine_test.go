@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -289,6 +290,48 @@ func TestCommandEngineServiceIntegrationRuleOnlySidecar(t *testing.T) {
 	}
 	if preview.Empty || len(preview.Commands) == 0 {
 		t.Fatalf("preview = %#v, want command", preview)
+	}
+}
+
+func TestCommandEngineServiceIntegrationSkipsUnsupportedTVLightWithoutLoweringConfidence(t *testing.T) {
+	binary := os.Getenv("HIKARI_COMMAND_ENGINE_TEST_BINARY")
+	if binary == "" {
+		t.Skip("set HIKARI_COMMAND_ENGINE_TEST_BINARY to run sidecar integration test")
+	}
+	store := &memoryCommandSettingsStore{}
+	_ = store.SaveCommandEngineSettings(CommandEngineSettings{Enabled: true, EnginePath: binary})
+	service := NewCommandEngineServiceWithStore(store)
+	t.Cleanup(func() { _ = service.Close(context.Background()) })
+	snapshot := DeviceSnapshot{
+		Locations: []Location{{ID: "home", Name: "Home"}},
+		Groups:    []Group{{ID: "tv", LocationID: "home", Name: "TV"}},
+	}
+	for index, name := range []string{"Beam", "Neon", "T10", "Tile", "Filo"} {
+		color := name != "Filo"
+		snapshot.Devices = append(snapshot.Devices, Device{
+			Serial:     fmt.Sprintf("d073d500000%d", index+1),
+			Name:       name,
+			GroupID:    "tv",
+			Kind:       DeviceKindSingle,
+			On:         color,
+			Brightness: 0.5,
+			Capability: DeviceCapability{HasColor: color, KelvinMin: 1500, KelvinMax: 9000},
+		})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	preview, err := service.Interpret(ctx, "tv blue", snapshot)
+	if err != nil {
+		t.Fatalf("Interpret returned error: %v", err)
+	}
+	if preview.Confidence != 0.95 || preview.NeedsConfirmation || preview.Empty {
+		t.Fatalf("preview confidence/confirmation = %#v", preview)
+	}
+	if len(preview.Commands) != 1 || len(preview.Commands[0].Targets) != 4 || len(preview.SkippedTargets) != 1 || preview.SkippedTargets[0].Label != "Filo" {
+		t.Fatalf("preview targets = %#v", preview)
+	}
+	if preview.Summary != "Prepared 1 LIFX command" {
+		t.Fatalf("preview summary = %q", preview.Summary)
 	}
 }
 

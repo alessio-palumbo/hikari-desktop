@@ -178,8 +178,13 @@ func commandPreviewFromPlan(plan commandclient.CommandPlan, snapshot DeviceSnaps
 		})
 	}
 	preview.Empty = len(preview.Commands) == 0
-	if preview.Empty && preview.Summary == "" {
+	if preview.Empty {
 		preview.Summary = "No supported command found"
+	} else if len(preview.Commands) != len(plan.Commands) && plan.Summary == fmt.Sprintf("Prepared %d LIFX commands", len(plan.Commands)) {
+		preview.Summary = fmt.Sprintf("Prepared %d LIFX command", len(preview.Commands))
+		if len(preview.Commands) != 1 {
+			preview.Summary += "s"
+		}
 	}
 	return preview, nil
 }

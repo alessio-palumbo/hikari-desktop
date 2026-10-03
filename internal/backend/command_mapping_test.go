@@ -139,14 +139,21 @@ func TestCommandPreviewFromPlanSkipsNonColorTargetsForColorActions(t *testing.T)
 		},
 	}
 
-	preview, err := commandPreviewFromPlan(commandclient.CommandPlan{
-		SchemaVersion: commandEnginePlanSchema,
-		Summary:       "Set TV red",
+	plan := commandclient.CommandPlan{
+		SchemaVersion:     commandEnginePlanSchema,
+		Confidence:        0.87,
+		ConfidenceResult:  commandclient.ConfidenceResult{Level: "high", Reasons: []string{"multiple commands parsed"}},
+		NeedsConfirmation: true,
+		Summary:           "Prepared 2 LIFX commands",
 		Commands: []commandclient.CommandIntent{{
-			Targets: []commandclient.TargetRef{{Serial: "color"}, {Serial: "white"}},
+			Targets: []commandclient.TargetRef{{Serial: "color"}},
+			Action:  commandclient.Action{Hue: &hue, Saturation: &saturation},
+		}, {
+			Targets: []commandclient.TargetRef{{Serial: "white"}},
 			Action:  commandclient.Action{Hue: &hue, Saturation: &saturation},
 		}},
-	}, snapshot)
+	}
+	preview, err := commandPreviewFromPlan(plan, snapshot)
 	if err != nil {
 		t.Fatalf("commandPreviewFromPlan returned error: %v", err)
 	}
@@ -158,6 +165,69 @@ func TestCommandPreviewFromPlanSkipsNonColorTargetsForColorActions(t *testing.T)
 	}
 	if len(preview.SkippedTargets) != 1 || preview.SkippedTargets[0].Serial != "white" {
 		t.Fatalf("skipped = %#v", preview.SkippedTargets)
+	}
+	if preview.Confidence != 0.87 || !preview.NeedsConfirmation || preview.Summary != "Prepared 1 LIFX command" {
+		t.Fatalf("preview confidence/confirmation/summary = %#v", preview)
+	}
+	if len(preview.Reasons) != 1 || preview.Reasons[0] != "multiple commands parsed" {
+		t.Fatalf("reasons = %#v", preview.Reasons)
+	}
+
+	plan.Confidence = 0.95
+	plan.ConfidenceResult.Reasons = []string{"exact rule-parser match"}
+	plan.NeedsConfirmation = false
+	preview, err = commandPreviewFromPlan(plan, snapshot)
+	if err != nil {
+		t.Fatalf("commandPreviewFromPlan with corrected engine score returned error: %v", err)
+	}
+	if preview.Confidence != 0.95 || preview.NeedsConfirmation || preview.Summary != "Prepared 1 LIFX command" {
+		t.Fatalf("preview with corrected engine score = %#v", preview)
+	}
+}
+
+func TestCommandPreviewFromPlanKeepsMultipleCommandConfirmationWhenBothSurvive(t *testing.T) {
+	hue := 250.0
+	power := true
+	snapshot := DeviceSnapshot{Devices: []Device{
+		{Serial: "color", Kind: DeviceKindSingle, Capability: DeviceCapability{HasColor: true}},
+		{Serial: "white", Kind: DeviceKindSingle},
+	}}
+	preview, err := commandPreviewFromPlan(commandclient.CommandPlan{
+		SchemaVersion:     commandEnginePlanSchema,
+		Confidence:        0.87,
+		ConfidenceResult:  commandclient.ConfidenceResult{Level: "high", Reasons: []string{"multiple commands parsed"}},
+		NeedsConfirmation: true,
+		Summary:           "Prepared 2 LIFX commands",
+		Commands: []commandclient.CommandIntent{
+			{Targets: []commandclient.TargetRef{{Serial: "color"}}, Action: commandclient.Action{Hue: &hue}},
+			{Targets: []commandclient.TargetRef{{Serial: "white"}}, Action: commandclient.Action{Power: &power}},
+		},
+	}, snapshot)
+	if err != nil {
+		t.Fatalf("commandPreviewFromPlan returned error: %v", err)
+	}
+	if len(preview.Commands) != 2 || preview.Confidence != 0.87 || !preview.NeedsConfirmation {
+		t.Fatalf("preview = %#v", preview)
+	}
+}
+
+func TestCommandPreviewFromPlanIsEmptyWhenEveryTargetIsUnsupported(t *testing.T) {
+	hue := 250.0
+	snapshot := DeviceSnapshot{Devices: []Device{{Serial: "white", Kind: DeviceKindSingle}}}
+	preview, err := commandPreviewFromPlan(commandclient.CommandPlan{
+		SchemaVersion: commandEnginePlanSchema,
+		Confidence:    0.95,
+		Summary:       "Set TV blue",
+		Commands: []commandclient.CommandIntent{{
+			Targets: []commandclient.TargetRef{{Serial: "white"}},
+			Action:  commandclient.Action{Hue: &hue},
+		}},
+	}, snapshot)
+	if err != nil {
+		t.Fatalf("commandPreviewFromPlan returned error: %v", err)
+	}
+	if !preview.Empty || len(preview.Commands) != 0 || len(preview.SkippedTargets) != 1 || preview.Summary != "No supported command found" {
+		t.Fatalf("preview = %#v", preview)
 	}
 }
 

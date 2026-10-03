@@ -8,7 +8,7 @@ require (
 	github.com/wailsapp/wails/v2 v2.12.0
 )
 
-require github.com/alessio-palumbo/lifx-command-engine v0.2.3
+require github.com/alessio-palumbo/lifx-command-engine v0.2.5
 
 require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
