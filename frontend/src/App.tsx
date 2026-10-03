@@ -4,6 +4,7 @@ import { getCommandEngineSettings, getDeviceSnapshot, getFloorPlanPreferences, g
 import type { CenterView } from './components/CenterViewToggle';
 import { CommandModal } from './components/CommandModal';
 import { DeviceList } from './components/DeviceList';
+import { DeviceHealth } from './components/DeviceHealth';
 import { FloorPlan } from './components/FloorPlan';
 import { FloorPlanChooser } from './components/FloorPlanChooser';
 import { GroupInspector } from './components/GroupInspector';
@@ -1064,7 +1065,17 @@ export function App() {
         }
       />
 
-      {centerView === 'floor' && floorPlanProfile ? (
+      {centerView === 'health' ? (
+        <DeviceHealth
+          snapshot={snapshot}
+          query={query}
+          selectedSerial={selectedSerial}
+          view={centerView}
+          onViewChange={setCenterView}
+          onSelect={selectDevice}
+          onSurfaceClick={closeInspector}
+        />
+      ) : centerView === 'floor' && floorPlanProfile ? (
         <FloorPlan
           profileName={floorPlanProfile.name}
           profileId={floorPlanProfile.id}
@@ -1293,7 +1304,8 @@ function floorPlanProfileName(locationHints: string[], collections: ReturnType<t
 }
 
 function loadCenterViewPreference(): CenterView {
-  return loadPreference(CENTER_VIEW_KEY) === 'floor' ? 'floor' : 'list';
+  const view = loadPreference(CENTER_VIEW_KEY);
+  return view === 'floor' || view === 'health' ? view : 'list';
 }
 
 function activeFloorPlanFloor(layout: FloorPlanPreferences['locations'][string] | undefined) {
