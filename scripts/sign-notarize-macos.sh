@@ -8,6 +8,7 @@ fi
 
 APP_PATH="$1"
 ARCHIVE_PATH="$2"
+ENTITLEMENTS_PATH="$(dirname "$0")/hikari-macos.entitlements"
 
 : "${APPLE_ID:?APPLE_ID is required}"
 : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
@@ -38,6 +39,7 @@ while IFS= read -r -d '' candidate; do
 done < <(find "$APP_PATH/Contents" -type f -print0)
 
 codesign --force --options runtime --timestamp \
+  --entitlements "$ENTITLEMENTS_PATH" \
   --sign "$SIGNING_IDENTITY" "$APP_PATH"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
@@ -61,4 +63,3 @@ spctl --assess --type execute --verbose=4 "$APP_PATH"
 
 rm -f "$ARCHIVE_PATH"
 ditto -c -k --keepParent "$APP_PATH" "$ARCHIVE_PATH"
-
