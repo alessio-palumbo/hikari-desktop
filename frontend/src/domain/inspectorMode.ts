@@ -1,4 +1,5 @@
-import { DeviceKind, isLightDevice, type Device } from './lifx.js';
+import { isLightDevice, type Device } from './lifx.js';
+import { supportedDeviceEffects } from './effects.js';
 
 export type InspectorMode = 'color' | 'white' | 'effects';
 
@@ -7,6 +8,6 @@ export function compatibleInspectorMode(mode: InspectorMode, device: Device): In
   if (!isLightDevice(device)) return mode;
   const hasColor = device.capability?.hasColor ?? true;
   if (mode === 'white' || (mode === 'color' && hasColor)) return mode;
-  if (mode === 'effects' && device.kind !== DeviceKind.Single) return mode;
+  if (mode === 'effects' && supportedDeviceEffects(device).length > 0) return mode;
   return hasColor ? 'color' : 'white';
 }

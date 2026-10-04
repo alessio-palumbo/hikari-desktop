@@ -392,9 +392,9 @@ test('firmware effect catalogue filters by device kind and firmware', () => {
   const oldMatrix = { ...matrixDevice(), firmware: '4.7' };
   const newMatrix = { ...matrixDevice(), firmware: '4.8' };
 
-  assert.deepEqual(supportedFirmwareEffects(multizone).map((effect) => effect.id), ['move', 'flow', 'comet', 'sparkle', 'scanner']);
-  assert.deepEqual(supportedFirmwareEffects(oldMatrix).map((effect) => effect.id), ['flame', 'morph', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow', 'sparkle', 'scanner']);
-  assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow', 'sparkle', 'scanner']);
+  assert.deepEqual(supportedFirmwareEffects(multizone).map((effect) => effect.id), ['move', 'flow', 'comet', 'sparkle', 'scanner', 'breathe', 'color_cycle']);
+  assert.deepEqual(supportedFirmwareEffects(oldMatrix).map((effect) => effect.id), ['flame', 'morph', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow', 'sparkle', 'scanner', 'breathe', 'color_cycle']);
+  assert.deepEqual(supportedFirmwareEffects(newMatrix).map((effect) => effect.id), ['flame', 'morph', 'clouds', 'snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow', 'sparkle', 'scanner', 'breathe', 'color_cycle']);
 });
 
 test('effect catalogue can override speed defaults by device kind', () => {
@@ -409,7 +409,7 @@ test('effect catalogue separates firmware and hikari-rendered effects', () => {
   const effects = supportedDeviceEffects({ ...matrixDevice(), firmware: '4.8' });
 
   assert.deepEqual(effects.filter((effect) => effect.source === 'firmware').map((effect) => effect.id), ['flame', 'morph', 'clouds']);
-  assert.deepEqual(effects.filter((effect) => effect.source === 'app').map((effect) => effect.id), ['snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow', 'sparkle', 'scanner']);
+  assert.deepEqual(effects.filter((effect) => effect.source === 'app').map((effect) => effect.id), ['snake', 'worm', 'concentric_frames', 'waterfall', 'rockets', 'wave', 'ring', 'flow', 'sparkle', 'scanner', 'breathe', 'color_cycle']);
 });
 
 test('firmware effect speed helpers expose defaults and ranges', () => {

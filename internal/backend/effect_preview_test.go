@@ -136,15 +136,27 @@ func TestTransportEffectPreviewDoesNotSendOrMutateState(t *testing.T) {
 }
 
 func TestAllHikariEffectsCanPreview(t *testing.T) {
-	for _, kind := range []DeviceKind{DeviceKindMatrix, DeviceKindMultizone} {
-		for _, effect := range []DeviceEffect{DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave, DeviceEffectRing, DeviceEffectFlow, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner} {
+	for _, kind := range []DeviceKind{DeviceKindSingle, DeviceKindMatrix, DeviceKindMultizone} {
+		for _, effect := range []DeviceEffect{DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave, DeviceEffectRing, DeviceEffectFlow, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner, DeviceEffectBreathe, DeviceEffectColorCycle} {
 			if !appEffectSupportedForDevice(effect, kind) {
 				continue
 			}
 			t.Run(string(kind)+"/"+string(effect), func(t *testing.T) {
 				d := previewTestDevice(55, 8, 8, 1)
+				d.MatrixProperties.ChainZones = [][]packets.LightHsbk{make([]packets.LightHsbk, 64)}
+				if kind == DeviceKindSingle {
+					d = lifxdevice.Device{LightType: lifxdevice.LightTypeSingleZone}
+				}
 				if kind == DeviceKindMultizone {
 					d = lifxdevice.Device{LightType: lifxdevice.LightTypeMultiZone, MultizoneProperties: lifxdevice.MultizoneProperties{Zones: make([]packets.LightHsbk, 32)}}
+				}
+				for i := range d.MultizoneProperties.Zones {
+					d.MultizoneProperties.Zones[i] = testHSBK(210)
+				}
+				for _, colors := range d.MatrixProperties.ChainZones {
+					for i := range colors {
+						colors[i] = testHSBK(210)
+					}
 				}
 				current := Device{Kind: kind, Brightness: .6, Color: &HSLColor{H: 210, S: .8, L: .6}, Capability: DeviceCapability{HasColor: true}}
 				preview, err := renderEffectPreview(context.Background(), StartDeviceEffectRequest{Device: current, Effect: effect, SpeedMS: 4000}, d, current)

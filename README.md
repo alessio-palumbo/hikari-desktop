@@ -11,7 +11,7 @@ The app is in active development, but it is ready to try with real LAN devices. 
 - Multizone and matrix global power, brightness, color, and white temperature control.
 - Multizone and matrix draft editing with brush, fill, picker, and gradient tools.
 - Matrix custom grids and orientation-aware preview/apply behavior.
-- Device and firmware effects for supported multizone and matrix lights.
+- Device and firmware effects for supported lights. Breathe pulses the current colour pattern between 10% and 100% of its original brightness (black pixels stay black). Color Cycle applies uniform palette transitions at the current device brightness. Both support single-zone, multizone and matrix lights; speed is the duration of a full cycle, defaulting to 4s and 8s respectively.
 - Local previews of Hikari effects without changing lights, using the eye control beside an effect. Previews show a bounded clip of settled frames, not firmware effects or device transition timing.
 - Every effect has speed settings behind a cog. Snake/Worm, Wave, Ring, Comet, Sparkle and Scanner also expose appearance controls such as trail length, thickness and relative brightness. Flow offers forward/reverse direction and a matrix-only axis selector; Frames offers inward/outward patterns. Adjustments update an open local preview only; Apply starts/restarts the effect with all selected settings. Successfully started/applied settings are remembered per device and effect. Reset returns the controls to Hikari defaults; Apply or Start saves that choice. Existing palette and restore behavior is retained.
 - Floor-plan view with multiple floors, editable rooms, draggable light placement, room power controls, and local layout persistence.

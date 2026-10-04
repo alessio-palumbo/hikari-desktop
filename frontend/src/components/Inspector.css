@@ -732,6 +732,28 @@
   pointer-events: none;
 }
 
+.effect-swatch[data-effect="breathe"] {
+  background: radial-gradient(circle, #7ddcc8 10%, #3a887c 50%, #243b37 80%);
+}
+
+.effect-swatch[data-effect="color_cycle"] {
+  background: linear-gradient(135deg, #dfb76d, #cf7b9f, #70cbbf, #dfb76d);
+  background-size: 250% 250%;
+}
+
+.effect-option[data-active="true"] .effect-swatch[data-effect="breathe"] {
+  animation: fx-breathe 2s ease-in-out infinite alternate;
+}
+
+.effect-option[data-active="true"] .effect-swatch[data-effect="color_cycle"] {
+  animation: fx-morph 4s linear infinite;
+}
+
+@keyframes fx-breathe {
+  from { filter: brightness(0.4); }
+  to { filter: brightness(1); }
+}
+
 .effect-swatch[data-effect="move"] {
   background: linear-gradient(90deg, oklch(0.73 0.12 220), oklch(0.78 0.15 170), oklch(0.73 0.12 220));
   background-size: 200% 100%;

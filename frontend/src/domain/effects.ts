@@ -1,6 +1,6 @@
 import { DeviceKind, type Device } from './lifx.js';
 
-export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets' | 'wave' | 'ring' | 'flow' | 'comet' | 'sparkle' | 'scanner';
+export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets' | 'wave' | 'ring' | 'flow' | 'comet' | 'sparkle' | 'scanner' | 'breathe' | 'color_cycle';
 
 export type DeviceEffectSource = 'firmware' | 'app';
 export type EffectParameters = Record<string, number | string>;
@@ -183,6 +183,22 @@ export const deviceEffects: DeviceEffectDefinition[] = [
     speedByKind: {
       [DeviceKind.Multizone]: { minMs: 1000, maxMs: 30000, defaultMs: 4000 },
     },
+  },
+  {
+    id: 'breathe',
+    label: 'Breathe',
+    description: 'Pulse current colours',
+    source: 'app',
+    deviceKinds: [DeviceKind.Single, DeviceKind.Multizone, DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 4000 },
+  },
+  {
+    id: 'color_cycle',
+    label: 'Color Cycle',
+    description: 'Uniform palette transitions',
+    source: 'app',
+    deviceKinds: [DeviceKind.Single, DeviceKind.Multizone, DeviceKind.Matrix],
+    speed: { minMs: 1000, maxMs: 30000, defaultMs: 8000 },
   },
 ];
 

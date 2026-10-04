@@ -10,9 +10,9 @@ test('effects tab stays open between matrix and multizone lights', () => {
   assert.equal(compatibleInspectorMode('effects', light(DeviceKind.Multizone)), 'effects');
 });
 
-test('effects tab falls back to colour or white for single-zone lights', () => {
-  assert.equal(compatibleInspectorMode('effects', light(DeviceKind.Single)), 'color');
-  assert.equal(compatibleInspectorMode('effects', light(DeviceKind.Single, false)), 'white');
+test('effects tab stays open for colour and white-only single-zone lights', () => {
+  assert.equal(compatibleInspectorMode('effects', light(DeviceKind.Single)), 'effects');
+  assert.equal(compatibleInspectorMode('effects', light(DeviceKind.Single, false)), 'effects');
 });
 
 test('white tab is retained on both colour and white-only lights', () => {

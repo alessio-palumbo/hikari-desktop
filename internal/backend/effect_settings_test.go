@@ -107,7 +107,7 @@ func TestEffectSettingsIgnoreUnknownEffectsAndUnsupportedParameters(t *testing.T
 func TestEffectSettingsConcurrentSavesKeepOtherEffects(t *testing.T) {
 	store := &fileEffectSettingsStore{path: filepath.Join(t.TempDir(), "effect-settings.json")}
 	var wait sync.WaitGroup
-	for _, effect := range []DeviceEffect{DeviceEffectMove, DeviceEffectSnake, DeviceEffectRing, DeviceEffectScanner} {
+	for _, effect := range []DeviceEffect{DeviceEffectMove, DeviceEffectSnake, DeviceEffectRing, DeviceEffectScanner, DeviceEffectBreathe, DeviceEffectColorCycle} {
 		wait.Add(1)
 		go func(effect DeviceEffect) {
 			defer wait.Done()
@@ -118,7 +118,7 @@ func TestEffectSettingsConcurrentSavesKeepOtherEffects(t *testing.T) {
 	}
 	wait.Wait()
 	settings, err := store.Load("d073d501a2c3")
-	if err != nil || len(settings) != 4 {
+	if err != nil || len(settings) != 6 {
 		t.Fatalf("lost saved effect: %#v %v", settings, err)
 	}
 }

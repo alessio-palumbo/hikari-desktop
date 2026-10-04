@@ -649,7 +649,16 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	}
 	t.mu.RUnlock()
 	captured := captureAppEffectState(req.Device, previousDevice, t.cachedDevice(req.Device.Serial))
-	effect, err := newAppEffect(req, lifxDevice, captured)
+	var effect lifxeffects.Effect
+	var err error
+	if req.Effect == DeviceEffectBreathe {
+		// The complete initial pattern is available only after snapshot capture.
+		if len(req.Params) > 0 {
+			return DeviceEffectStatus{Serial: req.Device.Serial}, fmt.Errorf("effect does not support custom parameters")
+		}
+	} else {
+		effect, err = newAppEffect(req, lifxDevice, captured)
+	}
 	if err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Error: err.Error()}, err
 	}
@@ -669,6 +678,16 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	}
 	if err := ctx.Err(); err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
+	}
+	if req.Effect == DeviceEffectBreathe {
+		// Reuse the original snapshot when switching effects, never live animation pixels.
+		if len(restoreSnapshot.Devices) != 1 {
+			return DeviceEffectStatus{Serial: req.Device.Serial}, fmt.Errorf("missing initial pattern snapshot")
+		}
+		effect, err = newPatternBreathe(req, deviceWithEffectSnapshot(lifxDevice, restoreSnapshot.Devices[0]))
+		if err != nil {
+			return DeviceEffectStatus{Serial: req.Device.Serial, Error: err.Error()}, err
+		}
 	}
 	if err := t.stopFirmwareEffectBeforeApp(ctx, ctrl, serial, req.Device); err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Effect: string(req.Effect), Error: err.Error()}, err
@@ -749,6 +768,20 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 	}
 	caps := appEffectCapabilities(lifxDevice)
 	switch req.Effect {
+	case DeviceEffectBreathe:
+		state := lifxdevice.NewDeviceStateSnapshot(lifxDevice)
+		overlayAppEffectState(&state, previous)
+		return newPatternBreathe(req, deviceWithEffectSnapshot(lifxDevice, state))
+	case DeviceEffectColorCycle:
+		colors := appEffectPalette(previous)
+		for i := range colors {
+			colors[i].Brightness = max(0, min(100, previous.Brightness*100))
+		}
+		return lifxeffects.NewColorCycle(lifxeffects.ColorCycleConfig{
+			Capabilities: caps,
+			Palette:      lifxeffects.Palette{Base: colors},
+			Transition:   appEffectPeriod(req.SpeedMS, 8*time.Second) / time.Duration(max(len(colors), 1)),
+		}), nil
 	case DeviceEffectWaterfall:
 		return lifxeffects.NewWaterfall(lifxeffects.WaterfallConfig{
 			Capabilities: caps,
@@ -1166,7 +1199,11 @@ func captureAppEffectSnapshot(ctx context.Context, ctrl lifxController, serial l
 		return lifxdevice.StateSnapshot{}, fmt.Errorf("captured state does not contain device %s", serial)
 	}
 
-	state := &snapshot.Devices[0]
+	overlayAppEffectState(&snapshot.Devices[0], current)
+	return snapshot, nil
+}
+
+func overlayAppEffectState(state *lifxdevice.DeviceStateSnapshot, current Device) {
 	state.PoweredOn = current.On
 	if current.Color != nil {
 		state.Color = lifxdevice.NewColor(hslColorToHSBK(*current.Color, current.Brightness, current.Kelvin, current.Capability))
@@ -1197,7 +1234,6 @@ func captureAppEffectSnapshot(ctx context.Context, ctrl lifxController, serial l
 			state.MatrixChains = chains
 		}
 	}
-	return snapshot, nil
 }
 
 func restoreAppEffectState(ctx context.Context, ctrl lifxController, effect runningAppEffect) error {
@@ -1237,7 +1273,7 @@ func sendEffectPowerOff(ctx context.Context, ctrl lifxController, serial lifxdev
 
 func isAppEffect(effect DeviceEffect) bool {
 	switch effect {
-	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave, DeviceEffectRing, DeviceEffectFlow, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner:
+	case DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectWaterfall, DeviceEffectRockets, DeviceEffectWave, DeviceEffectRing, DeviceEffectFlow, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner, DeviceEffectBreathe, DeviceEffectColorCycle:
 		return true
 	default:
 		return false
@@ -1247,6 +1283,9 @@ func isAppEffect(effect DeviceEffect) bool {
 func appEffectSupportedForDevice(effect DeviceEffect, kind DeviceKind) bool {
 	if !isAppEffect(effect) {
 		return false
+	}
+	if effect == DeviceEffectBreathe || effect == DeviceEffectColorCycle {
+		return kind == DeviceKindSingle || kind == DeviceKindMultizone || kind == DeviceKindMatrix
 	}
 	switch kind {
 	case DeviceKindMatrix:

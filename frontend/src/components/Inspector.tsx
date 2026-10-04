@@ -81,7 +81,7 @@ export function Inspector(props: InspectorProps) {
   const editRequestedRef = useRef(false);
   const isLight = isLightDevice(device);
   const hasColor = isLight && (device.capability?.hasColor ?? true);
-  const hasEffects = isLight && device.kind !== DeviceKind.Single;
+  const hasEffects = isLight && supportedDeviceEffects(device).length > 0;
 
   useEffect(() => {
     editRequestedRef.current = false;

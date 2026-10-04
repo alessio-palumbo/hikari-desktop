@@ -123,6 +123,24 @@ func renderEffectPreview(ctx context.Context, req StartDeviceEffectRequest, d li
 
 func applyPreviewPacket(state *lifxeffects.PhysicalColorState, surface lifxdevice.Surface, msg *protocol.Message) error {
 	switch p := msg.Payload.(type) {
+	case *packets.LightSetWaveformOptional:
+		if len(state.Zones) != 1 {
+			return fmt.Errorf("invalid single-zone preview state")
+		}
+		color := state.Zones[0]
+		if p.SetHue {
+			color.Hue = p.Color.Hue
+		}
+		if p.SetSaturation {
+			color.Saturation = p.Color.Saturation
+		}
+		if p.SetBrightness {
+			color.Brightness = p.Color.Brightness
+		}
+		if p.SetKelvin {
+			color.Kelvin = p.Color.Kelvin
+		}
+		return state.MergeZoneColors(0, []packets.LightHsbk{color})
 	case *packets.MultiZoneExtendedSetColorZones:
 		if int(p.ColorsCount) > len(p.Colors) {
 			return fmt.Errorf("invalid preview zone count")

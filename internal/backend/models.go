@@ -148,21 +148,23 @@ const (
 type DeviceEffect string
 
 const (
-	DeviceEffectMove      DeviceEffect = "move"
-	DeviceEffectFlame     DeviceEffect = "flame"
-	DeviceEffectMorph     DeviceEffect = "morph"
-	DeviceEffectClouds    DeviceEffect = "clouds"
-	DeviceEffectSnake     DeviceEffect = "snake"
-	DeviceEffectWorm      DeviceEffect = "worm"
-	DeviceEffectFrames    DeviceEffect = "concentric_frames"
-	DeviceEffectWaterfall DeviceEffect = "waterfall"
-	DeviceEffectRockets   DeviceEffect = "rockets"
-	DeviceEffectWave      DeviceEffect = "wave"
-	DeviceEffectRing      DeviceEffect = "ring"
-	DeviceEffectFlow      DeviceEffect = "flow"
-	DeviceEffectComet     DeviceEffect = "comet"
-	DeviceEffectSparkle   DeviceEffect = "sparkle"
-	DeviceEffectScanner   DeviceEffect = "scanner"
+	DeviceEffectMove       DeviceEffect = "move"
+	DeviceEffectFlame      DeviceEffect = "flame"
+	DeviceEffectMorph      DeviceEffect = "morph"
+	DeviceEffectClouds     DeviceEffect = "clouds"
+	DeviceEffectSnake      DeviceEffect = "snake"
+	DeviceEffectWorm       DeviceEffect = "worm"
+	DeviceEffectFrames     DeviceEffect = "concentric_frames"
+	DeviceEffectWaterfall  DeviceEffect = "waterfall"
+	DeviceEffectRockets    DeviceEffect = "rockets"
+	DeviceEffectWave       DeviceEffect = "wave"
+	DeviceEffectRing       DeviceEffect = "ring"
+	DeviceEffectFlow       DeviceEffect = "flow"
+	DeviceEffectComet      DeviceEffect = "comet"
+	DeviceEffectSparkle    DeviceEffect = "sparkle"
+	DeviceEffectScanner    DeviceEffect = "scanner"
+	DeviceEffectBreathe    DeviceEffect = "breathe"
+	DeviceEffectColorCycle DeviceEffect = "color_cycle"
 )
 
 func emptyDeviceSnapshot() DeviceSnapshot {
