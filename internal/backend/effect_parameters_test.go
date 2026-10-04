@@ -13,7 +13,7 @@ import (
 )
 
 func TestEffectParameterDefinitionsUseRegistryRangesAndHikariDefaults(t *testing.T) {
-	for _, effect := range []DeviceEffect{DeviceEffectSnake, DeviceEffectWorm, DeviceEffectWave, DeviceEffectRing, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner} {
+	for _, effect := range []DeviceEffect{DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectFlow, DeviceEffectWave, DeviceEffectRing, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner} {
 		parameters, err := EffectParameterDefinitions(effect)
 		if err != nil {
 			t.Fatal(err)
@@ -23,6 +23,12 @@ func TestEffectParameterDefinitionsUseRegistryRangesAndHikariDefaults(t *testing
 			t.Fatal("missing parameters")
 		}
 		for _, param := range parameters {
+			if param.Kind == "choice" {
+				if param.Default != configurableEffectDefaults(effect)[param.Key] || param.Value != param.Default || len(param.Choices) == 0 {
+					t.Fatalf("invalid choice: %#v", param)
+				}
+				continue
+			}
 			if param.Key == "peak_brightness_factor" && (param.Label != "peak brightness" || param.Description == "") {
 				t.Fatal("missing peak brightness explanation")
 			}
@@ -38,7 +44,9 @@ func TestEffectParameterDefinitionsUseRegistryRangesAndHikariDefaults(t *testing
 					}
 				}
 			}
-			if !found || param.Default != configurableEffectDefaults(effect)[param.Key] || param.Value != param.Default {
+			want, _ := effectParameterNumber(configurableEffectDefaults(effect)[param.Key])
+			got, _ := effectParameterNumber(param.Default)
+			if !found || got != want || param.Value != param.Default {
 				t.Fatalf("invalid parameter %#v", param)
 			}
 		}
@@ -51,10 +59,14 @@ func TestEffectParameterDefinitionsUseRegistryRangesAndHikariDefaults(t *testing
 func TestConfigurableEffectsPreserveExistingPresetFrames(t *testing.T) {
 	d := previewTestDevice(55, 8, 8, 1)
 	current := Device{Kind: DeviceKindMatrix, Brightness: .6, Color: &HSLColor{H: 210, S: .8, L: .6}, Capability: DeviceCapability{HasColor: true}}
-	for _, id := range []DeviceEffect{DeviceEffectSnake, DeviceEffectWorm, DeviceEffectWave, DeviceEffectRing, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner} {
+	for _, id := range []DeviceEffect{DeviceEffectSnake, DeviceEffectWorm, DeviceEffectFrames, DeviceEffectFlow, DeviceEffectWave, DeviceEffectRing, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner} {
 		req := StartDeviceEffectRequest{Device: current, Effect: id, SpeedMS: 4000}
 		var previous lifxeffects.Effect
 		switch id {
+		case DeviceEffectFrames:
+			previous = lifxeffects.NewConcentricFrames(lifxeffects.ConcentricFramesConfig{Capabilities: appEffectCapabilities(d), Direction: lifxeffects.DirectionInOut, Colors: appEffectPalette(current)})
+		case DeviceEffectFlow:
+			previous = lifxeffects.NewFlow(lifxeffects.FlowConfig{Capabilities: appEffectCapabilities(d), Palette: appEffectFlowPalette(current), Axis: lifxeffects.FlowAxisDiagonal, BrightnessMode: lifxeffects.FlowBrightnessConstant, Sampling: lifxeffects.FlowSamplingInterpolate, Period: 4 * time.Second})
 		case DeviceEffectSnake:
 			previous = lifxeffects.NewSnake(lifxeffects.SnakeConfig{Capabilities: appEffectCapabilities(d), Size: appEffectSnakeSize(d), Color: appEffectPrimaryColor(current)})
 		case DeviceEffectWorm:
@@ -84,17 +96,90 @@ func TestConfigurableEffectsPreserveExistingPresetFrames(t *testing.T) {
 	}
 }
 
+func TestDirectionAndAxisChoicesChangePreview(t *testing.T) {
+	d := previewTestDevice(55, 8, 8, 1)
+	current := Device{Kind: DeviceKindMatrix, Brightness: .6, Color: &HSLColor{H: 210, S: .8, L: .6}, Capability: DeviceCapability{HasColor: true}}
+	for _, tc := range []struct {
+		effect DeviceEffect
+		params map[string]any
+	}{
+		{DeviceEffectFlow, map[string]any{"direction": "reverse"}},
+		{DeviceEffectFlow, map[string]any{"axis": "horizontal"}},
+		{DeviceEffectFlow, map[string]any{"axis": "vertical"}},
+		{DeviceEffectFrames, map[string]any{"direction": "inwards"}},
+		{DeviceEffectFrames, map[string]any{"direction": "outwards"}},
+		{DeviceEffectFrames, map[string]any{"direction": "out_in"}},
+	} {
+		req := StartDeviceEffectRequest{Device: current, Effect: tc.effect, SpeedMS: 4000}
+		baseline, err := renderEffectPreview(context.Background(), req, d, current)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Params = tc.params
+		modified, err := renderEffectPreview(context.Background(), req, d, current)
+		if err != nil || reflect.DeepEqual(baseline.Frames, modified.Frames) {
+			t.Fatalf("%s choices unchanged (%#v): %v", tc.effect, tc.params, err)
+		}
+	}
+	for _, params := range []map[string]any{{"direction": "up"}, {"direction": 1}, {"direction": true}, {"axis": "circle"}, {"brightness_mode": "crest"}} {
+		if _, err := newAppEffect(StartDeviceEffectRequest{Effect: DeviceEffectFlow, Params: params}, d, current); err == nil {
+			t.Fatalf("invalid choices accepted: %#v", params)
+		}
+	}
+}
+
+func TestStripFlowExposesDirectionButNotMatrixAxis(t *testing.T) {
+	d := lifxdevice.Device{LightType: lifxdevice.LightTypeMultiZone, MultizoneProperties: lifxdevice.MultizoneProperties{Zones: make([]packets.LightHsbk, 32)}}
+	parameters, err := effectParametersForDevice(DeviceEffectFlow, d)
+	if err != nil || len(parameters) != 1 || parameters[0].Key != "direction" {
+		t.Fatalf("strip choices: %#v %v", parameters, err)
+	}
+	current := Device{Kind: DeviceKindMultizone, Brightness: .6, Color: &HSLColor{H: 210, S: .8, L: .6}, Capability: DeviceCapability{HasColor: true}}
+	req := StartDeviceEffectRequest{Device: current, Effect: DeviceEffectFlow, SpeedMS: 4000}
+	forward, err := renderEffectPreview(context.Background(), req, d, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Params = map[string]any{"direction": "reverse"}
+	reverse, err := renderEffectPreview(context.Background(), req, d, current)
+	if err != nil || reflect.DeepEqual(forward.Frames, reverse.Frames) {
+		t.Fatalf("strip direction unchanged: %v", err)
+	}
+	req.Params["axis"] = "vertical"
+	if _, err := newAppEffect(req, d, current); err == nil {
+		t.Fatal("strip accepted matrix-only axis")
+	}
+}
+
+func TestAppliedChoicesSurviveSpeedRestart(t *testing.T) {
+	transport, _, current := parameterTestTransport(t)
+	req := StartDeviceEffectRequest{Device: current, Effect: DeviceEffectFlow, SpeedMS: 4000, Params: map[string]any{"direction": "reverse", "axis": "horizontal"}}
+	if _, err := transport.StartDeviceEffect(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	req.SpeedMS, req.Params = 6000, nil
+	if _, err := transport.StartDeviceEffect(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	transport.mu.RLock()
+	defer transport.mu.RUnlock()
+	active := transport.effects[current.Serial]
+	if active.params["direction"] != "reverse" || active.params["axis"] != "horizontal" {
+		t.Fatalf("lost choices: %#v", active.params)
+	}
+}
+
 func TestAdditionalEffectParametersChangePreview(t *testing.T) {
 	d := previewTestDevice(55, 8, 8, 1)
 	current := Device{Kind: DeviceKindMatrix, Brightness: .6, Color: &HSLColor{H: 210, S: .8, L: .6}, Capability: DeviceCapability{HasColor: true}}
 	for _, tc := range []struct {
 		effect DeviceEffect
-		params map[string]float64
+		params map[string]any
 	}{
-		{DeviceEffectSnake, map[string]float64{"size": 2}},
-		{DeviceEffectWorm, map[string]float64{"size": 2}},
-		{DeviceEffectWave, map[string]float64{"amplitude": 5, "width": 5, "waves": 3}},
-		{DeviceEffectRing, map[string]float64{"width": 3, "floor": .6}},
+		{DeviceEffectSnake, map[string]any{"size": 2}},
+		{DeviceEffectWorm, map[string]any{"size": 2}},
+		{DeviceEffectWave, map[string]any{"amplitude": 5, "width": 5, "waves": 3}},
+		{DeviceEffectRing, map[string]any{"width": 3, "floor": .6}},
 	} {
 		t.Run(string(tc.effect), func(t *testing.T) {
 			req := StartDeviceEffectRequest{Device: current, Effect: tc.effect, SpeedMS: 4000}
@@ -117,17 +202,17 @@ func TestTrailParametersUseDeviceWidthAndRejectFractionalCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(parameters) != 1 || parameters[0].Max != 2 || parameters[0].Default != 2 || parameters[0].Unit != "cells" {
+	if len(parameters) != 1 || parameters[0].Max != 2 || parameters[0].Default != float64(2) || parameters[0].Unit != "cells" {
 		t.Fatalf("invalid small matrix range: %#v", parameters)
 	}
 	for _, size := range []float64{1.5, 3, math.NaN(), math.Inf(1)} {
-		if _, err := newAppEffect(StartDeviceEffectRequest{Effect: DeviceEffectSnake, Params: map[string]float64{"size": size}}, d, Device{Kind: DeviceKindMatrix}); err == nil {
+		if _, err := newAppEffect(StartDeviceEffectRequest{Effect: DeviceEffectSnake, Params: map[string]any{"size": size}}, d, Device{Kind: DeviceKindMatrix}); err == nil {
 			t.Fatalf("invalid size accepted: %v", size)
 		}
 	}
 	base := StartDeviceEffectRequest{Effect: DeviceEffectSnake, SpeedMS: 1000}
 	short := base
-	short.Params = map[string]float64{"size": 1}
+	short.Params = map[string]any{"size": 1}
 	if appEffectStep(short, d) <= appEffectStep(base, d) {
 		t.Fatal("speed calculation ignored trail length")
 	}
@@ -141,8 +226,8 @@ func TestCometParametersChangeStripPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key, value := range map[string]float64{"tail_size": 12, "background_brightness_factor": .4, "peak_brightness_factor": 1, "tail_curve": .5, "tail_saturation_factor": 1} {
-		req.Params = map[string]float64{key: value}
+	for key, value := range map[string]any{"tail_size": 12, "background_brightness_factor": .4, "peak_brightness_factor": 1, "tail_curve": .5, "tail_saturation_factor": 1} {
+		req.Params = map[string]any{key: value}
 		modified, err := renderEffectPreview(context.Background(), req, d, current)
 		if err != nil || reflect.DeepEqual(modified, baseline) {
 			t.Fatalf("comet %s preview unchanged: %v", key, err)
@@ -158,12 +243,12 @@ func TestEffectParametersValidateAndChangePreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Params = map[string]float64{"density": .7, "background_floor": .2}
+	req.Params = map[string]any{"density": .7, "background_floor": .2}
 	modified, err := renderEffectPreview(context.Background(), req, d, current)
 	if err != nil || reflect.DeepEqual(modified, baseline) {
 		t.Fatalf("preview unchanged: %v", err)
 	}
-	for _, params := range []map[string]float64{{"density": 2}, {"density": math.NaN()}, {"density": math.Inf(1)}, {"unknown": 1}, {"seed": 5}, {"period": 1}} {
+	for _, params := range []map[string]any{{"density": 2}, {"density": math.NaN()}, {"density": math.Inf(1)}, {"unknown": 1}, {"seed": 5}, {"period": 1}} {
 		req.Params = params
 		if _, err := newAppEffect(req, d, current); err == nil {
 			t.Fatalf("invalid settings accepted: %v", params)
@@ -189,7 +274,7 @@ func TestInvalidSettingsLeaveRunningEffectUntouched(t *testing.T) {
 	done := make(chan struct{})
 	close(done)
 	transport.effects[current.Serial] = runningAppEffect{effect: DeviceEffectScanner, previous: current, cancel: func() { canceled = true }, done: done}
-	_, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: current, Effect: DeviceEffectScanner, Params: map[string]float64{"peak_brightness_factor": 100}})
+	_, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: current, Effect: DeviceEffectScanner, Params: map[string]any{"peak_brightness_factor": 100}})
 	if err == nil || canceled || len(ctrl.sentMessages()) != 0 {
 		t.Fatalf("invalid settings affected runner: %v", err)
 	}
@@ -203,7 +288,7 @@ func TestInvalidSettingsLeaveRunningEffectUntouched(t *testing.T) {
 
 func TestAppliedEffectParametersSurviveRestartsAndRestoreOriginalState(t *testing.T) {
 	transport, ctrl, current := parameterTestTransport(t)
-	params := map[string]float64{"background_brightness_factor": .5, "peak_brightness_factor": 1.8}
+	params := map[string]any{"background_brightness_factor": .5, "peak_brightness_factor": 1.8}
 	if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{Device: current, Effect: DeviceEffectScanner, SpeedMS: 4000, Params: params}); err != nil {
 		t.Fatal(err)
 	}

@@ -4,8 +4,15 @@ import { deviceEffects, effectSettingsDiffer, formatEffectParameter, normalizeEf
 import { DeviceKind } from '../dist-test/domain/lifx.js';
 
 test('appearance settings are limited to supported configurable Hikari effects', () => {
-  assert.deepEqual(deviceEffects.filter((effect) => effect.configurable).map((effect) => effect.id), ['snake', 'worm', 'wave', 'ring', 'comet', 'sparkle', 'scanner']);
+  assert.deepEqual(deviceEffects.filter((effect) => effect.configurable).map((effect) => effect.id), ['snake', 'worm', 'concentric_frames', 'wave', 'ring', 'flow', 'comet', 'sparkle', 'scanner']);
   assert.ok(deviceEffects.filter((effect) => effect.configurable).every((effect) => effect.source === 'app'));
+});
+
+test('choice settings participate in Apply and Reset dirty comparisons', () => {
+  assert.equal(effectSettingsDiffer(4000, 4000, { direction: 'forward', axis: 'diagonal' }, { direction: 'forward', axis: 'diagonal' }), false);
+  assert.equal(effectSettingsDiffer(4000, 4000, { direction: 'reverse', axis: 'diagonal' }, { direction: 'forward', axis: 'diagonal' }), true);
+  assert.equal(effectSettingsDiffer(4000, 4000, { direction: 'forward', axis: 'horizontal' }, { direction: 'forward', axis: 'diagonal' }), true);
+  assert.equal(effectSettingsDiffer(4000, 4000, {}, { direction: 'forward' }), true);
 });
 
 test('effect parameters distinguish relative percentages, cell lengths and counts', () => {

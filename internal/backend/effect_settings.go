@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,8 +13,8 @@ import (
 )
 
 type EffectPreference struct {
-	SpeedMS int                `json:"speedMs"`
-	Params  map[string]float64 `json:"params,omitempty"`
+	SpeedMS int            `json:"speedMs"`
+	Params  map[string]any `json:"params,omitempty"`
 }
 
 type SaveDeviceEffectPreferenceRequest struct {
@@ -167,11 +166,12 @@ func validateEffectPreference(effect DeviceEffect, preference EffectPreference) 
 			}
 			found = true
 			// Device-derived size limits are checked when loading for that device.
-			if math.IsNaN(value) || math.IsInf(value, 0) || value < definition.Min || (definition.Step == 1 && value != math.Trunc(value)) {
-				return fmt.Errorf("invalid effect parameter %q", key)
+			if err := validateEffectParameter(definition, value, false); err != nil {
+				return err
 			}
+			number, numeric := effectParameterNumber(value)
 			for _, parameter := range registry.Params {
-				if parameter.Key == key && ((parameter.Max != nil && value > *parameter.Max) || (parameter.Max == nil && value > maxEffectPreviewCells)) {
+				if numeric && parameter.Key == key && ((parameter.Max != nil && number > *parameter.Max) || (parameter.Max == nil && number > maxEffectPreviewCells)) {
 					return fmt.Errorf("invalid effect parameter %q", key)
 				}
 			}
@@ -181,4 +181,23 @@ func validateEffectPreference(effect DeviceEffect, preference EffectPreference) 
 		}
 	}
 	return nil
+}
+
+// Reconcile stored preferences with the current device's supported controls.
+func NormalizeEffectPreference(preference EffectPreference, parameters []EffectParameter) EffectPreference {
+	sanitized := map[string]any{}
+	for _, parameter := range parameters {
+		value, ok := preference.Params[parameter.Key]
+		if !ok {
+			continue
+		}
+		if parameter.Kind != "choice" {
+			if number, numeric := effectParameterNumber(value); numeric {
+				value = max(parameter.Min, min(parameter.Max, number))
+			}
+		}
+		sanitized[parameter.Key] = value
+	}
+	preference.Params = sanitized
+	return preference
 }

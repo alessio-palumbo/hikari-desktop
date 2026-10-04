@@ -192,7 +192,7 @@ type StartDeviceEffectRequest struct {
 	SpeedMS   int          `json:"speedMs,omitempty"`
 	Direction string       `json:"direction,omitempty"`
 	// Omitting Params preserves applied overrides when restarting the same effect.
-	Params map[string]float64 `json:"params,omitempty"`
+	Params map[string]any `json:"params,omitempty"`
 }
 
 type StopDeviceEffectRequest struct {

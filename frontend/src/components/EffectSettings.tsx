@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, RotateCcw } from 'lucide-react';
+import { Check, ChevronDown, RotateCcw } from 'lucide-react';
 import { getDeviceEffectParameters, type EffectParameter } from '../backend/api';
 import { effectSettingsDiffer, formatEffectParameter, formatEffectSpeed, quantizeEffectParameter, speedToUnit, unitToSpeedMs, type DeviceEffectDefinition, type EffectParameters } from '../domain/effects';
 import './EffectSettings.css';
@@ -31,15 +31,24 @@ export function EffectSettings({ serial, effect, speedMs, appliedSpeedMs, applie
     }).catch((failure) => { if (!disposed) setError(String(failure instanceof Error ? failure.message : failure)); });
     return () => { disposed = true; };
   }, [serial, effect.id, disabled]);
-  const current = values ?? Object.fromEntries(parameters.map((param) => [param.key, param.value]));
-  const dirty = effectSettingsDiffer(speedMs, appliedSpeedMs, current, appliedValues ?? Object.fromEntries(parameters.map((param) => [param.key, param.value])));
+  const observed = Object.fromEntries(parameters.map((param) => [param.key, param.value]));
+  const current = { ...observed, ...values };
+  const dirty = effectSettingsDiffer(speedMs, appliedSpeedMs, current, { ...observed, ...appliedValues });
   const changedDefaults = effectSettingsDiffer(speedMs, effect.speed.defaultMs, current, Object.fromEntries(parameters.map((param) => [param.key, param.default])));
   return <div className="effect-settings" onClick={(event) => event.stopPropagation()}>
     <label>
       <span>speed<output>{formatEffectSpeed(speedMs)}</output></span>
       <input type="range" aria-label={`${effect.label} speed`} aria-valuetext={formatEffectSpeed(speedMs)} min={0} max={100} value={Math.round(speedToUnit(speedMs, effect.speed) * 100)} disabled={disabled} onChange={(event) => onSpeedChange(unitToSpeedMs(Number(event.target.value) / 100, effect.speed))} />
     </label>
-    {error ? <div className="inspector-error" role="status">{error}</div> : parameters.map((param) => <label key={param.key}>
+    {error ? <div className="inspector-error" role="status">{error}</div> : parameters.map((param) => param.kind === 'choice' ? <label key={param.key} className="effect-settings-choice">
+      <span>{param.label}</span>
+      <span className="effect-settings-select">
+        <select aria-label={`${effect.label} ${param.label}`} value={current[param.key] ?? param.default} disabled={disabled} onChange={(event) => onChange({ ...current, [param.key]: event.target.value })}>
+          {param.choices?.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+        </select>
+        <ChevronDown size={12} aria-hidden="true" />
+      </span>
+    </label> : <label key={param.key}>
       <span><span className={param.description ? 'effect-setting-help' : undefined} title={param.description}>{param.label}</span><output>{formatEffectParameter(current[param.key], param.unit)}</output></span>
       <input type="range" aria-label={`${effect.label} ${param.label}`} aria-valuetext={formatEffectParameter(current[param.key], param.unit)} min={param.min} max={param.max} step="any" value={current[param.key]} disabled={disabled} onChange={(event) => onChange({ ...current, [param.key]: quantizeEffectParameter(Number(event.target.value), param) })} />
     </label>)}

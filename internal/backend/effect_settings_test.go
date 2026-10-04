@@ -16,7 +16,7 @@ func TestEffectSettingsPersistPerDeviceAndEffect(t *testing.T) {
 		t.Fatalf("missing file: %#v %v", settings, err)
 	}
 	requests := []SaveDeviceEffectPreferenceRequest{
-		{Serial: "d073d501a2c3", Effect: DeviceEffectScanner, EffectPreference: EffectPreference{SpeedMS: 6000, Params: map[string]float64{"background_brightness_factor": .6}}},
+		{Serial: "d073d501a2c3", Effect: DeviceEffectScanner, EffectPreference: EffectPreference{SpeedMS: 6000, Params: map[string]any{"background_brightness_factor": .6}}},
 		{Serial: "d073d501a2c3", Effect: DeviceEffectMove, EffectPreference: EffectPreference{SpeedMS: 20000}},
 		{Serial: "d073d501a2c4", Effect: DeviceEffectScanner, EffectPreference: EffectPreference{SpeedMS: 4000}},
 	}
@@ -57,9 +57,9 @@ func TestEffectSettingsRejectInvalidValuesWithoutOverwriting(t *testing.T) {
 	before, _ := os.ReadFile(store.path)
 	for _, preference := range []EffectPreference{
 		{SpeedMS: 0}, {SpeedMS: 31000},
-		{SpeedMS: 4000, Params: map[string]float64{"palette": 1}},
-		{SpeedMS: 4000, Params: map[string]float64{"background_brightness_factor": 2}},
-		{SpeedMS: 4000, Params: map[string]float64{"peak_brightness_factor": math.NaN()}},
+		{SpeedMS: 4000, Params: map[string]any{"palette": 1}},
+		{SpeedMS: 4000, Params: map[string]any{"background_brightness_factor": 2}},
+		{SpeedMS: 4000, Params: map[string]any{"peak_brightness_factor": math.NaN()}},
 	} {
 		req := valid
 		req.EffectPreference = preference
@@ -120,5 +120,28 @@ func TestEffectSettingsConcurrentSavesKeepOtherEffects(t *testing.T) {
 	settings, err := store.Load("d073d501a2c3")
 	if err != nil || len(settings) != 4 {
 		t.Fatalf("lost saved effect: %#v %v", settings, err)
+	}
+}
+
+func TestEffectSettingsRoundTripChoicesAlongsideExistingNumericSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "effect-settings.json")
+	store := &fileEffectSettingsStore{path: path}
+	for _, req := range []SaveDeviceEffectPreferenceRequest{
+		{Serial: "d073d501a2c3", Effect: DeviceEffectFlow, EffectPreference: EffectPreference{SpeedMS: 4000, Params: map[string]any{"axis": "vertical", "direction": "reverse"}}},
+		{Serial: "d073d501a2c3", Effect: DeviceEffectFrames, EffectPreference: EffectPreference{SpeedMS: 2000, Params: map[string]any{"direction": "outwards"}}},
+		{Serial: "d073d501a2c3", Effect: DeviceEffectScanner, EffectPreference: EffectPreference{SpeedMS: 6000, Params: map[string]any{"background_brightness_factor": .6}}},
+	} {
+		if err := store.Save(req); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loaded, err := (&fileEffectSettingsStore{path: path}).Load("d073d501a2c3")
+	if err != nil || loaded[DeviceEffectFlow].Params["direction"] != "reverse" || loaded[DeviceEffectFlow].Params["axis"] != "vertical" || loaded[DeviceEffectFrames].Params["direction"] != "outwards" || loaded[DeviceEffectScanner].Params["background_brightness_factor"] != .6 {
+		t.Fatalf("roundtrip: %#v %v", loaded, err)
+	}
+	for _, params := range []map[string]any{{"direction": "invalid"}, {"axis": 1}, {"direction": nil}, {"sampling": "step"}} {
+		if err := store.Save(SaveDeviceEffectPreferenceRequest{Serial: "d073d501a2c3", Effect: DeviceEffectFlow, EffectPreference: EffectPreference{SpeedMS: 4000, Params: params}}); err == nil {
+			t.Fatalf("invalid choices persisted: %#v", params)
+		}
 	}
 }

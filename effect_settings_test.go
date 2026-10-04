@@ -22,7 +22,7 @@ func TestAppEffectPreferencesNeverStartOrControlDevices(t *testing.T) {
 	transport := &recordingTransport{}
 	app := NewAppWithTransport(transport)
 	store := &testEffectSettingsStore{preferences: map[backend.DeviceEffect]backend.EffectPreference{
-		backend.DeviceEffectScanner: {SpeedMS: 6000, Params: map[string]float64{"background_brightness_factor": .6}},
+		backend.DeviceEffectScanner: {SpeedMS: 6000, Params: map[string]any{"background_brightness_factor": .6}},
 	}}
 	app.effectSettings = store
 	preferences, err := app.GetDeviceEffectPreferences("d073d501a2c3")
@@ -47,10 +47,10 @@ func (t *smallEffectParameterTransport) EffectParameters(string, backend.DeviceE
 func TestAppEffectPreferencesRespectCurrentDeviceDimensions(t *testing.T) {
 	app := NewAppWithTransport(&smallEffectParameterTransport{&recordingTransport{}})
 	app.effectSettings = &testEffectSettingsStore{preferences: map[backend.DeviceEffect]backend.EffectPreference{
-		backend.DeviceEffectSnake: {SpeedMS: 6000, Params: map[string]float64{"size": 5}},
+		backend.DeviceEffectSnake: {SpeedMS: 6000, Params: map[string]any{"size": 5}},
 	}}
 	preferences, err := app.GetDeviceEffectPreferences("d073d501a2c3")
-	if err != nil || preferences[backend.DeviceEffectSnake].Params["size"] != 2 {
+	if err != nil || preferences[backend.DeviceEffectSnake].Params["size"] != float64(2) {
 		t.Fatalf("unclamped preference: %#v %v", preferences, err)
 	}
 }

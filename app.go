@@ -168,11 +168,7 @@ func (a *App) GetDeviceEffectPreferences(serial string) (map[backend.DeviceEffec
 			delete(preferences, effect)
 			continue
 		}
-		for _, parameter := range parameters {
-			if value, ok := preference.Params[parameter.Key]; ok {
-				preference.Params[parameter.Key] = max(parameter.Min, min(parameter.Max, value))
-			}
-		}
+		preferences[effect] = backend.NormalizeEffectPreference(preference, parameters)
 	}
 	return preferences, nil
 }

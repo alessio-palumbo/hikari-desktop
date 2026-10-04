@@ -13,7 +13,7 @@ import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
 import { RoomInspector } from './components/RoomInspector';
 import { draftIntent, prepareDeviceUpdate, type DeviceCommandIntent } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, mergeDraftMetadata, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
-import type { DeviceEffect } from './domain/effects';
+import type { DeviceEffect, EffectParameters } from './domain/effects';
 import { DEFAULT_FLOOR_ID, FLOOR_PLAN_STORAGE_KEY, addFloorToLocation, addRoomToFloor, assignRoomPresence, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, devicesAssignedToRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanPresenceConfig, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
 import { FLOOR_PLAN_RECOVERY_KEY, createDefaultFloorPlanLocation, createFloorPlanProfile, devicesForFloorPlanProfile, floorPlanObservation, floorPlanProfileMatchesObservation, loadFloorPlanProfilePreferences, observeFloorPlanProfile, renameFloorPlanProfile, resolveFloorPlanProfile, resolveFloorPlanStartupPreferences, selectedFloorPlanProfileId, serializeFloorPlanProfilePreferences, updateFloorPlanProfileLayout, type FloorPlanProfilePreferences } from './domain/floorPlanProfiles.js';
 import { DeviceKind, isLightDevice, sortDevicesByHierarchy, type Device, type DeviceSnapshot } from './domain/lifx';
@@ -810,7 +810,7 @@ export function App() {
     }
   };
 
-  const startInspectorEffect = async (device: Device, effect: DeviceEffect, speedMs: number, params?: Record<string, number>) => {
+  const startInspectorEffect = async (device: Device, effect: DeviceEffect, speedMs: number, params?: EffectParameters) => {
     const previous = displayedDeviceEffectStatus[device.serial] ?? deviceEffectStatus[device.serial];
     const pendingUntil = Date.now() + EFFECT_OBSERVATION_TIMEOUT_MS;
     setDeviceEffectStatus((current) => ({

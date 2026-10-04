@@ -98,7 +98,7 @@ type runningAppEffect struct {
 	effect    DeviceEffect
 	speedMS   int
 	direction string
-	params    map[string]float64
+	params    map[string]any
 	cancel    context.CancelFunc
 	done      <-chan struct{}
 	previous  Device
@@ -703,12 +703,6 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 	}
 	caps := appEffectCapabilities(lifxDevice)
 	switch req.Effect {
-	case DeviceEffectFrames:
-		return lifxeffects.NewConcentricFrames(lifxeffects.ConcentricFramesConfig{
-			Capabilities: caps,
-			Direction:    lifxeffects.DirectionInOut,
-			Colors:       appEffectPalette(previous),
-		}), nil
 	case DeviceEffectWaterfall:
 		return lifxeffects.NewWaterfall(lifxeffects.WaterfallConfig{
 			Capabilities: caps,
@@ -718,15 +712,6 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 		return lifxeffects.NewRockets(lifxeffects.RocketsConfig{
 			Capabilities: caps,
 			Colors:       appEffectPalette(previous),
-		}), nil
-	case DeviceEffectFlow:
-		return lifxeffects.NewFlow(lifxeffects.FlowConfig{
-			Capabilities:   caps,
-			Palette:        appEffectFlowPalette(previous),
-			Axis:           lifxeffects.FlowAxisDiagonal,
-			BrightnessMode: lifxeffects.FlowBrightnessConstant,
-			Sampling:       lifxeffects.FlowSamplingInterpolate,
-			Period:         appEffectPeriod(req.SpeedMS, 4*time.Second),
 		}), nil
 	default:
 		return nil, fmt.Errorf("effect %q is not supported as an app effect", req.Effect)
@@ -776,7 +761,7 @@ func appEffectStep(req StartDeviceEffectRequest, device lifxdevice.Device) time.
 	case DeviceEffectSnake, DeviceEffectWorm:
 		caps := appEffectCapabilities(device)
 		snakeSize := min(defaultAppEffectTailSize, max(caps.Width, 1))
-		if size, ok := req.Params["size"]; ok {
+		if size, ok := effectParameterNumber(req.Params["size"]); ok {
 			snakeSize = min(int(size), max(caps.Width, 1))
 		}
 		steps := max(caps.Width, 1)*max(caps.Height, 1) + snakeSize
@@ -791,6 +776,9 @@ func appEffectStep(req StartDeviceEffectRequest, device lifxdevice.Device) time.
 	case DeviceEffectFrames:
 		caps := appEffectCapabilities(device)
 		steps := min((max(caps.Width, 1)-1)/2, (max(caps.Height, 1)-1)/2) + 1
+		if direction, _ := req.Params["direction"].(string); direction == "inwards" || direction == "outwards" {
+			return clampDuration(time.Duration(req.SpeedMS)*time.Millisecond/time.Duration(max(steps, 1)), minAppEffectStep, maxAppEffectStep)
+		}
 		return clampDuration(time.Duration(req.SpeedMS)*time.Millisecond/time.Duration(max(steps*2, 1)), minAppEffectStep, maxAppEffectStep)
 	default:
 		return defaultAppEffectStep

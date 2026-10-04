@@ -56,11 +56,13 @@ export interface EffectParameter {
   label: string;
   description?: string;
   unit?: string;
+  kind?: 'number' | 'choice';
+  choices?: { value: string; label: string }[];
   min: number;
   max: number;
   step: number;
-  default: number;
-  value: number;
+  default: number | string;
+  value: number | string;
 }
 
 export async function getDeviceEffectPreferences(serial: string): Promise<DeviceEffectPreferences> {

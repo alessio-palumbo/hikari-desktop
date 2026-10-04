@@ -3,7 +3,7 @@ import { DeviceKind, type Device } from './lifx.js';
 export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets' | 'wave' | 'ring' | 'flow' | 'comet' | 'sparkle' | 'scanner';
 
 export type DeviceEffectSource = 'firmware' | 'app';
-export type EffectParameters = Record<string, number>;
+export type EffectParameters = Record<string, number | string>;
 
 export interface EffectPreference {
   speedMs: number;
@@ -104,6 +104,7 @@ export const deviceEffects: DeviceEffectDefinition[] = [
   },
   {
     id: 'concentric_frames',
+    configurable: true,
     label: 'Frames',
     description: 'Concentric matrix borders',
     source: 'app',
@@ -146,6 +147,7 @@ export const deviceEffects: DeviceEffectDefinition[] = [
   },
   {
     id: 'flow',
+    configurable: true,
     label: 'Flow',
     description: 'Scrolling color flow',
     source: 'app',
@@ -217,14 +219,19 @@ export function formatEffectSpeed(speedMs: number): string {
 }
 
 export function effectSettingsDiffer(speedMs: number, referenceSpeedMs: number, values: EffectParameters, reference: EffectParameters): boolean {
-  return speedMs !== referenceSpeedMs || Object.keys(reference).some((key) => Math.abs(values[key] - reference[key]) > 0.000001);
+  return speedMs !== referenceSpeedMs || Object.keys(reference).some((key) => {
+    const value = values[key];
+    const baseline = reference[key];
+    return typeof value === 'number' && typeof baseline === 'number' ? Math.abs(value - baseline) > 0.000001 : value !== baseline;
+  });
 }
 
 export function quantizeEffectParameter(value: number, range: { min: number; max: number; step: number }): number {
   return clamp(Number((Math.round(value / range.step) * range.step).toFixed(6)), range.min, range.max);
 }
 
-export function formatEffectParameter(value: number, unit?: string): string {
+export function formatEffectParameter(value: number | string, unit?: string): string {
+  if (typeof value === 'string') return value;
   if (unit === '%') return `${Math.round(value * 100)}%`;
   const number = Number(value.toFixed(2));
   return unit ? `${number} ${unit}` : String(number);

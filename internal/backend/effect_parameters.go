@@ -9,38 +9,49 @@ import (
 	lifxeffects "github.com/alessio-palumbo/lifxlan-go/pkg/effects"
 )
 
+type EffectParameterChoice struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 type EffectParameter struct {
-	Key         string  `json:"key"`
-	Label       string  `json:"label"`
-	Description string  `json:"description,omitempty"`
-	Unit        string  `json:"unit,omitempty"`
-	Min         float64 `json:"min"`
-	Max         float64 `json:"max"`
-	Step        float64 `json:"step"`
-	Default     float64 `json:"default"`
-	Value       float64 `json:"value"`
+	Key         string                  `json:"key"`
+	Label       string                  `json:"label"`
+	Description string                  `json:"description,omitempty"`
+	Unit        string                  `json:"unit,omitempty"`
+	Min         float64                 `json:"min"`
+	Max         float64                 `json:"max"`
+	Step        float64                 `json:"step"`
+	Kind        string                  `json:"kind"`
+	Choices     []EffectParameterChoice `json:"choices,omitempty"`
+	Default     any                     `json:"default"`
+	Value       any                     `json:"value"`
 }
 
 type DeviceEffectParameterSource interface {
 	EffectParameters(string, DeviceEffect) ([]EffectParameter, error)
 }
 
-// This initial UI exposes only bounded numeric controls. Palettes and timing
+// Expose only useful numeric and choice controls. Palettes and timing
 // retain Hikari's existing presets; the library owns parameter validation.
-func configurableEffectDefaults(effect DeviceEffect) map[string]float64 {
+func configurableEffectDefaults(effect DeviceEffect) map[string]any {
 	switch effect {
+	case DeviceEffectFlow:
+		return map[string]any{"direction": "forward", "axis": "diagonal"}
+	case DeviceEffectFrames:
+		return map[string]any{"direction": "in_out"}
 	case DeviceEffectSnake, DeviceEffectWorm:
-		return map[string]float64{"size": defaultAppEffectTailSize}
+		return map[string]any{"size": defaultAppEffectTailSize}
 	case DeviceEffectWave:
-		return map[string]float64{"waves": 2, "amplitude": 2, "width": 3}
+		return map[string]any{"waves": 2, "amplitude": 2, "width": 3}
 	case DeviceEffectRing:
-		return map[string]float64{"width": 1.6, "floor": .22}
+		return map[string]any{"width": 1.6, "floor": .22}
 	case DeviceEffectComet:
-		return map[string]float64{"tail_size": 5, "background_brightness_factor": 1, "peak_brightness_factor": 1.5, "tail_curve": 3, "tail_saturation_factor": .25}
+		return map[string]any{"tail_size": 5, "background_brightness_factor": 1, "peak_brightness_factor": 1.5, "tail_curve": 3, "tail_saturation_factor": .25}
 	case DeviceEffectSparkle:
-		return map[string]float64{"density": .18, "background_floor": .55, "peak_brightness_factor": 1.5}
+		return map[string]any{"density": .18, "background_floor": .55, "peak_brightness_factor": 1.5}
 	case DeviceEffectScanner:
-		return map[string]float64{"background_brightness_factor": .8, "peak_brightness_factor": 1.55}
+		return map[string]any{"background_brightness_factor": .8, "peak_brightness_factor": 1.55}
 	default:
 		return nil
 	}
@@ -59,6 +70,26 @@ func EffectParameterDefinitions(effect DeviceEffect) ([]EffectParameter, error) 
 	for _, param := range definition.Params {
 		value, exposed := defaults[param.Key]
 		if !exposed {
+			continue
+		}
+		if param.Kind == lifxeffects.ParamChoiceKind {
+			choices := make([]EffectParameterChoice, 0, len(param.Choices))
+			for _, choice := range param.Choices {
+				label := choice.Label
+				if effect == DeviceEffectFrames {
+					switch choice.Value {
+					case "in_out":
+						label = "In then out"
+					case "out_in":
+						label = "Out then in"
+					}
+				}
+				choices = append(choices, EffectParameterChoice{Value: choice.Value, Label: label})
+			}
+			parameters = append(parameters, EffectParameter{Key: param.Key, Label: "direction", Kind: "choice", Choices: choices, Default: value, Value: value})
+			if param.Key == "axis" {
+				parameters[len(parameters)-1].Label = "axis"
+			}
 			continue
 		}
 		if param.Kind != lifxeffects.ParamNumber || param.Min == nil || param.Step == nil {
@@ -106,7 +137,11 @@ func EffectParameterDefinitions(effect DeviceEffect) ([]EffectParameter, error) 
 				label = "thickness"
 			}
 		}
-		parameters = append(parameters, EffectParameter{Key: param.Key, Label: label, Description: description, Unit: unit, Min: *param.Min, Max: maximum, Step: *param.Step, Default: value, Value: value})
+		number, ok := effectParameterNumber(value)
+		if !ok {
+			return nil, fmt.Errorf("invalid numeric default %q", param.Key)
+		}
+		parameters = append(parameters, EffectParameter{Key: param.Key, Label: label, Description: description, Unit: unit, Kind: "number", Min: *param.Min, Max: maximum, Step: *param.Step, Default: number, Value: number})
 	}
 	if len(parameters) != len(defaults) {
 		return nil, fmt.Errorf("effect parameter schema is incompatible")
@@ -149,6 +184,15 @@ func effectParametersForDevice(effect DeviceEffect, d lifxdevice.Device) ([]Effe
 		return nil, err
 	}
 	caps := appEffectCapabilities(d)
+	if effect == DeviceEffectFlow && caps.LightType == lifxdevice.LightTypeMultiZone {
+		filtered := parameters[:0]
+		for _, parameter := range parameters {
+			if parameter.Key != "axis" {
+				filtered = append(filtered, parameter)
+			}
+		}
+		parameters = filtered
+	}
 	for i := range parameters {
 		param := &parameters[i]
 		switch param.Key {
@@ -156,11 +200,14 @@ func effectParametersForDevice(effect DeviceEffect, d lifxdevice.Device) ([]Effe
 			param.Max = float64(max(caps.Width, 1))
 			param.Default = float64(appEffectSnakeSize(d))
 		case "tail_size":
-			param.Max = max(param.Default, float64(caps.Width))
+			number, _ := effectParameterNumber(param.Default)
+			param.Max = max(number, float64(caps.Width))
 		case "amplitude":
-			param.Max = max(param.Default, float64(caps.Height-1))
+			number, _ := effectParameterNumber(param.Default)
+			param.Max = max(number, float64(caps.Height-1))
 		case "width":
-			param.Max = max(param.Default, float64(max(caps.Width, caps.Height)))
+			number, _ := effectParameterNumber(param.Default)
+			param.Max = max(number, float64(max(caps.Width, caps.Height)))
 		}
 		param.Value = param.Default
 	}
@@ -168,7 +215,6 @@ func effectParametersForDevice(effect DeviceEffect, d lifxdevice.Device) ([]Effe
 }
 
 func newConfigurableAppEffect(req StartDeviceEffectRequest, d lifxdevice.Device, current Device) (lifxeffects.Effect, error) {
-	defaults := configurableEffectDefaults(req.Effect)
 	definitions, err := effectParametersForDevice(req.Effect, d)
 	if err != nil {
 		return nil, err
@@ -178,21 +224,27 @@ func newConfigurableAppEffect(req StartDeviceEffectRequest, d lifxdevice.Device,
 		params[definition.Key] = definition.Default
 	}
 	for key, value := range req.Params {
-		if math.IsNaN(value) || math.IsInf(value, 0) {
-			return nil, fmt.Errorf("effect parameter %q must be finite", key)
-		}
-		if _, ok := defaults[key]; !ok {
+		if _, ok := params[key]; !ok {
 			return nil, fmt.Errorf("unsupported effect parameter %q", key)
 		}
 		params[key] = value
 	}
 	for _, definition := range definitions {
-		value := params[definition.Key].(float64)
-		if value < definition.Min || value > definition.Max || (definition.Step == 1 && value != math.Trunc(value)) {
-			return nil, fmt.Errorf("invalid effect parameter %q", definition.Key)
+		if err := validateEffectParameter(definition, params[definition.Key], true); err != nil {
+			return nil, err
 		}
 	}
 	switch req.Effect {
+	case DeviceEffectFlow:
+		params["palette"] = appEffectFlowPalette(current)
+		if _, ok := params["axis"]; !ok {
+			params["axis"] = string(lifxeffects.FlowAxisDiagonal)
+		}
+		params["brightness_mode"] = string(lifxeffects.FlowBrightnessConstant)
+		params["sampling"] = string(lifxeffects.FlowSamplingInterpolate)
+		params["period"] = appEffectPeriod(req.SpeedMS, 4*time.Second)
+	case DeviceEffectFrames:
+		params["palette"] = lifxeffects.Palette{Base: appEffectPalette(current)}
 	case DeviceEffectSnake, DeviceEffectWorm:
 		params["color"] = appEffectPrimaryColor(current)
 	case DeviceEffectWave:
@@ -214,4 +266,31 @@ func newConfigurableAppEffect(req StartDeviceEffectRequest, d lifxdevice.Device,
 		params["axis"] = string(lifxeffects.FlowAxisHorizontal)
 	}
 	return lifxeffects.New(lifxeffects.Config{ID: lifxeffects.EffectID(req.Effect), Params: params}, appEffectCapabilities(d))
+}
+
+func effectParameterNumber(value any) (float64, bool) {
+	switch number := value.(type) {
+	case float64:
+		return number, true
+	case int:
+		return float64(number), true
+	default:
+		return 0, false
+	}
+}
+
+func validateEffectParameter(parameter EffectParameter, value any, bounded bool) error {
+	if parameter.Kind == "choice" {
+		choice, ok := value.(string)
+		if ok {
+			for _, option := range parameter.Choices {
+				if choice == option.Value {
+					return nil
+				}
+			}
+		}
+	} else if number, ok := effectParameterNumber(value); ok && !math.IsNaN(number) && !math.IsInf(number, 0) && number >= parameter.Min && (!bounded || number <= parameter.Max) && (parameter.Step != 1 || number == math.Trunc(number)) {
+		return nil
+	}
+	return fmt.Errorf("invalid effect parameter %q", parameter.Key)
 }
