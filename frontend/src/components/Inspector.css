@@ -4,7 +4,12 @@
   gap: 24px;
   padding: 48px 32px 32px;
   overflow: auto;
+  scrollbar-width: none;
   animation: slide-in-right 0.25s ease;
+}
+
+.inspector::-webkit-scrollbar {
+  display: none;
 }
 
 .inspector-header {

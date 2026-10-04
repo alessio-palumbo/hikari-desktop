@@ -1,16 +1,42 @@
 .theme-controls { min-width: 0; }
-.theme-list { display: grid; gap: 4px; }
-.theme-list button { display: flex; align-items: center; gap: 12px; min-height: 38px; width: 100%; padding: 7px 10px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--fg-2); text-align: left; font: inherit; font-size: 12px; cursor: pointer; }
-.theme-list button:hover { background: #ffffff06; color: var(--fg-0); }
-.theme-list button[data-active="true"] { background: #ffffff08; border-color: #ffffff18; color: var(--fg-0); }
-.theme-list button:disabled { cursor: default; }
-.theme-list button:focus-visible { outline: 1px solid var(--fg-2); outline-offset: 2px; }
+.theme-list-wrap { position: relative; padding-bottom: 14px; }
+.theme-list { display: grid; gap: 4px; max-height: 320px; overflow-y: auto; scrollbar-width: none; }
+.theme-list::-webkit-scrollbar { display: none; }
+.theme-list:focus-visible { outline: 1px solid var(--line); outline-offset: 2px; border-radius: 5px; }
+.theme-scroll-hint { position: absolute; bottom: 0; left: 50%; display: grid; place-items: center; height: 12px; color: var(--fg-3); transform: translateX(-50%); pointer-events: none; visibility: hidden; }
+.theme-scroll-hint[data-visible="true"] { visibility: visible; }
+.theme-row { display: flex; align-items: center; border: 1px solid transparent; border-radius: 5px; }
+.theme-row:hover { background: #ffffff06; }
+.theme-row[data-active="true"] { background: #ffffff08; border-color: #ffffff18; }
+.theme-select { display: flex; align-items: center; gap: 12px; min-height: 38px; min-width: 0; flex: 1; padding: 7px 10px; border: 0; background: transparent; color: var(--fg-2); text-align: left; font: inherit; font-size: 12px; cursor: pointer; }
+.theme-select:hover, .theme-row[data-active="true"] .theme-select { color: var(--fg-0); }
+.theme-select:disabled { cursor: default; }
+.theme-select:focus-visible { outline: 1px solid var(--fg-2); outline-offset: -1px; border-radius: 4px; }
+.theme-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .theme-swatches { display: flex; gap: 3px; flex-shrink: 0; }
 .theme-swatches i { display: block; width: 12px; height: 12px; border-radius: 50%; }
-.theme-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 14px; }
-.theme-actions .apply-button { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 72px; }
+.theme-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; min-height: 28px; margin-top: 14px; }
 .theme-status { margin-top: 12px; color: var(--fg-3); font-size: 11px; }
 .theme-previews { display: grid; gap: 14px; margin-top: 16px; }
 .theme-previews figure { margin: 0; }
 .theme-previews figcaption { margin-bottom: 6px; color: var(--fg-3); font-size: 11px; }
 .theme-previews canvas { display: block; width: 100%; height: auto; }
+.theme-preview-section { margin-top: 18px; }
+.theme-preview-apply:not(:disabled), .theme-preview-apply[data-applied="true"] { color: var(--accent); }
+.theme-browser-actions { display: flex; gap: 4px; justify-content: flex-end; margin-bottom: 6px; }
+.theme-section-label { padding: 8px 10px 5px; color: var(--fg-3); font-size: 11px; }
+.theme-delete-confirm { display: flex; align-items: center; gap: 5px; padding: 8px 0; color: var(--fg-2); font-size: 11px; }
+.theme-delete-confirm > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.theme-editor-header { display: flex; align-items: center; gap: 5px; margin-bottom: 14px; }
+.theme-editor-header input { flex: 1; min-width: 0; height: 30px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: #ffffff04; color: var(--fg-0); font: inherit; font-size: 12px; }
+.theme-editor-header input:focus { outline: 1px solid var(--fg-3); }
+.theme-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.theme-editor fieldset:disabled { pointer-events: none; opacity: 0.6; }
+.theme-palette { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.theme-color { display: grid; place-items: center; width: 28px; height: 28px; padding: 4px; border: 1px solid transparent; border-radius: 5px; background: transparent; cursor: pointer; }
+.theme-color[data-active="true"] { border-color: var(--fg-2); background: #ffffff08; }
+.theme-color i { display: block; width: 16px; height: 16px; border-radius: 50%; }
+.theme-color-actions { display: flex; align-items: center; gap: 3px; margin: 8px 0 14px; color: var(--fg-3); font-size: 11px; }
+.theme-color-actions > span { flex: 1; }
+.theme-editor .color-wheel-wrap { margin-top: 18px; }
+.theme-editor .control-section { margin-top: 18px; }

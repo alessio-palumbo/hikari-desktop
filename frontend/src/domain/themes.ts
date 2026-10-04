@@ -31,3 +31,40 @@ export const themes: Theme[] = [
 export function themeRequest(theme: Theme, devices: Device[]): ThemeRequest {
   return { theme, serials: [...new Set(devices.filter((device) => device.online && isLightDevice(device)).map((device) => device.serial))].sort(), brightness: 'preserve' };
 }
+
+export function themeColors(theme: Theme): ThemeColor[] {
+  return [...(theme.palette.Base ?? []), ...(theme.palette.Accents ?? []), ...(theme.palette.Backgrounds ?? [])];
+}
+
+export function themeEditorDraft(theme?: Theme, id?: string): SaveUserThemeRequest {
+  const source = theme ?? { name: 'New theme', palette: { Base: [color(18), color(210)] } };
+  return {
+    ...(id ? { id } : {}),
+    theme: {
+      name: theme && !id ? `${source.name.slice(0, 123)} copy` : source.name,
+      palette: { Base: themeColors(source).map((stop) => ({ ...stop })) },
+      layout: source.layout ?? 'gradient',
+      axis: source.axis ?? 'horizontal',
+    },
+  };
+}
+
+export function moveThemeColor(theme: Theme, index: number, destination: number): Theme {
+  const colors = themeColors(theme);
+  if (index < 0 || index >= colors.length || destination < 0 || destination >= colors.length) return theme;
+  const [stop] = colors.splice(index, 1);
+  colors.splice(destination, 0, stop);
+  return { ...theme, palette: { Base: colors } };
+}
+
+export function sortedUserThemes(themes: UserTheme[]): UserTheme[] {
+  return [...themes].sort((a, b) => {
+    const left = a.theme.name.toLowerCase();
+    const right = b.theme.name.toLowerCase();
+    return left < right ? -1 : left > right ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+export function themeSelectionAction(previewOpen: boolean): 'preview' | 'apply' {
+  return previewOpen ? 'preview' : 'apply';
+}

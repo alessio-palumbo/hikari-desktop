@@ -226,7 +226,7 @@ export function Inspector(props: InspectorProps) {
       {!isLight ? <SwitchDetails device={device} onChange={props.onChange} /> : null}
 
       {isLight ? <ModeToggle value={mode} hasColor={hasColor} hasEffects={hasEffects} hasThemes onChange={setInspectorMode} /> : null}
-      {isLight && mode === 'themes' ? <ThemeControls key={device.serial} devices={[device]} editing={props.editing} disabled={props.saving || props.loading} onApply={props.onApplyTheme} /> : null}
+      {isLight && mode === 'themes' ? <ThemeControls key={device.serial} devices={[device]} showDeviceNames={false} editing={props.editing} disabled={props.saving || props.loading} onApply={props.onApplyTheme} /> : null}
 
       {isLight && mode === 'color' ? (
         <section className="control-section">
