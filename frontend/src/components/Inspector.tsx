@@ -4,6 +4,7 @@ import { EffectPreview } from './EffectPreview';
 import { EffectSettings } from './EffectSettings';
 import { getDeviceEffectPreferences, saveDeviceEffectPreference, type DeviceEffectStatus } from '../backend/api';
 import { deviceUptime } from '../domain/diagnostics';
+import { compatibleInspectorMode, type InspectorMode } from '../domain/inspectorMode';
 import {
   defaultEffectSpeedMs,
   supportedDeviceEffects,
@@ -33,8 +34,6 @@ import {
 import { ColorWheel, PowerSlider, Slider } from './primitives';
 import './Inspector.css';
 
-type PaintMode = 'color' | 'white';
-type InspectorMode = PaintMode | 'effects';
 type PaintTool = 'brush' | 'fill' | 'gradient' | 'picker';
 
 interface InspectorProps {
@@ -70,7 +69,7 @@ export function Inspector(props: InspectorProps) {
   }
 
   const device = props.device;
-  const [mode, setMode] = useState<InspectorMode>('color');
+  const [mode, setMode] = useState<InspectorMode>(() => compatibleInspectorMode('color', device));
   const [tool, setTool] = useState<PaintTool | null>(null);
   const [paintColor, setPaintColor] = useState(() => initialPaintColor(device));
   const [whiteKelvin, setWhiteKelvin] = useState(() => clampKelvin(device.kelvin ?? 3500, device));
@@ -86,7 +85,7 @@ export function Inspector(props: InspectorProps) {
 
   useEffect(() => {
     editRequestedRef.current = false;
-    setMode((device.capability?.hasColor ?? true) ? 'color' : 'white');
+    setMode((current) => compatibleInspectorMode(current, device));
     setTool(null);
     setPaintColor(initialPaintColor(device));
     const kelvin = clampKelvin(device.kelvin ?? 3500, device);
