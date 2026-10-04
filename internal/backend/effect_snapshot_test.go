@@ -5,14 +5,70 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	lifxcontroller "github.com/alessio-palumbo/lifxlan-go/pkg/controller"
 	lifxdevice "github.com/alessio-palumbo/lifxlan-go/pkg/device"
+	"github.com/alessio-palumbo/lifxprotocol-go/gen/protocol/packets"
 )
 
 type snapshotBoundaryController struct {
 	*fakeLifxController
 	capture func(context.Context, []lifxdevice.Serial, lifxcontroller.SnapshotOptions) (lifxdevice.StateSnapshot, error)
+}
+
+type restoreOptionsController struct {
+	*fakeLifxController
+	options lifxcontroller.RestoreOptions
+	gap     time.Duration
+}
+
+func (c *restoreOptionsController) RestoreStateSnapshot(ctx context.Context, snapshot lifxdevice.StateSnapshot, opts lifxcontroller.RestoreOptions) error {
+	c.options = opts
+	if sends := c.sentMessages(); len(sends) > 0 {
+		c.gap = time.Since(sends[len(sends)-1].at)
+	}
+	return c.fakeLifxController.RestoreStateSnapshot(ctx, snapshot, opts)
+}
+
+func TestAppEffectRestoreUsesImmediateTransitionOnlyForOffState(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		on       bool
+		duration time.Duration
+	}{
+		{"off", false, 0},
+		{"on", true, defaultColorTransitionDuration},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, base, current := parameterTestTransport(t)
+			device := base.devices[0].Clone()
+			device.PoweredOn = tc.on
+			snapshot := lifxdevice.NewStateSnapshot([]lifxdevice.Device{device})
+			ctrl := &restoreOptionsController{fakeLifxController: base}
+			if err := restoreAppEffectState(context.Background(), ctrl, runningAppEffect{previous: current, snapshot: snapshot}); err != nil {
+				t.Fatal(err)
+			}
+			if ctrl.options.Duration != tc.duration {
+				t.Fatalf("restore duration = %v, want %v", ctrl.options.Duration, tc.duration)
+			}
+			if !tc.on {
+				sends := base.sentMessages()
+				if len(sends) != 1 {
+					t.Fatalf("power-off sends = %d, want one before restore", len(sends))
+				}
+				power, ok := sends[0].msg.Payload.(*packets.DeviceSetPower)
+				if !ok || power.Level != 0 || ctrl.gap < effectPowerOffSettleDelay {
+					t.Fatal("restore did not wait for power-off before restoring colours")
+				}
+			} else if len(base.sentMessages()) != 0 {
+				t.Fatal("on-state restore unexpectedly powered off")
+			}
+			if !reflect.DeepEqual(base.restoredStateSnapshots()[0], snapshot) {
+				t.Fatal("transition selection changed the restored colours or power")
+			}
+		})
+	}
 }
 
 func (c *snapshotBoundaryController) CaptureStateSnapshot(ctx context.Context, serials []lifxdevice.Serial, opts lifxcontroller.SnapshotOptions) (lifxdevice.StateSnapshot, error) {

@@ -71,6 +71,7 @@ type broadcastInterfaceLister func() ([]lifxclient.BroadcastInterface, error)
 // Start creates the controller and begins lifxlan-go discovery. Tests can inject
 // a fake controller directly with NewLifxTransportWithController.
 type LifxTransport struct {
+	commandLocks           sync.Map
 	diagnosticsMu          sync.Mutex
 	controller             lifxController
 	controllerFactory      lifxControllerFactory
@@ -410,6 +411,11 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 	if err != nil {
 		return req.Device, err
 	}
+	unlock, err := t.lockDeviceCommand(ctx, serial)
+	if err != nil {
+		return req.Device, err
+	}
+	defer unlock()
 
 	current := t.cachedDevice(req.Device.Serial)
 	if current == nil {
@@ -454,6 +460,11 @@ func (t *LifxTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEf
 	if err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
+	unlock, err := t.lockDeviceCommand(ctx, serial)
+	if err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Error: err.Error()}, err
+	}
+	defer unlock()
 	req.Device = t.effectRequestDevice(req.Device)
 	if req.Params == nil {
 		t.mu.RLock()
@@ -525,6 +536,11 @@ func (t *LifxTransport) StopDeviceEffect(ctx context.Context, req StopDeviceEffe
 	if err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Error: err.Error()}, err
 	}
+	unlock, err := t.lockDeviceCommand(ctx, serial)
+	if err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Error: err.Error()}, err
+	}
+	defer unlock()
 	previous := t.stopAppEffect(req.Device.Serial)
 	if previous != nil {
 		if err := restoreAppEffectState(ctx, ctrl, *previous); err != nil {
@@ -654,25 +670,29 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	if err := ctx.Err(); err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
+	if err := t.stopFirmwareEffectBeforeApp(ctx, ctrl, serial, req.Device); err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Effect: string(req.Effect), Error: err.Error()}, err
+	}
 	renderer := lifxeffectadapters.NewRendererForDevice(lifxDevice, func(msg *protocol.Message) error {
 		logLifxSend(serial, req.Device, "app-effect-frame", msg)
 		return ctrl.Send(serial, msg)
 	})
 	step := appEffectStep(req, lifxDevice)
+	// Confirm the initial send before reporting startup success. This also primes
+	// off devices before power-on; subsequent frames belong to the live runner.
+	frame, ok := effect.Next(step)
+	if !ok {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect)}, fmt.Errorf("effect %q produced no frame", req.Effect)
+	}
+	if err := renderer.RenderFrame(ctx, frame); err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, fmt.Errorf("prime effect frame: %w", err)
+	}
 	if !captured.On {
-		frame, ok := effect.Next(step)
-		if !ok {
-			return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect)}, fmt.Errorf("effect %q produced no frame", req.Effect)
-		}
-		if err := renderer.RenderFrame(ctx, frame); err != nil {
-			return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, fmt.Errorf("prime effect frame: %w", err)
-		}
 		msg := messages.SetPowerOn()
 		logLifxSend(serial, req.Device, "effect-power-on", msg)
 		if err := ctrl.Send(serial, msg); err != nil {
 			return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, fmt.Errorf("set power on for effect: %w", err)
 		}
-		effect.Reset()
 	}
 	active := captured
 	active.On = true
@@ -686,12 +706,38 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(req.Effect)}, nil
 }
 
-func (t *LifxTransport) runAppDeviceEffect(ctx context.Context, serial string, effect DeviceEffect, runner *lifxeffects.Runner, done chan<- struct{}) {
+func (t *LifxTransport) stopFirmwareEffectBeforeApp(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device) error {
+	t.mu.RLock()
+	tracked, known := t.firmware[device.Serial]
+	t.mu.RUnlock()
+	if !(known && !tracked.stopping) && !(device.FirmwareEffect != nil && device.FirmwareEffect.Running) {
+		return nil
+	}
+	t.stopFirmwareEffect(device.Serial, time.Now())
+	if err := sendDeviceEffectOff(ctx, ctrl, serial, device, "app-effect-firmware-off"); err != nil {
+		return err
+	}
+	// A recently started matrix effect can arrive after the first stop packet.
+	// Finish the existing stop retry before allowing app-driven frames to start.
+	if known && !tracked.confirmationUntil.IsZero() && device.Kind == DeviceKindMatrix {
+		timer := time.NewTimer(matrixEffectStopRetryDelay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+		}
+		return sendDeviceEffectOff(ctx, ctrl, serial, device, "app-effect-firmware-off-retry")
+	}
+	return nil
+}
+
+func (t *LifxTransport) runAppDeviceEffect(ctx context.Context, serial string, effect DeviceEffect, runner *lifxeffects.Runner, done chan struct{}) {
 	defer close(done)
 	if err := runner.Run(ctx); err != nil && ctx.Err() == nil {
 		log.Printf("hikari: app effect %q failed for %s: %v", effect, serial, err)
 	}
-	t.clearAppEffect(serial, effect)
+	t.clearAppEffect(serial, effect, done)
 }
 
 func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, previous Device) (lifxeffects.Effect, error) {
@@ -1158,7 +1204,16 @@ func restoreAppEffectState(ctx context.Context, ctrl lifxController, effect runn
 	if hikariDebugEnabled() {
 		log.Printf("hikari: restoring app effect state serial=%s kind=%s", effect.previous.Serial, effect.previous.Kind)
 	}
-	return ctrl.RestoreStateSnapshot(ctx, effect.snapshot, lifxcontroller.RestoreOptions{Duration: defaultColorTransitionDuration})
+	duration := defaultColorTransitionDuration
+	if len(effect.snapshot.Devices) == 1 && !effect.snapshot.Devices[0].PoweredOn {
+		// Restore sends power-off before colours, but does not wait for a fade.
+		// An immediate off prevents restored colours appearing during that fade.
+		duration = 0
+		if err := sendEffectPowerOff(ctx, ctrl, effect.snapshot.Devices[0].Serial, effect.previous); err != nil {
+			return fmt.Errorf("power off before restoring app effect colours: %w", err)
+		}
+	}
+	return ctrl.RestoreStateSnapshot(ctx, effect.snapshot, lifxcontroller.RestoreOptions{Duration: duration})
 }
 
 func sendEffectPowerOff(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, device Device) error {
@@ -1845,12 +1900,32 @@ func (t *LifxTransport) restoreAllAppEffects(ctx context.Context, ctrl lifxContr
 	return restoreErr
 }
 
-func (t *LifxTransport) clearAppEffect(serial string, effectID DeviceEffect) {
+func (t *LifxTransport) clearAppEffect(serial string, effectID DeviceEffect, done <-chan struct{}) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	effect, ok := t.effects[serial]
-	if ok && effect.effect == effectID {
+	if ok && effect.effect == effectID && effect.done == done {
 		delete(t.effects, serial)
+	}
+}
+
+// Serialize state/effect transitions for one physical device, without blocking
+// independent devices or snapshot subscriptions. Waiting honours cancellation.
+func (t *LifxTransport) lockDeviceCommand(ctx context.Context, serial lifxdevice.Serial) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	entry, _ := t.commandLocks.LoadOrStore(serial, make(chan struct{}, 1))
+	lock := entry.(chan struct{})
+	select {
+	case lock <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-lock
+			return nil, err
+		}
+		return func() { <-lock }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
 
