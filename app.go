@@ -19,12 +19,13 @@ const (
 )
 
 type App struct {
-	ctx           context.Context
-	transport     backend.DeviceTransport
-	sensors       sensorProvider
-	commandEngine *backend.CommandEngineService
-	floorPlans    backend.FloorPlanStore
-	emitEvent     func(context.Context, string, ...interface{})
+	ctx            context.Context
+	transport      backend.DeviceTransport
+	sensors        sensorProvider
+	commandEngine  *backend.CommandEngineService
+	floorPlans     backend.FloorPlanStore
+	effectSettings backend.EffectSettingsStore
+	emitEvent      func(context.Context, string, ...interface{})
 }
 
 type sensorProvider interface {
@@ -62,11 +63,12 @@ func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvide
 		transport = backend.NewMockTransport()
 	}
 	return &App{
-		transport:     transport,
-		sensors:       sensors,
-		commandEngine: backend.NewCommandEngineService(),
-		floorPlans:    backend.NewFloorPlanStore(),
-		emitEvent:     wailsruntime.EventsEmit,
+		transport:      transport,
+		sensors:        sensors,
+		commandEngine:  backend.NewCommandEngineService(),
+		floorPlans:     backend.NewFloorPlanStore(),
+		effectSettings: backend.NewEffectSettingsStore(),
+		emitEvent:      wailsruntime.EventsEmit,
 	}
 }
 
@@ -150,6 +152,33 @@ func (a *App) DeviceEffectParameters(serial string, effect backend.DeviceEffect)
 		return source.EffectParameters(serial, effect)
 	}
 	return backend.EffectParameterDefinitions(effect)
+}
+
+func (a *App) GetDeviceEffectPreferences(serial string) (map[backend.DeviceEffect]backend.EffectPreference, error) {
+	preferences, err := a.effectSettings.Load(serial)
+	if err != nil {
+		return nil, err
+	}
+	for effect, preference := range preferences {
+		if len(preference.Params) == 0 {
+			continue
+		}
+		parameters, err := a.DeviceEffectParameters(serial, effect)
+		if err != nil {
+			delete(preferences, effect)
+			continue
+		}
+		for _, parameter := range parameters {
+			if value, ok := preference.Params[parameter.Key]; ok {
+				preference.Params[parameter.Key] = max(parameter.Min, min(parameter.Max, value))
+			}
+		}
+	}
+	return preferences, nil
+}
+
+func (a *App) SaveDeviceEffectPreference(req backend.SaveDeviceEffectPreferenceRequest) error {
+	return a.effectSettings.Save(req)
 }
 
 func (a *App) GetSensorSnapshot() (backend.SensorSnapshot, error) {

@@ -5,6 +5,20 @@ export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'wo
 export type DeviceEffectSource = 'firmware' | 'app';
 export type EffectParameters = Record<string, number>;
 
+export interface EffectPreference {
+  speedMs: number;
+  params?: EffectParameters;
+}
+
+export type DeviceEffectPreferences = Partial<Record<DeviceEffect, EffectPreference>>;
+
+export function normalizeEffectPreference(preference: EffectPreference, effect: DeviceEffectDefinition): EffectPreference {
+  return {
+    speedMs: Number.isFinite(preference.speedMs) ? clamp(preference.speedMs, effect.speed.minMs, effect.speed.maxMs) : effect.speed.defaultMs,
+    params: effect.configurable ? preference.params : undefined,
+  };
+}
+
 export interface EffectPanels {
   preview?: DeviceEffect;
   settings?: DeviceEffect;

@@ -131,37 +131,37 @@ func validateFloorPlanDocument(data []byte) error {
 
 func writeFileAtomic(path string, data []byte, mode os.FileMode) (returnErr error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create floor plan directory: %w", err)
+		return fmt.Errorf("create settings directory: %w", err)
 	}
 
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".floor-plan-*.tmp")
+	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*.tmp")
 	if err != nil {
-		return fmt.Errorf("create temporary floor plan: %w", err)
+		return fmt.Errorf("create temporary settings file: %w", err)
 	}
 	temporaryPath := temporary.Name()
 	defer func() {
 		if err := os.Remove(temporaryPath); err != nil && !errors.Is(err, os.ErrNotExist) && returnErr == nil {
-			returnErr = fmt.Errorf("remove temporary floor plan: %w", err)
+			returnErr = fmt.Errorf("remove temporary settings file: %w", err)
 		}
 	}()
 
 	if err := temporary.Chmod(mode); err != nil {
 		_ = temporary.Close()
-		return fmt.Errorf("set temporary floor plan permissions: %w", err)
+		return fmt.Errorf("set temporary settings permissions: %w", err)
 	}
 	if _, err := temporary.Write(data); err != nil {
 		_ = temporary.Close()
-		return fmt.Errorf("write temporary floor plan: %w", err)
+		return fmt.Errorf("write temporary settings file: %w", err)
 	}
 	if err := temporary.Sync(); err != nil {
 		_ = temporary.Close()
-		return fmt.Errorf("sync temporary floor plan: %w", err)
+		return fmt.Errorf("sync temporary settings file: %w", err)
 	}
 	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close temporary floor plan: %w", err)
+		return fmt.Errorf("close temporary settings file: %w", err)
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("replace floor plan: %w", err)
+		return fmt.Errorf("replace settings file: %w", err)
 	}
 	return nil
 }

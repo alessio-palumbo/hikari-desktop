@@ -2,12 +2,13 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, ChevronDown, Droplet, Eye, Info, LogOut, Pipette, Play, RotateCcw, Settings, Square, Undo2, Wand2, X } from 'lucide-react';
 import { EffectPreview } from './EffectPreview';
 import { EffectSettings } from './EffectSettings';
-import type { DeviceEffectStatus } from '../backend/api';
+import { getDeviceEffectPreferences, saveDeviceEffectPreference, type DeviceEffectStatus } from '../backend/api';
 import { deviceUptime } from '../domain/diagnostics';
 import {
   defaultEffectSpeedMs,
   supportedDeviceEffects,
   toggleEffectPanel,
+  normalizeEffectPreference,
   type DeviceEffectDefinition,
   type DeviceEffect,
   type EffectParameters,
@@ -395,7 +396,9 @@ function EffectControls({
 }) {
   const effects = supportedDeviceEffects(device);
   const running = status?.running ?? false;
-  const loading = status?.loading ?? false;
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [preferenceError, setPreferenceError] = useState('');
+  const loading = (status?.loading ?? false) || !preferencesLoaded;
   const [selectedEffect, setSelectedEffect] = useState<DeviceEffect | undefined>();
   const [panels, setPanels] = useState<EffectPanels>({});
   const { preview: previewEffect, settings: settingsEffect } = panels;
@@ -412,14 +415,42 @@ function EffectControls({
     if (success && currentSerial.current === serial) {
       setAppliedSettings((current) => ({ ...current, [effect]: { speedMs, params: submitted } }));
     }
+    if (success) {
+      try {
+        await saveDeviceEffectPreference(serial, effect, { speedMs, params: submitted });
+        if (currentSerial.current === serial) setPreferenceError('');
+      } catch (error) {
+        if (currentSerial.current === serial) setPreferenceError(`Effect started, but settings could not be saved: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
   };
 
   useEffect(() => {
+    let disposed = false;
+    setPreferencesLoaded(false);
+    setPreferenceError('');
     setSelectedEffect(undefined);
     setPanels({});
     setEffectParameters({});
     setEffectSpeeds({});
     setAppliedSettings({});
+    void getDeviceEffectPreferences(device.serial).then((preferences) => {
+      if (disposed) return;
+      const speeds: Partial<Record<DeviceEffect, number>> = {};
+      const params: Partial<Record<DeviceEffect, EffectParameters>> = {};
+      for (const effect of effects) {
+        const saved = preferences[effect.id];
+        if (!saved) continue;
+        const preference = normalizeEffectPreference(saved, effect);
+        speeds[effect.id] = preference.speedMs;
+        if (preference.params) params[effect.id] = preference.params;
+      }
+      setEffectSpeeds(speeds);
+      setEffectParameters(params);
+    }).catch((error) => {
+      if (!disposed) setPreferenceError(`Saved effect settings could not be loaded: ${error instanceof Error ? error.message : String(error)}`);
+    }).finally(() => { if (!disposed) setPreferencesLoaded(true); });
+    return () => { disposed = true; };
   }, [device.serial]);
 
   return (
@@ -463,6 +494,7 @@ function EffectControls({
       })}
       {!effects.length ? <div className="effect-empty">no compatible effects</div> : null}
       {status?.error ? <div className="inspector-error">{status.error}</div> : null}
+      {preferenceError ? <div className="inspector-error" role="status">{preferenceError}</div> : null}
     </section>
   );
 }

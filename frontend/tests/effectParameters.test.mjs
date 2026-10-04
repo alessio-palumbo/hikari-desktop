@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deviceEffects, effectSettingsDiffer, formatEffectParameter, quantizeEffectParameter } from '../dist-test/domain/effects.js';
+import { deviceEffects, effectSettingsDiffer, formatEffectParameter, normalizeEffectPreference, quantizeEffectParameter, supportedDeviceEffects } from '../dist-test/domain/effects.js';
+import { DeviceKind } from '../dist-test/domain/lifx.js';
 
 test('appearance settings are limited to supported configurable Hikari effects', () => {
   assert.deepEqual(deviceEffects.filter((effect) => effect.configurable).map((effect) => effect.id), ['snake', 'worm', 'wave', 'ring', 'comet', 'sparkle', 'scanner']);
@@ -12,6 +13,17 @@ test('effect parameters distinguish relative percentages, cell lengths and count
   assert.equal(formatEffectParameter(5, 'cells'), '5 cells');
   assert.equal(formatEffectParameter(1.6, 'cells'), '1.6 cells');
   assert.equal(formatEffectParameter(3), '3');
+});
+
+test('saved preferences respect current speed limits without persisting runtime state', () => {
+  const scanner = supportedDeviceEffects({ kind: DeviceKind.Multizone }).find((effect) => effect.id === 'scanner');
+  assert.equal(normalizeEffectPreference({ speedMs: 90000 }, scanner).speedMs, 30000);
+  assert.equal(normalizeEffectPreference({ speedMs: 0 }, scanner).speedMs, 1000);
+  assert.equal(normalizeEffectPreference({ speedMs: NaN }, scanner).speedMs, 4000);
+  const preference = normalizeEffectPreference({ speedMs: 6000, params: { background_brightness_factor: 0.6 } }, scanner);
+  assert.deepEqual(preference, { speedMs: 6000, params: { background_brightness_factor: 0.6 } });
+  const move = deviceEffects.find((effect) => effect.id === 'move');
+  assert.equal(normalizeEffectPreference({ speedMs: 20000, params: { density: 0.2 } }, move).params, undefined);
 });
 
 test('parameter steps preserve Hikari defaults rather than offsetting from registry minimums', () => {

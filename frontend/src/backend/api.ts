@@ -1,8 +1,10 @@
 import { DeviceKind, type Device, type DeviceSnapshot, type HslColor, type Matrix } from '../domain/lifx';
 import type { DeviceCommandIntent } from '../domain/commands';
-import type { DeviceEffect, EffectParameters } from '../domain/effects';
+import type { DeviceEffect, DeviceEffectPreferences, EffectParameters, EffectPreference } from '../domain/effects';
 
 interface WailsApp {
+  GetDeviceEffectPreferences?: (serial: string) => Promise<DeviceEffectPreferences>;
+  SaveDeviceEffectPreference?: (request: EffectPreference & { serial: string; effect: DeviceEffect }) => Promise<void>;
   DeviceEffectParameters?: (serial: string, effect: DeviceEffect) => Promise<EffectParameter[]>;
   PreviewDeviceEffect?: (request: StartDeviceEffectRequest) => Promise<DeviceEffectPreview>;
   PingDevice?: (serial: string) => Promise<DevicePingResult>;
@@ -59,6 +61,16 @@ export interface EffectParameter {
   step: number;
   default: number;
   value: number;
+}
+
+export async function getDeviceEffectPreferences(serial: string): Promise<DeviceEffectPreferences> {
+  return await window.go?.main?.App?.GetDeviceEffectPreferences?.(serial) ?? {};
+}
+
+export async function saveDeviceEffectPreference(serial: string, effect: DeviceEffect, preference: EffectPreference): Promise<void> {
+  const save = window.go?.main?.App?.SaveDeviceEffectPreference;
+  if (!save) throw new Error('Effect settings storage is unavailable');
+  await save({ serial, effect, ...preference });
 }
 
 export async function getDeviceEffectParameters(serial: string, effect: DeviceEffect): Promise<EffectParameter[]> {

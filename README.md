@@ -13,7 +13,7 @@ The app is in active development, but it is ready to try with real LAN devices. 
 - Matrix custom grids and orientation-aware preview/apply behavior.
 - Device and firmware effects for supported multizone and matrix lights.
 - Local previews of Hikari effects without changing lights, using the eye control beside an effect. Previews show a bounded clip of settled frames, not firmware effects or device transition timing.
-- Every effect has speed settings behind a cog. Snake/Worm, Wave, Ring, Comet, Sparkle and Scanner also expose appearance controls such as trail length, thickness and relative brightness. Adjustments update an open local preview only; Apply starts/restarts the effect with all selected settings. Reset returns the controls to Hikari defaults. Settings are session-only, and existing palette and restore behavior is retained.
+- Every effect has speed settings behind a cog. Snake/Worm, Wave, Ring, Comet, Sparkle and Scanner also expose appearance controls such as trail length, thickness and relative brightness. Adjustments update an open local preview only; Apply starts/restarts the effect with all selected settings. Successfully started/applied settings are remembered per device and effect. Reset returns the controls to Hikari defaults; Apply or Start saves that choice. Existing palette and restore behavior is retained.
 - Floor-plan view with multiple floors, editable rooms, draggable light placement, room power controls, and local layout persistence.
 - Sensaa presence sensor discovery, room assignment, occupancy state, and delayed room lighting.
 - Periodic refresh with pending-state reconciliation to avoid stale device updates fighting recent UI changes.
@@ -74,6 +74,8 @@ Use the `floor` center view to arrange the lights available on the current LAN a
 Selecting a room in edit mode exposes its geometry controls. Drag the room body to move the room and its assigned devices, drag a vertex to reshape it, or use the smaller midpoint controls to add vertices. Double-click a vertex, or focus it and press `Delete` or `Backspace`, to remove it. Rooms retain at least three vertices.
 
 Floor layouts are stored as independent profiles in `floor-plan.json` under the operating system's user configuration directory. The file is written atomically, survives replacing or upgrading the application bundle, and existing WebView-local floor plans migrate automatically. Hikari matches a profile using known device serials and LIFX location identifiers, and asks which profile to use when the available evidence is ambiguous. Locations with the same display name are merged in the sidebar without discarding their distinct identifiers, while a floor plan can include devices from every LIFX location found on the same physical LAN.
+
+Effect preferences are stored atomically alongside the floor plans in `effect-settings.json`, keyed by stable device serial and effect. They survive application updates and are shared between development and installed builds. Only speed and appearance parameters are saved: effects never start automatically, and palettes continue to come from the device's current colours. Unapplied edits, playback state and temporary restore snapshots are not persisted.
 
 Removing a room or floor makes its devices unassigned; temporary LAN loss does not remove their saved placement. Devices that become unavailable during a session remain visible in the layout as dimmed, inactive markers and recover their normal controls when discovery finds them again.
 
