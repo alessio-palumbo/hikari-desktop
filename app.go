@@ -147,7 +147,7 @@ func (a *App) PreviewDeviceEffect(req backend.StartDeviceEffectRequest) (backend
 	return previewer.PreviewDeviceEffect(ctx, req)
 }
 
-func (a *App) PreviewTheme(req backend.ThemePreviewRequest) (backend.ThemePreview, error) {
+func (a *App) PreviewTheme(req backend.ThemeRequest) (backend.ThemePreview, error) {
 	previewer, ok := a.transport.(backend.ThemePreviewer)
 	if !ok {
 		return backend.ThemePreview{}, fmt.Errorf("local theme preview is unavailable")
@@ -155,6 +155,16 @@ func (a *App) PreviewTheme(req backend.ThemePreviewRequest) (backend.ThemePrevie
 	ctx, cancel := context.WithTimeout(a.context(), 5*time.Second)
 	defer cancel()
 	return previewer.PreviewTheme(ctx, req)
+}
+
+func (a *App) ApplyTheme(req backend.ThemeRequest) (backend.ThemeApplyResult, error) {
+	applier, ok := a.transport.(backend.ThemeApplier)
+	if !ok {
+		return backend.ThemeApplyResult{}, fmt.Errorf("theme application is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.context(), 10*time.Second)
+	defer cancel()
+	return applier.ApplyTheme(ctx, req)
 }
 
 func (a *App) DeviceEffectParameters(serial string, effect backend.DeviceEffect) ([]backend.EffectParameter, error) {

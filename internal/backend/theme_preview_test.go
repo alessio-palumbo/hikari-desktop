@@ -14,8 +14,8 @@ import (
 	"github.com/alessio-palumbo/lifxprotocol-go/gen/protocol/packets"
 )
 
-func testThemeRequest(devices ...lifxdevice.Device) ThemePreviewRequest {
-	req := ThemePreviewRequest{Theme: lifxthemes.Theme{Name: "Evening", Palette: lifxeffects.Palette{Base: []lifxeffects.Color{
+func testThemeRequest(devices ...lifxdevice.Device) ThemeRequest {
+	req := ThemeRequest{Theme: lifxthemes.Theme{Name: "Evening", Palette: lifxeffects.Palette{Base: []lifxeffects.Color{
 		{Hue: 20, Saturation: 80, Brightness: 85, Kelvin: 3500},
 		{Hue: 240, Saturation: 70, Brightness: 75, Kelvin: 4000},
 	}}}}
@@ -186,13 +186,13 @@ func TestThemePreviewRejectsInvalidInputAndMissingObservedState(t *testing.T) {
 		return lifxdevice.StateSnapshot{}, failure
 	}}
 	transport := newTestLifxTransport(t, ctrl)
-	for _, modify := range []func(*ThemePreviewRequest){
-		func(r *ThemePreviewRequest) { r.Serials = nil },
-		func(r *ThemePreviewRequest) { r.Serials = append(r.Serials, r.Serials[0]) },
-		func(r *ThemePreviewRequest) { r.Serials[0] = "invalid" },
-		func(r *ThemePreviewRequest) { r.Serials[0] = "d073d501a2c4" },
-		func(r *ThemePreviewRequest) { r.Theme.Name = "" },
-		func(r *ThemePreviewRequest) { r.Brightness = "unknown" },
+	for _, modify := range []func(*ThemeRequest){
+		func(r *ThemeRequest) { r.Serials = nil },
+		func(r *ThemeRequest) { r.Serials = append(r.Serials, r.Serials[0]) },
+		func(r *ThemeRequest) { r.Serials[0] = "invalid" },
+		func(r *ThemeRequest) { r.Serials[0] = "d073d501a2c4" },
+		func(r *ThemeRequest) { r.Theme.Name = "" },
+		func(r *ThemeRequest) { r.Brightness = "unknown" },
 	} {
 		req := testThemeRequest(d)
 		modify(&req)
@@ -238,7 +238,7 @@ func TestThemePreviewBoundsAndTargetValidation(t *testing.T) {
 	}
 	req := testThemeRequest(d)
 	req.Serials = make([]string, maxThemePreviewTargets+1)
-	if _, err := validateThemePreviewRequest(req); err == nil {
+	if _, err := validateThemeRequest(req); err == nil {
 		t.Fatal("too many targets accepted")
 	}
 	if _, err := planThemePreview(context.Background(), testThemeRequest(d), nil); err == nil {

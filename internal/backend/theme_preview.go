@@ -17,10 +17,10 @@ import (
 const maxThemePreviewTargets = 64
 
 type ThemePreviewer interface {
-	PreviewTheme(context.Context, ThemePreviewRequest) (ThemePreview, error)
+	PreviewTheme(context.Context, ThemeRequest) (ThemePreview, error)
 }
 
-type ThemePreviewRequest struct {
+type ThemeRequest struct {
 	Theme   lifxthemes.Theme `json:"theme"`
 	Serials []string         `json:"serials"`
 	// Empty uses PreserveBrightness, unlike the library's palette-mode default.
@@ -41,7 +41,7 @@ type ThemeDevicePreview struct {
 	Colors []HSLColor `json:"colors"`
 }
 
-func validateThemePreviewRequest(req ThemePreviewRequest) ([]lifxdevice.Serial, error) {
+func validateThemeRequest(req ThemeRequest) ([]lifxdevice.Serial, error) {
 	if err := req.Theme.Validate(); err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func validateThemePreviewRequest(req ThemePreviewRequest) ([]lifxdevice.Serial, 
 		return nil, fmt.Errorf("unknown theme brightness policy %q", req.Brightness)
 	}
 	if len(req.Serials) == 0 || len(req.Serials) > maxThemePreviewTargets {
-		return nil, fmt.Errorf("theme preview requires 1..%d selected lights", maxThemePreviewTargets)
+		return nil, fmt.Errorf("theme requires 1..%d selected lights", maxThemePreviewTargets)
 	}
 	serials := make([]lifxdevice.Serial, 0, len(req.Serials))
 	seen := make(map[lifxdevice.Serial]bool, len(req.Serials))
@@ -71,40 +71,72 @@ func validateThemePreviewRequest(req ThemePreviewRequest) ([]lifxdevice.Serial, 
 
 // PreviewTheme may query observed state, but never sends colour/power/effect
 // commands. Locks prevent an in-app edit from racing the captured baseline.
-func (t *LifxTransport) PreviewTheme(ctx context.Context, req ThemePreviewRequest) (ThemePreview, error) {
-	serials, err := validateThemePreviewRequest(req)
+func (t *LifxTransport) PreviewTheme(ctx context.Context, req ThemeRequest) (ThemePreview, error) {
+	prepared, err := t.prepareTheme(ctx, req)
 	if err != nil {
 		return ThemePreview{}, err
+	}
+	defer prepared.release()
+	return previewThemeFrames(ctx, prepared.plan, prepared.devices)
+}
+
+type preparedTheme struct {
+	controller lifxController
+	devices    []lifxdevice.Device
+	plan       []lifxthemes.Application
+	release    func()
+}
+
+// Keep target locks until the caller finishes previewing or sending this plan.
+func (t *LifxTransport) prepareTheme(ctx context.Context, req ThemeRequest) (preparedTheme, error) {
+	serials, err := validateThemeRequest(req)
+	if err != nil {
+		return preparedTheme{}, err
 	}
 	ctrl, err := t.requireController()
 	if err != nil {
-		return ThemePreview{}, err
+		return preparedTheme{}, err
 	}
+	var releases []func()
+	release := func() {
+		for i := len(releases) - 1; i >= 0; i-- {
+			releases[i]()
+		}
+	}
+	ready := false
+	defer func() {
+		if !ready {
+			release()
+		}
+	}()
 	for _, serial := range serials {
 		unlock, err := t.lockDeviceCommand(ctx, serial)
 		if err != nil {
-			return ThemePreview{}, err
+			return preparedTheme{}, err
 		}
-		defer unlock()
+		releases = append(releases, unlock)
 		d, ok := ctrl.GetDevice(serial)
 		if !ok {
-			return ThemePreview{}, fmt.Errorf("theme target %s is no longer available", serial)
+			return preparedTheme{}, fmt.Errorf("theme target %s is no longer available", serial)
 		}
 		if d.Type != lifxdevice.DeviceTypeLight && d.Type != lifxdevice.DeviceTypeHybrid {
-			return ThemePreview{}, fmt.Errorf("theme target %s is not a light", serial)
+			return preparedTheme{}, fmt.Errorf("theme target %s is not a light", serial)
+		}
+		if cached := t.cachedDevice(serial.String()); cached != nil && !cached.Online {
+			return preparedTheme{}, fmt.Errorf("theme target %s is offline", serial)
 		}
 	}
 	snapshot, err := ctrl.CaptureStateSnapshot(ctx, serials, lifxcontroller.SnapshotOptions{})
 	if err != nil {
-		return ThemePreview{}, fmt.Errorf("capture theme state: %w", err)
+		return preparedTheme{}, fmt.Errorf("capture theme state: %w", err)
 	}
 	if len(snapshot.Devices) != len(serials) {
-		return ThemePreview{}, fmt.Errorf("theme snapshot is incomplete")
+		return preparedTheme{}, fmt.Errorf("theme snapshot is incomplete")
 	}
 	states := make(map[lifxdevice.Serial]lifxdevice.DeviceStateSnapshot, len(serials))
 	for _, state := range snapshot.Devices {
 		if _, duplicate := states[state.Serial]; duplicate {
-			return ThemePreview{}, fmt.Errorf("duplicate device in theme snapshot")
+			return preparedTheme{}, fmt.Errorf("duplicate device in theme snapshot")
 		}
 		states[state.Serial] = state
 	}
@@ -112,11 +144,11 @@ func (t *LifxTransport) PreviewTheme(ctx context.Context, req ThemePreviewReques
 	for _, serial := range serials {
 		state, ok := states[serial]
 		if !ok {
-			return ThemePreview{}, fmt.Errorf("theme snapshot does not contain %s", serial)
+			return preparedTheme{}, fmt.Errorf("theme snapshot does not contain %s", serial)
 		}
 		d, ok := ctrl.GetDevice(serial)
 		if !ok {
-			return ThemePreview{}, fmt.Errorf("theme target %s disappeared during capture", serial)
+			return preparedTheme{}, fmt.Errorf("theme target %s disappeared during capture", serial)
 		}
 		t.mu.RLock()
 		current, cached := t.cache[serial.String()]
@@ -129,16 +161,21 @@ func (t *LifxTransport) PreviewTheme(ctx context.Context, req ThemePreviewReques
 		}
 		devices = append(devices, deviceWithEffectSnapshot(d, state))
 	}
-	return planThemePreview(ctx, req, devices)
+	plan, err := planThemeFrames(ctx, req, devices)
+	if err != nil {
+		return preparedTheme{}, err
+	}
+	ready = true
+	return preparedTheme{controller: ctrl, devices: devices, plan: plan, release: release}, nil
 }
 
 // Inputs must contain complete observed state. Planning and preview rendering
-// are pure; the same library frames can later be used by the apply path.
-func planThemeFrames(ctx context.Context, req ThemePreviewRequest, devices []lifxdevice.Device) ([]lifxthemes.Application, error) {
+// are pure; the resulting library frames are shared by preview and application.
+func planThemeFrames(ctx context.Context, req ThemeRequest, devices []lifxdevice.Device) ([]lifxthemes.Application, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	serials, err := validateThemePreviewRequest(req)
+	serials, err := validateThemeRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -189,11 +226,15 @@ func planThemeFrames(ctx context.Context, req ThemePreviewRequest, devices []lif
 	return plan, nil
 }
 
-func planThemePreview(ctx context.Context, req ThemePreviewRequest, devices []lifxdevice.Device) (ThemePreview, error) {
+func planThemePreview(ctx context.Context, req ThemeRequest, devices []lifxdevice.Device) (ThemePreview, error) {
 	plan, err := planThemeFrames(ctx, req, devices)
 	if err != nil {
 		return ThemePreview{}, err
 	}
+	return previewThemeFrames(ctx, plan, devices)
+}
+
+func previewThemeFrames(ctx context.Context, plan []lifxthemes.Application, devices []lifxdevice.Device) (ThemePreview, error) {
 	bySerial := make(map[lifxdevice.Serial]lifxdevice.Device, len(devices))
 	for _, d := range devices {
 		bySerial[d.Serial] = d

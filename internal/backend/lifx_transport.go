@@ -1775,6 +1775,12 @@ func (t *LifxTransport) storeCachedDevice(device Device) {
 		device.GroupID = pending.device.GroupID
 	}
 	t.cache[device.Serial] = device
+	// A stale-state guard must protect the latest local command, not undo a
+	// subsequent edit made during its existing acknowledgement window.
+	if pending, ok := t.restores[device.Serial]; ok {
+		pending.device = device
+		t.restores[device.Serial] = pending
+	}
 }
 
 func (t *LifxTransport) cachedDevice(serial string) *Device {
