@@ -1,0 +1,16 @@
+.theme-controls { min-width: 0; }
+.theme-list { display: grid; gap: 4px; }
+.theme-list button { display: flex; align-items: center; gap: 12px; min-height: 38px; width: 100%; padding: 7px 10px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--fg-2); text-align: left; font: inherit; font-size: 12px; cursor: pointer; }
+.theme-list button:hover { background: #ffffff06; color: var(--fg-0); }
+.theme-list button[data-active="true"] { background: #ffffff08; border-color: #ffffff18; color: var(--fg-0); }
+.theme-list button:disabled { cursor: default; }
+.theme-list button:focus-visible { outline: 1px solid var(--fg-2); outline-offset: 2px; }
+.theme-swatches { display: flex; gap: 3px; flex-shrink: 0; }
+.theme-swatches i { display: block; width: 12px; height: 12px; border-radius: 50%; }
+.theme-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 14px; }
+.theme-actions .apply-button { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 72px; }
+.theme-status { margin-top: 12px; color: var(--fg-3); font-size: 11px; }
+.theme-previews { display: grid; gap: 14px; margin-top: 16px; }
+.theme-previews figure { margin: 0; }
+.theme-previews figcaption { margin-bottom: 6px; color: var(--fg-3); font-size: 11px; }
+.theme-previews canvas { display: block; width: 100%; height: auto; }

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, ChevronDown, Droplet, Eye, Info, LogOut, Pipette, Play, RotateCcw, Settings, Square, Undo2, Wand2, X } from 'lucide-react';
 import { EffectPreview } from './EffectPreview';
 import { EffectSettings } from './EffectSettings';
+import { ThemeControls } from './ThemeControls';
+import type { ThemeRequest } from '../domain/themes';
 import { getDeviceEffectPreferences, saveDeviceEffectPreference, type DeviceEffectStatus } from '../backend/api';
 import { deviceUptime } from '../domain/diagnostics';
 import { compatibleInspectorMode, type InspectorMode } from '../domain/inspectorMode';
@@ -56,6 +58,7 @@ interface InspectorProps {
   onPowerChange: (on: boolean) => void;
   onStartEffect: (effect: DeviceEffect, speedMs: number, params?: EffectParameters) => Promise<boolean>;
   onStopEffect: () => void;
+  onApplyTheme: (request: ThemeRequest) => Promise<void>;
   onEnterEditMode: () => void;
   onExitEditMode: () => void;
   onApply: () => void;
@@ -222,7 +225,8 @@ export function Inspector(props: InspectorProps) {
 
       {!isLight ? <SwitchDetails device={device} onChange={props.onChange} /> : null}
 
-      {isLight ? <ModeToggle value={mode} hasColor={hasColor} hasEffects={hasEffects} onChange={setInspectorMode} /> : null}
+      {isLight ? <ModeToggle value={mode} hasColor={hasColor} hasEffects={hasEffects} hasThemes onChange={setInspectorMode} /> : null}
+      {isLight && mode === 'themes' ? <ThemeControls key={device.serial} devices={[device]} editing={props.editing} disabled={props.saving || props.loading} onApply={props.onApplyTheme} /> : null}
 
       {isLight && mode === 'color' ? (
         <section className="control-section">
@@ -236,7 +240,7 @@ export function Inspector(props: InspectorProps) {
         <WhiteScale value={whiteValue} kelvinMin={kelvinMin} kelvinMax={kelvinMax} onChange={setKelvin} onCommit={commitKelvin} />
       ) : null}
 
-      {isLight && mode !== 'effects' ? (
+      {isLight && (mode === 'color' || mode === 'white') ? (
         <PowerSlider
           powerOn={props.powerOn ?? device.on}
           powerDisabled={!device.online || props.loading || props.saving}
@@ -253,7 +257,7 @@ export function Inspector(props: InspectorProps) {
         <EffectControls key={device.serial} device={device} status={props.effectStatus} onStart={props.onStartEffect} onStop={props.onStopEffect} />
       ) : null}
 
-      {isLight && mode !== 'effects' && device.kind !== DeviceKind.Single ? (
+      {isLight && (mode === 'color' || mode === 'white') && device.kind !== DeviceKind.Single ? (
         <section className="edit-tools-section" data-editing={props.editing ? 'true' : 'false'}>
           <div className="edit-tools-header">
             <span>{props.editing ? 'editing layout' : 'layout tools'}</span>
@@ -778,14 +782,16 @@ export function ModeToggle({
   value,
   hasColor,
   hasEffects = false,
+  hasThemes = false,
   onChange,
 }: {
   value: InspectorMode;
   hasColor: boolean;
   hasEffects?: boolean;
+  hasThemes?: boolean;
   onChange: (value: InspectorMode) => void;
 }) {
-  const options: InspectorMode[] = [...(hasColor ? (['color', 'white'] as const) : (['white'] as const)), ...(hasEffects ? (['effects'] as const) : [])];
+  const options: InspectorMode[] = [...(hasColor ? (['color', 'white'] as const) : (['white'] as const)), ...(hasEffects ? (['effects'] as const) : []), ...(hasThemes ? (['themes'] as const) : [])];
   return (
     <div className="mode-toggle" role="tablist" aria-label="Color mode">
       {options.map((option) => (

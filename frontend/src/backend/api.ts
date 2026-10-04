@@ -1,8 +1,11 @@
 import { DeviceKind, type Device, type DeviceSnapshot, type HslColor, type Matrix } from '../domain/lifx';
 import type { DeviceCommandIntent } from '../domain/commands';
+import type { ThemeRequest, ThemePreview, ThemeApplyResult } from '../domain/themes';
 import type { DeviceEffect, DeviceEffectPreferences, EffectParameters, EffectPreference } from '../domain/effects';
 
 interface WailsApp {
+  PreviewTheme?: (request: ThemeRequest) => Promise<ThemePreview>;
+  ApplyTheme?: (request: ThemeRequest) => Promise<ThemeApplyResult>;
   GetDeviceEffectPreferences?: (serial: string) => Promise<DeviceEffectPreferences>;
   SaveDeviceEffectPreference?: (request: EffectPreference & { serial: string; effect: DeviceEffect }) => Promise<void>;
   DeviceEffectParameters?: (serial: string, effect: DeviceEffect) => Promise<EffectParameter[]>;
@@ -24,6 +27,20 @@ interface WailsApp {
   InterpretCommand?: (request: InterpretCommandRequest) => Promise<CommandPreview>;
   TranscribeCommand?: (request: TranscribeCommandRequest) => Promise<SpeechCommandPreview>;
   TranscribeCommandAudio?: (request: TranscribeCommandAudioRequest) => Promise<SpeechCommandPreview>;
+}
+
+export async function previewTheme(request: ThemeRequest): Promise<ThemePreview> {
+  const preview = window.go?.main?.App?.PreviewTheme;
+  if (!preview) throw new Error('Theme preview is unavailable');
+  const result = await preview(request);
+  return { devices: result.devices ?? [] };
+}
+
+export async function applyTheme(request: ThemeRequest): Promise<ThemeApplyResult> {
+  const apply = window.go?.main?.App?.ApplyTheme;
+  if (!apply) throw new Error('Theme application is unavailable');
+  const result = await apply(request);
+  return { devices: result.devices ?? [], failures: result.failures ?? [] };
 }
 
 export interface DevicePingResult {

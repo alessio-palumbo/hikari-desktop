@@ -14,6 +14,8 @@ import { RoomInspector } from './components/RoomInspector';
 import { draftIntent, prepareDeviceUpdate, type DeviceCommandIntent } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, mergeDraftMetadata, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect, EffectParameters } from './domain/effects';
+import { applyTheme } from './backend/api';
+import type { ThemeRequest } from './domain/themes';
 import { DEFAULT_FLOOR_ID, FLOOR_PLAN_STORAGE_KEY, addFloorToLocation, addRoomToFloor, assignRoomPresence, bringRoomToFront, createFloorPlanFloor, createRectangleRoom, devicesAssignedToRoom, placeDeviceOnFloor, removeDeviceFromFloorPlan, removeFloorFromLocation, removeRoomFromFloor, setActiveFloor, updateFloorLabel, updateRoomInFloor, type FloorPlanDevicePlacement, type FloorPlanPreferences, type FloorPlanPresenceConfig, type FloorPlanRoom, type FloorPlanRoomType } from './domain/floorPlan';
 import { FLOOR_PLAN_RECOVERY_KEY, createDefaultFloorPlanLocation, createFloorPlanProfile, devicesForFloorPlanProfile, floorPlanObservation, floorPlanProfileMatchesObservation, loadFloorPlanProfilePreferences, observeFloorPlanProfile, renameFloorPlanProfile, resolveFloorPlanProfile, resolveFloorPlanStartupPreferences, selectedFloorPlanProfileId, serializeFloorPlanProfilePreferences, updateFloorPlanProfileLayout, type FloorPlanProfilePreferences } from './domain/floorPlanProfiles.js';
 import { DeviceKind, isLightDevice, sortDevicesByHierarchy, type Device, type DeviceSnapshot } from './domain/lifx';
@@ -671,6 +673,50 @@ export function App() {
 
   updateListDeviceRef.current = updateListDevice;
 
+  const applyInspectorTheme = async (request: ThemeRequest) => {
+    if (draftRef.current && request.serials.includes(draftRef.current.draft.serial)) {
+      throw new Error('Exit layout editing before applying a theme.');
+    }
+    const prior = request.serials.map((serial) => deviceCommandRef.current[serial]);
+    let failures = '';
+    const operation = Promise.all(prior.map((pending) => pending?.catch(() => undefined))).then(async () => {
+      for (const serial of request.serials) setDeviceLoading(serial, true);
+      try {
+        const before = snapshotRef.current.devices;
+        const result = await applyTheme(request);
+        for (const device of result.devices) {
+          recordPendingState(device, before.find((entry) => entry.serial === device.serial));
+          replaceDevice(device);
+          setDeviceLoading(device.serial, false);
+        }
+        for (const failure of result.failures) {
+          if (failure.stateMayHaveChanged) clearPendingState(failure.serial);
+          setDeviceLoading(failure.serial, false, failure.error);
+        }
+        const stopped = new Set([...result.devices.map((device) => device.serial), ...result.failures.filter((failure) => failure.stateMayHaveChanged).map((failure) => failure.serial)]);
+        setDeviceEffectStatus((current) => {
+          const next = { ...current };
+          for (const serial of stopped) next[serial] = { serial, running: false, pendingUntil: Date.now() + EFFECT_OBSERVATION_TIMEOUT_MS };
+          return next;
+        });
+        failures = result.failures.map((failure) => `${before.find((device) => device.serial === failure.serial)?.name ?? failure.serial}: ${failure.error}`).join('; ');
+      } catch (error) {
+        for (const serial of request.serials) setDeviceLoading(serial, false);
+        handleRecoverableNetworkError(error);
+        throw error;
+      }
+    });
+    for (const serial of request.serials) deviceCommandRef.current[serial] = operation;
+    try {
+      await operation;
+      if (failures) throw new Error(failures);
+    } finally {
+      for (const serial of request.serials) {
+        if (deviceCommandRef.current[serial] === operation) delete deviceCommandRef.current[serial];
+      }
+    }
+  };
+
   useEffect(() => {
     if (!floorPlanProfileId || !floorPlanProfile) {
       const ownership = Object.values(roomDimOwnershipRef.current);
@@ -1192,6 +1238,7 @@ export function App() {
           onClose={() => setSelectedSerial(undefined)}
           onChange={updateInspectorDevice}
           onMetadataSave={updateInspectorDeviceMetadata}
+          onApplyTheme={applyInspectorTheme}
           onPowerChange={(on) => {
             if (selectedDevice) void updateListDevice({ ...selectedDevice, on }, 'power');
           }}
@@ -1207,6 +1254,7 @@ export function App() {
         <GroupInspector
           group={inspectorGroup}
           devices={inspectorGroupDevices}
+          onApplyTheme={applyInspectorTheme}
           onClose={() => setSelectedGroupInspectorId(undefined)}
           onDeviceChange={updateListDevice}
         />
@@ -1214,6 +1262,7 @@ export function App() {
         <RoomInspector
           roomName={inspectorRoom.label}
           devices={inspectorRoomDevices}
+          onApplyTheme={applyInspectorTheme}
           sensors={sensorSnapshot.nodes}
           sensorAssignmentHints={inspectorSensorAssignmentHints}
           presence={inspectorRoom.presence}

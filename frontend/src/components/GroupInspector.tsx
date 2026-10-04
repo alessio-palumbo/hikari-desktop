@@ -4,18 +4,21 @@ import type { Device, Group, HslColor } from '../domain/lifx';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl } from '../domain/paint';
 import { ColorWheel, Slider } from './primitives';
 import { ModeToggle, WhiteScale } from './Inspector';
+import { ThemeControls } from './ThemeControls';
+import type { ThemeRequest } from '../domain/themes';
 import './Inspector.css';
 
-type PaintMode = 'color' | 'white';
+type PaintMode = 'color' | 'white' | 'themes';
 
 interface GroupInspectorProps {
   group: Group;
   devices: Device[];
   onClose: () => void;
   onDeviceChange: (device: Device) => void;
+  onApplyTheme: (request: ThemeRequest) => Promise<void>;
 }
 
-export function GroupInspector({ group, devices, onClose, onDeviceChange }: GroupInspectorProps) {
+export function GroupInspector({ group, devices, onClose, onDeviceChange, onApplyTheme }: GroupInspectorProps) {
   const onlineDevices = devices.filter((device) => device.online);
   const colorDevices = onlineDevices.filter((device) => device.capability?.hasColor ?? true);
   const hasColor = colorDevices.length > 0;
@@ -71,7 +74,7 @@ export function GroupInspector({ group, devices, onClose, onDeviceChange }: Grou
         <span>group controls</span>
       </div>
 
-      <ModeToggle value={mode} hasColor={hasColor} onChange={(value) => {
+      <ModeToggle value={mode} hasColor={hasColor} hasThemes onChange={(value) => {
         if (value !== 'effects') setMode(value);
       }} />
 
@@ -81,11 +84,11 @@ export function GroupInspector({ group, devices, onClose, onDeviceChange }: Grou
             <ColorWheel color={paintColor} onChange={setGroupColor} />
           </div>
         </section>
-      ) : (
+      ) : mode === 'white' ? (
         <WhiteScale value={whiteValue} kelvinMin={kelvinRange.min} kelvinMax={kelvinRange.max} onChange={setGroupKelvin} />
-      )}
+      ) : <ThemeControls key={group.id} devices={devices} onApply={onApplyTheme} />}
 
-      <Slider label="brightness" disabled={!onlineDevices.length} value={avgBrightness} valueLabel={allOff ? 'off' : undefined} onChange={setGroupBrightness} />
+      {mode !== 'themes' ? <Slider label="brightness" disabled={!onlineDevices.length} value={avgBrightness} valueLabel={allOff ? 'off' : undefined} onChange={setGroupBrightness} /> : null}
     </aside>
   );
 }

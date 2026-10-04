@@ -8,9 +8,11 @@ import { presenceReading, sensorSignalReading } from '../domain/sensors';
 import type { SensorAssignmentHint } from '../domain/sensorAssignments.js';
 import { ColorWheel, PowerSlider } from './primitives';
 import { ModeToggle, WhiteScale } from './Inspector';
+import { ThemeControls } from './ThemeControls';
+import type { ThemeRequest } from '../domain/themes';
 import './Inspector.css';
 
-type PaintMode = 'color' | 'white';
+type PaintMode = 'color' | 'white' | 'themes';
 
 interface RoomInspectorProps {
   roomName: string;
@@ -22,9 +24,10 @@ interface RoomInspectorProps {
   onDeviceChange: (device: Device) => void;
   onPowerChange: (on: boolean) => void;
   onPresenceChange: (presence: FloorPlanPresenceConfig) => void;
+  onApplyTheme: (request: ThemeRequest) => Promise<void>;
 }
 
-export function RoomInspector({ roomName, devices, sensors, sensorAssignmentHints, presence, onClose, onDeviceChange, onPowerChange, onPresenceChange }: RoomInspectorProps) {
+export function RoomInspector({ roomName, devices, sensors, sensorAssignmentHints, presence, onClose, onDeviceChange, onPowerChange, onPresenceChange, onApplyTheme }: RoomInspectorProps) {
   const onlineDevices = devices.filter((device) => device.online);
   const colorDevices = onlineDevices.filter((device) => device.capability?.hasColor ?? true);
   const hasColor = colorDevices.length > 0;
@@ -96,7 +99,7 @@ export function RoomInspector({ roomName, devices, sensors, sensorAssignmentHint
         <SensorsSection sensors={sensors} assignmentHints={sensorAssignmentHints} config={presenceConfig} hasPresenceSensor={hasPresenceSensor} onChange={onPresenceChange} />
       ) : null}
 
-      <ModeToggle value={mode} hasColor={hasColor} onChange={(value) => {
+      <ModeToggle value={mode} hasColor={hasColor} hasThemes onChange={(value) => {
         if (value !== 'effects') setMode(value);
       }} />
 
@@ -106,11 +109,11 @@ export function RoomInspector({ roomName, devices, sensors, sensorAssignmentHint
             <ColorWheel color={paintColor} onChange={setRoomColor} />
           </div>
         </section>
-      ) : (
+      ) : mode === 'white' ? (
         <WhiteScale value={whiteValue} kelvinMin={kelvinRange.min} kelvinMax={kelvinRange.max} onChange={setRoomKelvin} />
-      )}
+      ) : <ThemeControls devices={devices} onApply={onApplyTheme} />}
 
-      <PowerSlider
+      {mode !== 'themes' ? <PowerSlider
         powerOn={onlineDevices.some((device) => device.on)}
         powerDisabled={!onlineDevices.length}
         onPowerChange={onPowerChange}
@@ -119,7 +122,7 @@ export function RoomInspector({ roomName, devices, sensors, sensorAssignmentHint
         value={avgBrightness}
         valueLabel={allOff ? 'off' : undefined}
         onChange={setRoomBrightness}
-      />
+      /> : null}
     </aside>
   );
 }
