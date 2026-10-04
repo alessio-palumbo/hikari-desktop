@@ -695,24 +695,14 @@ func (t *LifxTransport) runAppDeviceEffect(ctx context.Context, serial string, e
 }
 
 func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, previous Device) (lifxeffects.Effect, error) {
+	if configurableEffectDefaults(req.Effect) != nil {
+		return newConfigurableAppEffect(req, lifxDevice, previous)
+	}
 	if len(req.Params) > 0 && configurableEffectDefaults(req.Effect) == nil {
 		return nil, fmt.Errorf("effect does not support custom parameters")
 	}
 	caps := appEffectCapabilities(lifxDevice)
 	switch req.Effect {
-	case DeviceEffectSnake:
-		color := appEffectPrimaryColor(previous)
-		return lifxeffects.NewSnake(lifxeffects.SnakeConfig{
-			Capabilities: caps,
-			Size:         appEffectSnakeSize(lifxDevice),
-			Color:        color,
-		}), nil
-	case DeviceEffectWorm:
-		return lifxeffects.NewWorm(lifxeffects.WormConfig{
-			Capabilities: caps,
-			Size:         appEffectSnakeSize(lifxDevice),
-			Color:        appEffectPrimaryColor(previous),
-		}), nil
 	case DeviceEffectFrames:
 		return lifxeffects.NewConcentricFrames(lifxeffects.ConcentricFramesConfig{
 			Capabilities: caps,
@@ -729,18 +719,6 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 			Capabilities: caps,
 			Colors:       appEffectPalette(previous),
 		}), nil
-	case DeviceEffectWave:
-		return lifxeffects.NewWave(lifxeffects.WaveConfig{
-			Capabilities: caps,
-			Palette:      appEffectFlowPalette(previous),
-			Waves:        2,
-		}), nil
-	case DeviceEffectRing:
-		return lifxeffects.NewRing(lifxeffects.RingConfig{
-			Capabilities: caps,
-			Palette:      appEffectFlowPalette(previous),
-			Period:       appEffectPeriod(req.SpeedMS, 2*time.Second),
-		}), nil
 	case DeviceEffectFlow:
 		return lifxeffects.NewFlow(lifxeffects.FlowConfig{
 			Capabilities:   caps,
@@ -750,22 +728,6 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 			Sampling:       lifxeffects.FlowSamplingInterpolate,
 			Period:         appEffectPeriod(req.SpeedMS, 4*time.Second),
 		}), nil
-	case DeviceEffectComet:
-		return lifxeffects.NewComet(lifxeffects.CometConfig{
-			Capabilities:               caps,
-			Palette:                    appEffectCometPalette(previous),
-			Axis:                       lifxeffects.FlowAxisHorizontal,
-			TailSize:                   5,
-			BackgroundBrightnessFactor: 1.0,
-			PeakBrightnessFactor:       1.5,
-			TailCurve:                  3.0,
-			TailSaturationFactor:       0.25,
-			Period:                     appEffectPeriod(req.SpeedMS, 4*time.Second),
-		}), nil
-	case DeviceEffectSparkle:
-		return newConfigurableAppEffect(req, lifxDevice, previous)
-	case DeviceEffectScanner:
-		return newConfigurableAppEffect(req, lifxDevice, previous)
 	default:
 		return nil, fmt.Errorf("effect %q is not supported as an app effect", req.Effect)
 	}
@@ -814,6 +776,9 @@ func appEffectStep(req StartDeviceEffectRequest, device lifxdevice.Device) time.
 	case DeviceEffectSnake, DeviceEffectWorm:
 		caps := appEffectCapabilities(device)
 		snakeSize := min(defaultAppEffectTailSize, max(caps.Width, 1))
+		if size, ok := req.Params["size"]; ok {
+			snakeSize = min(int(size), max(caps.Width, 1))
+		}
 		steps := max(caps.Width, 1)*max(caps.Height, 1) + snakeSize
 		return clampDuration(time.Duration(req.SpeedMS)*time.Millisecond/time.Duration(max(steps, 1)), minAppEffectStep, maxAppEffectStep)
 	case DeviceEffectRockets:

@@ -53,6 +53,7 @@ export interface EffectParameter {
   key: string;
   label: string;
   description?: string;
+  unit?: string;
   min: number;
   max: number;
   step: number;

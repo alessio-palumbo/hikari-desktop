@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deviceEffects, effectSettingsDiffer, quantizeEffectParameter } from '../dist-test/domain/effects.js';
+import { deviceEffects, effectSettingsDiffer, formatEffectParameter, quantizeEffectParameter } from '../dist-test/domain/effects.js';
 
-test('settings are limited to the initial configurable Hikari effects', () => {
-  assert.deepEqual(deviceEffects.filter((effect) => effect.configurable).map((effect) => effect.id), ['sparkle', 'scanner']);
+test('appearance settings are limited to supported configurable Hikari effects', () => {
+  assert.deepEqual(deviceEffects.filter((effect) => effect.configurable).map((effect) => effect.id), ['snake', 'worm', 'wave', 'ring', 'comet', 'sparkle', 'scanner']);
   assert.ok(deviceEffects.filter((effect) => effect.configurable).every((effect) => effect.source === 'app'));
+});
+
+test('effect parameters distinguish relative percentages, cell lengths and counts', () => {
+  assert.equal(formatEffectParameter(1.5, '%'), '150%');
+  assert.equal(formatEffectParameter(5, 'cells'), '5 cells');
+  assert.equal(formatEffectParameter(1.6, 'cells'), '1.6 cells');
+  assert.equal(formatEffectParameter(3), '3');
 });
 
 test('parameter steps preserve Hikari defaults rather than offsetting from registry minimums', () => {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, RotateCcw } from 'lucide-react';
 import { getDeviceEffectParameters, type EffectParameter } from '../backend/api';
-import { effectSettingsDiffer, formatEffectSpeed, quantizeEffectParameter, speedToUnit, unitToSpeedMs, type DeviceEffectDefinition, type EffectParameters } from '../domain/effects';
+import { effectSettingsDiffer, formatEffectParameter, formatEffectSpeed, quantizeEffectParameter, speedToUnit, unitToSpeedMs, type DeviceEffectDefinition, type EffectParameters } from '../domain/effects';
 import './EffectSettings.css';
 
 export function EffectSettings({ serial, effect, speedMs, appliedSpeedMs, appliedValues, onSpeedChange, values, disabled, onChange, onApply }: {
@@ -40,8 +40,8 @@ export function EffectSettings({ serial, effect, speedMs, appliedSpeedMs, applie
       <input type="range" aria-label={`${effect.label} speed`} aria-valuetext={formatEffectSpeed(speedMs)} min={0} max={100} value={Math.round(speedToUnit(speedMs, effect.speed) * 100)} disabled={disabled} onChange={(event) => onSpeedChange(unitToSpeedMs(Number(event.target.value) / 100, effect.speed))} />
     </label>
     {error ? <div className="inspector-error" role="status">{error}</div> : parameters.map((param) => <label key={param.key}>
-      <span><span className={param.description ? 'effect-setting-help' : undefined} title={param.description}>{param.label}</span><output>{Math.round(current[param.key] * 100)}%</output></span>
-      <input type="range" aria-label={`${effect.label} ${param.label}`} aria-valuetext={`${Math.round(current[param.key] * 100)}%`} min={param.min} max={param.max} step="any" value={current[param.key]} disabled={disabled} onChange={(event) => onChange({ ...current, [param.key]: quantizeEffectParameter(Number(event.target.value), param) })} />
+      <span><span className={param.description ? 'effect-setting-help' : undefined} title={param.description}>{param.label}</span><output>{formatEffectParameter(current[param.key], param.unit)}</output></span>
+      <input type="range" aria-label={`${effect.label} ${param.label}`} aria-valuetext={formatEffectParameter(current[param.key], param.unit)} min={param.min} max={param.max} step="any" value={current[param.key]} disabled={disabled} onChange={(event) => onChange({ ...current, [param.key]: quantizeEffectParameter(Number(event.target.value), param) })} />
     </label>)}
     {loaded ? <div className="effect-settings-actions">
       <button type="button" title="Reset settings to Hikari defaults" aria-label="Reset effect settings" disabled={disabled || !changedDefaults} onClick={() => { onSpeedChange(effect.speed.defaultMs); if (effect.configurable) onChange(Object.fromEntries(parameters.map((param) => [param.key, param.default]))); }}><RotateCcw size={12} /></button>

@@ -59,6 +59,7 @@ export const deviceEffects: DeviceEffectDefinition[] = [
   },
   {
     id: 'snake',
+    configurable: true,
     label: 'Snake',
     description: 'Hikari-rendered matrix trail',
     source: 'app',
@@ -67,6 +68,7 @@ export const deviceEffects: DeviceEffectDefinition[] = [
   },
   {
     id: 'worm',
+    configurable: true,
     label: 'Worm',
     description: 'Segmented matrix trail',
     source: 'app',
@@ -99,6 +101,7 @@ export const deviceEffects: DeviceEffectDefinition[] = [
   },
   {
     id: 'wave',
+    configurable: true,
     label: 'Wave',
     description: 'Rolling matrix wave',
     source: 'app',
@@ -107,6 +110,7 @@ export const deviceEffects: DeviceEffectDefinition[] = [
   },
   {
     id: 'ring',
+    configurable: true,
     label: 'Ring',
     description: 'Expanding matrix ring',
     source: 'app',
@@ -123,6 +127,7 @@ export const deviceEffects: DeviceEffectDefinition[] = [
   },
   {
     id: 'comet',
+    configurable: true,
     label: 'Comet',
     description: 'Bright trailing sweep',
     source: 'app',
@@ -190,6 +195,12 @@ export function effectSettingsDiffer(speedMs: number, referenceSpeedMs: number, 
 
 export function quantizeEffectParameter(value: number, range: { min: number; max: number; step: number }): number {
   return clamp(Number((Math.round(value / range.step) * range.step).toFixed(6)), range.min, range.max);
+}
+
+export function formatEffectParameter(value: number, unit?: string): string {
+  if (unit === '%') return `${Math.round(value * 100)}%`;
+  const number = Number(value.toFixed(2));
+  return unit ? `${number} ${unit}` : String(number);
 }
 
 function firmwareSupported(actual: string | undefined, minimum: string | undefined): boolean {

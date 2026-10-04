@@ -13,7 +13,7 @@ import (
 )
 
 func TestEffectParameterDefinitionsUseRegistryRangesAndHikariDefaults(t *testing.T) {
-	for _, effect := range []DeviceEffect{DeviceEffectSparkle, DeviceEffectScanner} {
+	for _, effect := range []DeviceEffect{DeviceEffectSnake, DeviceEffectWorm, DeviceEffectWave, DeviceEffectRing, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner} {
 		parameters, err := EffectParameterDefinitions(effect)
 		if err != nil {
 			t.Fatal(err)
@@ -33,7 +33,7 @@ func TestEffectParameterDefinitionsUseRegistryRangesAndHikariDefaults(t *testing
 			for _, registered := range definition.Params {
 				if registered.Key == param.Key {
 					found = true
-					if param.Min != *registered.Min || param.Max != *registered.Max || param.Step != *registered.Step {
+					if param.Min != *registered.Min || (registered.Max != nil && param.Max != *registered.Max) || param.Step != *registered.Step {
 						t.Fatal("registry range changed")
 					}
 				}
@@ -43,7 +43,7 @@ func TestEffectParameterDefinitionsUseRegistryRangesAndHikariDefaults(t *testing
 			}
 		}
 	}
-	if _, err := EffectParameterDefinitions(DeviceEffectSnake); err == nil {
+	if _, err := EffectParameterDefinitions(DeviceEffectWaterfall); err == nil {
 		t.Fatal("unexposed settings accepted")
 	}
 }
@@ -51,12 +51,23 @@ func TestEffectParameterDefinitionsUseRegistryRangesAndHikariDefaults(t *testing
 func TestConfigurableEffectsPreserveExistingPresetFrames(t *testing.T) {
 	d := previewTestDevice(55, 8, 8, 1)
 	current := Device{Kind: DeviceKindMatrix, Brightness: .6, Color: &HSLColor{H: 210, S: .8, L: .6}, Capability: DeviceCapability{HasColor: true}}
-	for _, id := range []DeviceEffect{DeviceEffectSparkle, DeviceEffectScanner} {
+	for _, id := range []DeviceEffect{DeviceEffectSnake, DeviceEffectWorm, DeviceEffectWave, DeviceEffectRing, DeviceEffectComet, DeviceEffectSparkle, DeviceEffectScanner} {
 		req := StartDeviceEffectRequest{Device: current, Effect: id, SpeedMS: 4000}
 		var previous lifxeffects.Effect
-		if id == DeviceEffectSparkle {
+		switch id {
+		case DeviceEffectSnake:
+			previous = lifxeffects.NewSnake(lifxeffects.SnakeConfig{Capabilities: appEffectCapabilities(d), Size: appEffectSnakeSize(d), Color: appEffectPrimaryColor(current)})
+		case DeviceEffectWorm:
+			previous = lifxeffects.NewWorm(lifxeffects.WormConfig{Capabilities: appEffectCapabilities(d), Size: appEffectSnakeSize(d), Color: appEffectPrimaryColor(current)})
+		case DeviceEffectWave:
+			previous = lifxeffects.NewWave(lifxeffects.WaveConfig{Capabilities: appEffectCapabilities(d), Palette: appEffectFlowPalette(current), Waves: 2})
+		case DeviceEffectRing:
+			previous = lifxeffects.NewRing(lifxeffects.RingConfig{Capabilities: appEffectCapabilities(d), Palette: appEffectFlowPalette(current), Period: 4 * time.Second})
+		case DeviceEffectComet:
+			previous = lifxeffects.NewComet(lifxeffects.CometConfig{Capabilities: appEffectCapabilities(d), Palette: appEffectCometPalette(current), Axis: lifxeffects.FlowAxisHorizontal, TailSize: 5, BackgroundBrightnessFactor: 1, PeakBrightnessFactor: 1.5, TailCurve: 3, TailSaturationFactor: .25, Period: 4 * time.Second})
+		case DeviceEffectSparkle:
 			previous = lifxeffects.NewSparkle(lifxeffects.SparkleConfig{Capabilities: appEffectCapabilities(d), Palette: appEffectSparklePalette(current), Density: .18, Decay: 1.2, BackgroundFloor: .55, PeakBrightnessFactor: 1.5, Seed: 1, Period: 4 * time.Second})
-		} else {
+		case DeviceEffectScanner:
 			previous = lifxeffects.NewScanner(lifxeffects.ScannerConfig{Capabilities: appEffectCapabilities(d), Palette: appEffectScannerPalette(current), Axis: lifxeffects.FlowAxisHorizontal, BackgroundBrightnessFactor: .8, PeakBrightnessFactor: 1.55, Period: 4 * time.Second})
 		}
 		registered, err := newAppEffect(req, d, current)
@@ -69,6 +80,72 @@ func TestConfigurableEffectsPreserveExistingPresetFrames(t *testing.T) {
 			if wantOK != gotOK || !reflect.DeepEqual(want, got) {
 				t.Fatalf("%s preset differs at frame %d", id, i)
 			}
+		}
+	}
+}
+
+func TestAdditionalEffectParametersChangePreview(t *testing.T) {
+	d := previewTestDevice(55, 8, 8, 1)
+	current := Device{Kind: DeviceKindMatrix, Brightness: .6, Color: &HSLColor{H: 210, S: .8, L: .6}, Capability: DeviceCapability{HasColor: true}}
+	for _, tc := range []struct {
+		effect DeviceEffect
+		params map[string]float64
+	}{
+		{DeviceEffectSnake, map[string]float64{"size": 2}},
+		{DeviceEffectWorm, map[string]float64{"size": 2}},
+		{DeviceEffectWave, map[string]float64{"amplitude": 5, "width": 5, "waves": 3}},
+		{DeviceEffectRing, map[string]float64{"width": 3, "floor": .6}},
+	} {
+		t.Run(string(tc.effect), func(t *testing.T) {
+			req := StartDeviceEffectRequest{Device: current, Effect: tc.effect, SpeedMS: 4000}
+			baseline, err := renderEffectPreview(context.Background(), req, d, current)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Params = tc.params
+			modified, err := renderEffectPreview(context.Background(), req, d, current)
+			if err != nil || reflect.DeepEqual(modified, baseline) {
+				t.Fatalf("preview unchanged: %v", err)
+			}
+		})
+	}
+}
+
+func TestTrailParametersUseDeviceWidthAndRejectFractionalCounts(t *testing.T) {
+	d := previewTestDevice(55, 2, 2, 1)
+	parameters, err := effectParametersForDevice(DeviceEffectSnake, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parameters) != 1 || parameters[0].Max != 2 || parameters[0].Default != 2 || parameters[0].Unit != "cells" {
+		t.Fatalf("invalid small matrix range: %#v", parameters)
+	}
+	for _, size := range []float64{1.5, 3, math.NaN(), math.Inf(1)} {
+		if _, err := newAppEffect(StartDeviceEffectRequest{Effect: DeviceEffectSnake, Params: map[string]float64{"size": size}}, d, Device{Kind: DeviceKindMatrix}); err == nil {
+			t.Fatalf("invalid size accepted: %v", size)
+		}
+	}
+	base := StartDeviceEffectRequest{Effect: DeviceEffectSnake, SpeedMS: 1000}
+	short := base
+	short.Params = map[string]float64{"size": 1}
+	if appEffectStep(short, d) <= appEffectStep(base, d) {
+		t.Fatal("speed calculation ignored trail length")
+	}
+}
+
+func TestCometParametersChangeStripPreview(t *testing.T) {
+	d := lifxdevice.Device{LightType: lifxdevice.LightTypeMultiZone, MultizoneProperties: lifxdevice.MultizoneProperties{Zones: make([]packets.LightHsbk, 32)}}
+	current := Device{Kind: DeviceKindMultizone, Brightness: .6, Color: &HSLColor{H: 210, S: .8, L: .6}, Capability: DeviceCapability{HasColor: true}}
+	req := StartDeviceEffectRequest{Device: current, Effect: DeviceEffectComet, SpeedMS: 4000}
+	baseline, err := renderEffectPreview(context.Background(), req, d, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range map[string]float64{"tail_size": 12, "background_brightness_factor": .4, "peak_brightness_factor": 1, "tail_curve": .5, "tail_saturation_factor": 1} {
+		req.Params = map[string]float64{key: value}
+		modified, err := renderEffectPreview(context.Background(), req, d, current)
+		if err != nil || reflect.DeepEqual(modified, baseline) {
+			t.Fatalf("comet %s preview unchanged: %v", key, err)
 		}
 	}
 }
