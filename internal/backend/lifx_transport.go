@@ -1107,6 +1107,10 @@ func (t *LifxTransport) effectRequestDevice(requested Device) Device {
 
 // captureAppEffectSnapshot keeps lifxlan-go's complete physical state shape but
 // overlays Hikari's cache, which may contain a command newer than LAN state.
+// Default capture requires observed coverage, even while powered off. Do not
+// require fresh responses: cached observations are enough, and Hikari's recently
+// applied commands may be newer than those responses. Capture failure must abort
+// before priming a frame or powering on the device.
 func captureAppEffectSnapshot(ctx context.Context, ctrl lifxController, serial lifxdevice.Serial, current Device) (lifxdevice.StateSnapshot, error) {
 	snapshot, err := ctrl.CaptureStateSnapshot(ctx, []lifxdevice.Serial{serial}, lifxcontroller.SnapshotOptions{})
 	if err != nil {
