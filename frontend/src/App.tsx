@@ -810,7 +810,7 @@ export function App() {
     }
   };
 
-  const startInspectorEffect = async (device: Device, effect: DeviceEffect, speedMs: number) => {
+  const startInspectorEffect = async (device: Device, effect: DeviceEffect, speedMs: number, params?: Record<string, number>) => {
     const previous = displayedDeviceEffectStatus[device.serial] ?? deviceEffectStatus[device.serial];
     const pendingUntil = Date.now() + EFFECT_OBSERVATION_TIMEOUT_MS;
     setDeviceEffectStatus((current) => ({
@@ -827,10 +827,11 @@ export function App() {
     try {
       await deviceCommandRef.current[device.serial];
       const current = latestEffectDevice(device);
-      const status = await startDeviceEffect(current, { effect, speedMs });
+      const status = await startDeviceEffect(current, { effect, speedMs, params });
       setDeviceEffectStatus((prev) => ({ ...prev, [current.serial]: { ...status, loading: false, pendingUntil } }));
+      return true;
     } catch (error) {
-      if (handleRecoverableNetworkError(error)) return;
+      if (handleRecoverableNetworkError(error)) return false;
       setDeviceEffectStatus((current) => ({
         ...current,
         [device.serial]: {
@@ -839,6 +840,7 @@ export function App() {
           error: errorMessage(error),
         },
       }));
+      return false;
     }
   };
 
@@ -1193,7 +1195,7 @@ export function App() {
           onPowerChange={(on) => {
             if (selectedDevice) void updateListDevice({ ...selectedDevice, on }, 'power');
           }}
-          onStartEffect={(effect, speedMs) => void startInspectorEffect(inspectorDevice, effect, speedMs)}
+          onStartEffect={(effect, speedMs, params) => startInspectorEffect(inspectorDevice, effect, speedMs, params)}
           onStopEffect={() => void stopInspectorEffect(inspectorDevice)}
           onEnterEditMode={enterEditMode}
           onExitEditMode={() => setDraft(undefined)}

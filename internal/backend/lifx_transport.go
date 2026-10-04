@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"net"
 	"sort"
@@ -97,6 +98,7 @@ type runningAppEffect struct {
 	effect    DeviceEffect
 	speedMS   int
 	direction string
+	params    map[string]float64
 	cancel    context.CancelFunc
 	done      <-chan struct{}
 	previous  Device
@@ -433,6 +435,7 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 			Effect:    restart.effect,
 			SpeedMS:   restart.speedMS,
 			Direction: restart.direction,
+			Params:    maps.Clone(restart.params),
 		}
 		if _, err := t.startAppDeviceEffect(ctx, ctrl, serial, restartReq); err != nil {
 			log.Printf("hikari: restart app effect failed for %s: %v", req.Device.Serial, err)
@@ -452,8 +455,18 @@ func (t *LifxTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEf
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
 	req.Device = t.effectRequestDevice(req.Device)
+	if req.Params == nil {
+		t.mu.RLock()
+		if active, ok := t.effects[req.Device.Serial]; ok && active.effect == req.Effect {
+			req.Params = maps.Clone(active.params)
+		}
+		t.mu.RUnlock()
+	}
 	if isAppEffect(req.Effect) {
 		return t.startAppDeviceEffect(ctx, ctrl, serial, req)
+	}
+	if len(req.Params) > 0 {
+		return DeviceEffectStatus{}, fmt.Errorf("firmware effects do not support custom parameters")
 	}
 	msg, effect, err := startDeviceEffectMessage(req)
 	if err != nil {
@@ -612,12 +625,22 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 		err := fmt.Errorf("device %s was not found in lifx snapshot", req.Device.Serial)
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
-	previous := t.stopAppEffect(req.Device.Serial)
 	var previousDevice *Device
-	if previous != nil {
-		previousDevice = &previous.previous
+	t.mu.RLock()
+	if previous, ok := t.effects[req.Device.Serial]; ok {
+		copy := previous.previous
+		previousDevice = &copy
 	}
+	t.mu.RUnlock()
 	captured := captureAppEffectState(req.Device, previousDevice, t.cachedDevice(req.Device.Serial))
+	effect, err := newAppEffect(req, lifxDevice, captured)
+	if err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Error: err.Error()}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return DeviceEffectStatus{}, err
+	}
+	previous := t.stopAppEffect(req.Device.Serial)
 	restoreSnapshot := lifxdevice.StateSnapshot{}
 	if previous != nil {
 		restoreSnapshot = previous.snapshot
@@ -627,10 +650,6 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 		if err != nil {
 			return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, fmt.Errorf("capture app effect state: %w", err)
 		}
-	}
-	effect, err := newAppEffect(req, lifxDevice, captured)
-	if err != nil {
-		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
@@ -662,7 +681,7 @@ func (t *LifxTransport) startAppDeviceEffect(ctx context.Context, ctrl lifxContr
 	// without a runner to cancel.
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	t.storeAppEffect(req.Device.Serial, runningAppEffect{effect: req.Effect, speedMS: req.SpeedMS, direction: req.Direction, cancel: cancel, done: done, previous: captured, snapshot: restoreSnapshot})
+	t.storeAppEffect(req.Device.Serial, runningAppEffect{effect: req.Effect, speedMS: req.SpeedMS, direction: req.Direction, params: maps.Clone(req.Params), cancel: cancel, done: done, previous: captured, snapshot: restoreSnapshot})
 	go t.runAppDeviceEffect(runCtx, req.Device.Serial, req.Effect, lifxeffects.NewRunner(effect, renderer, step), done)
 	return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Effect: string(req.Effect)}, nil
 }
@@ -676,6 +695,9 @@ func (t *LifxTransport) runAppDeviceEffect(ctx context.Context, serial string, e
 }
 
 func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, previous Device) (lifxeffects.Effect, error) {
+	if len(req.Params) > 0 && configurableEffectDefaults(req.Effect) == nil {
+		return nil, fmt.Errorf("effect does not support custom parameters")
+	}
 	caps := appEffectCapabilities(lifxDevice)
 	switch req.Effect {
 	case DeviceEffectSnake:
@@ -741,25 +763,9 @@ func newAppEffect(req StartDeviceEffectRequest, lifxDevice lifxdevice.Device, pr
 			Period:                     appEffectPeriod(req.SpeedMS, 4*time.Second),
 		}), nil
 	case DeviceEffectSparkle:
-		return lifxeffects.NewSparkle(lifxeffects.SparkleConfig{
-			Capabilities:         caps,
-			Palette:              appEffectSparklePalette(previous),
-			Density:              0.18,
-			Decay:                1.2,
-			BackgroundFloor:      0.55,
-			PeakBrightnessFactor: 1.5,
-			Period:               appEffectPeriod(req.SpeedMS, 2*time.Second),
-			Seed:                 1,
-		}), nil
+		return newConfigurableAppEffect(req, lifxDevice, previous)
 	case DeviceEffectScanner:
-		return lifxeffects.NewScanner(lifxeffects.ScannerConfig{
-			Capabilities:               caps,
-			Palette:                    appEffectScannerPalette(previous),
-			Axis:                       lifxeffects.FlowAxisHorizontal,
-			BackgroundBrightnessFactor: 0.8,
-			PeakBrightnessFactor:       1.55,
-			Period:                     appEffectPeriod(req.SpeedMS, appEffectScannerPeriod(req.Device.Kind)),
-		}), nil
+		return newConfigurableAppEffect(req, lifxDevice, previous)
 	default:
 		return nil, fmt.Errorf("effect %q is not supported as an app effect", req.Effect)
 	}

@@ -145,6 +145,13 @@ func (a *App) PreviewDeviceEffect(req backend.StartDeviceEffectRequest) (backend
 	return previewer.PreviewDeviceEffect(ctx, req)
 }
 
+func (a *App) DeviceEffectParameters(serial string, effect backend.DeviceEffect) ([]backend.EffectParameter, error) {
+	if source, ok := a.transport.(backend.DeviceEffectParameterSource); ok {
+		return source.EffectParameters(serial, effect)
+	}
+	return backend.EffectParameterDefinitions(effect)
+}
+
 func (a *App) GetSensorSnapshot() (backend.SensorSnapshot, error) {
 	if a.sensors == nil {
 		return backend.SensorSnapshot{Nodes: []backend.SensorNode{}}, nil

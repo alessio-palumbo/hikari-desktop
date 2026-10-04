@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, ChevronDown, Droplet, Eye, Info, LogOut, Pipette, Play, RotateCcw, Settings, Square, Undo2, Wand2, X } from 'lucide-react';
 import { EffectPreview } from './EffectPreview';
+import { EffectSettings } from './EffectSettings';
 import type { DeviceEffectStatus } from '../backend/api';
 import { deviceUptime } from '../domain/diagnostics';
 import {
   defaultEffectSpeedMs,
-  formatEffectSpeed,
-  speedToUnit,
   supportedDeviceEffects,
   type DeviceEffectDefinition,
   type DeviceEffect,
-  unitToSpeedMs,
+  type EffectParameters,
 } from '../domain/effects';
 import { DeviceKind, hsl, isLightDevice, previewLightness, previewOpacity, type Device, type Group, type HslColor, type Location } from '../domain/lifx';
 import {
@@ -53,7 +52,7 @@ interface InspectorProps {
   onChange: (device: Device) => void;
   onMetadataSave: (request: { serial: string; label: string; locationId: string; groupId: string }) => Promise<void>;
   onPowerChange: (on: boolean) => void;
-  onStartEffect: (effect: DeviceEffect, speedMs: number) => void;
+  onStartEffect: (effect: DeviceEffect, speedMs: number, params?: EffectParameters) => Promise<boolean>;
   onStopEffect: () => void;
   onEnterEditMode: () => void;
   onExitEditMode: () => void;
@@ -389,7 +388,7 @@ function EffectControls({
 }: {
   device: Device;
   status?: DeviceEffectStatus & { loading?: boolean };
-  onStart: (effect: DeviceEffect, speedMs: number) => void;
+  onStart: (effect: DeviceEffect, speedMs: number, params?: EffectParameters) => Promise<boolean>;
   onStop: () => void;
 }) {
   const effects = supportedDeviceEffects(device);
@@ -397,12 +396,29 @@ function EffectControls({
   const loading = status?.loading ?? false;
   const [selectedEffect, setSelectedEffect] = useState<DeviceEffect | undefined>();
   const [previewEffect, setPreviewEffect] = useState<DeviceEffect>();
-  const [effectSpeeds, setEffectSpeeds] = useState<Record<DeviceEffect, number>>(() => defaultEffectSpeeds(effects));
+  const [settingsEffect, setSettingsEffect] = useState<DeviceEffect>();
+  const [effectParameters, setEffectParameters] = useState<Partial<Record<DeviceEffect, EffectParameters>>>({});
+  const [effectSpeeds, setEffectSpeeds] = useState<Partial<Record<DeviceEffect, number>>>({});
+  const [appliedSettings, setAppliedSettings] = useState<Partial<Record<DeviceEffect, { speedMs: number; params?: EffectParameters }>>>({});
+  const currentSerial = useRef(device.serial);
+  currentSerial.current = device.serial;
+
+  const applySettings = async (effect: DeviceEffect, speedMs: number, params?: EffectParameters) => {
+    const serial = device.serial;
+    const submitted = params ? { ...params } : undefined;
+    const success = await onStart(effect, speedMs, submitted);
+    if (success && currentSerial.current === serial) {
+      setAppliedSettings((current) => ({ ...current, [effect]: { speedMs, params: submitted } }));
+    }
+  };
 
   useEffect(() => {
     setSelectedEffect(undefined);
     setPreviewEffect(undefined);
-    setEffectSpeeds(defaultEffectSpeeds(effects));
+    setSettingsEffect(undefined);
+    setEffectParameters({});
+    setEffectSpeeds({});
+    setAppliedSettings({});
   }, [device.serial]);
 
   return (
@@ -416,9 +432,8 @@ function EffectControls({
             {sourceEffects.map((effect) => {
               const effectRunning = running && status?.effect === effect.id;
               const active = effectRunning || (!running && selectedEffect === effect.id) || previewEffect === effect.id;
-              const speedMs = effectRunning && status?.speedMs
-                ? status.speedMs
-                : effectSpeeds[effect.id] ?? effect.speed.defaultMs;
+              const appliedSpeedMs = appliedSettings[effect.id]?.speedMs ?? (effectRunning && status?.speedMs ? status.speedMs : effect.speed.defaultMs);
+              const speedMs = effectSpeeds[effect.id] ?? appliedSpeedMs;
               return (
                 <EffectOption
                   key={effect.id}
@@ -429,13 +444,12 @@ function EffectControls({
                   speedMs={speedMs}
                   previewing={previewEffect === effect.id}
                   onPreview={source === 'app' ? () => setPreviewEffect((current) => current === effect.id ? undefined : effect.id) : undefined}
-                  preview={previewEffect === effect.id ? <EffectPreview device={device} effect={effect.id} speedMs={speedMs} /> : null}
-                  onSpeedChange={(nextSpeedMs) => setEffectSpeeds((current) => ({ ...current, [effect.id]: nextSpeedMs }))}
-                  onSpeedCommit={(nextSpeedMs) => {
-                    if (effectRunning) onStart(effect.id, nextSpeedMs);
-                  }}
+                  preview={previewEffect === effect.id ? <EffectPreview device={device} effect={effect.id} speedMs={speedMs} params={effectParameters[effect.id]} /> : null}
+                  configuring={settingsEffect === effect.id}
+                  onSettings={() => setSettingsEffect((current) => current === effect.id ? undefined : effect.id)}
+                  settings={settingsEffect === effect.id ? <EffectSettings serial={device.serial} effect={effect} speedMs={speedMs} appliedSpeedMs={appliedSpeedMs} appliedValues={appliedSettings[effect.id]?.params} onSpeedChange={(nextSpeedMs) => setEffectSpeeds((current) => ({ ...current, [effect.id]: nextSpeedMs }))} values={effectParameters[effect.id]} disabled={loading} onChange={(params) => setEffectParameters((current) => ({ ...current, [effect.id]: params }))} onApply={(params) => void applySettings(effect.id, speedMs, params)} /> : null}
                   onSelect={() => setSelectedEffect(effect.id)}
-                  onStart={onStart}
+                  onStart={(id, speed) => void applySettings(id, speed, effectParameters[id])}
                   onStop={() => {
                     setSelectedEffect(undefined);
                     onStop();
@@ -452,49 +466,38 @@ function EffectControls({
   );
 }
 
-function defaultEffectSpeeds(effects: DeviceEffectDefinition[]): Record<DeviceEffect, number> {
-  return effects.reduce(
-    (speeds, effect) => ({ ...speeds, [effect.id]: effect.speed.defaultMs }),
-    {} as Record<DeviceEffect, number>,
-  );
-}
-
 function EffectOption({
   effect,
   active,
   running,
   loading,
   speedMs,
-  onSpeedChange,
-  onSpeedCommit,
   onSelect,
   onStart,
   onStop,
   previewing,
   onPreview,
   preview,
+  configuring,
+  onSettings,
+  settings,
 }: {
   effect: DeviceEffectDefinition;
   active: boolean;
   running: boolean;
   loading: boolean;
   speedMs: number;
-  onSpeedChange: (speedMs: number) => void;
-  onSpeedCommit: (speedMs: number) => void;
   onSelect: () => void;
   onStart: (effect: DeviceEffect, speedMs: number) => void;
   onStop: () => void;
   previewing: boolean;
   onPreview?: () => void;
   preview: ReactNode;
+  configuring: boolean;
+  onSettings?: () => void;
+  settings: ReactNode;
 }) {
   const actionLabel = running ? `Stop ${effect.label}` : `Start ${effect.label}`;
-  const committedSpeed = useRef(speedMs);
-  const commitSpeed = (nextSpeedMs: number) => {
-    if (committedSpeed.current === nextSpeedMs) return;
-    committedSpeed.current = nextSpeedMs;
-    onSpeedCommit(nextSpeedMs);
-  };
 
   return (
     <div className="effect-option" data-active={active ? 'true' : 'false'} data-running={running ? 'true' : 'false'} onClick={onSelect}>
@@ -519,56 +522,16 @@ function EffectOption({
           <strong>{effect.label}</strong>
           <small>{effect.description}</small>
         </span>
-        <span className="effect-action" data-running={running ? 'true' : 'false'}>{running ? <Square size={11} /> : <Play size={13} />}</span>
       </button>
+      <div className="effect-option-actions">
+      <button className="effect-preview-toggle effect-play-toggle" type="button" title={actionLabel} aria-label={actionLabel} aria-pressed={running} disabled={loading} data-primary={!previewing && !configuring} onClick={(event) => { event.stopPropagation(); if (running) onStop(); else { onSelect(); onStart(effect.id, speedMs); } }}>{running ? <Square size={11} /> : <Play size={13} />}</button>
       {onPreview ? <button className="effect-preview-toggle" type="button" title="Preview locally without controlling the device" aria-label={`Preview ${effect.label}`} aria-pressed={previewing} onClick={(event) => { event.stopPropagation(); onPreview(); }}><Eye size={14} /></button> : null}
+      {onSettings ? <button className="effect-preview-toggle" type="button" title="Effect settings" aria-label={`Configure ${effect.label}`} aria-expanded={configuring} onClick={(event) => { event.stopPropagation(); onSettings(); }}><Settings size={13} /></button> : null}
+      </div>
       </div>
       {preview}
-      {active ? (
-        <EffectSpeedControl
-          value={speedToUnit(speedMs, effect.speed)}
-          label={formatEffectSpeed(speedMs)}
-          disabled={loading}
-          onChange={(value) => onSpeedChange(unitToSpeedMs(value, effect.speed))}
-          onCommit={(value) => commitSpeed(unitToSpeedMs(value, effect.speed))}
-        />
-      ) : null}
+      {settings}
     </div>
-  );
-}
-
-function EffectSpeedControl({
-  value,
-  label,
-  disabled,
-  onChange,
-  onCommit,
-}: {
-  value: number;
-  label: string;
-  disabled: boolean;
-  onChange: (value: number) => void;
-  onCommit: (value: number) => void;
-}) {
-  return (
-    <label className="effect-speed">
-      <span className="effect-speed-label">
-        <span>speed</span>
-        <span className="mono">{label}</span>
-      </span>
-      <input
-        aria-label="Effect speed"
-        type="range"
-        min={0}
-        max={100}
-        value={Math.round(value * 100)}
-        disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value) / 100)}
-        onPointerUp={(event) => onCommit(Number(event.currentTarget.value) / 100)}
-        onKeyUp={(event) => onCommit(Number(event.currentTarget.value) / 100)}
-        onBlur={(event) => onCommit(Number(event.currentTarget.value) / 100)}
-      />
-    </label>
   );
 }
 

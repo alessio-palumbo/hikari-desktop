@@ -1,0 +1,13 @@
+.effect-settings { display: grid; gap: 10px; padding: 0 10px 10px; }
+.effect-settings label { display: grid; gap: 5px; color: var(--fg-3); font-size: 11px; }
+.effect-settings label > span { display: flex; align-items: center; justify-content: space-between; }
+.effect-settings output { font-variant-numeric: tabular-nums; color: var(--fg-2); }
+.effect-settings input { width: 100%; margin: 0; accent-color: var(--accent); }
+.effect-settings-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.effect-settings-actions button { display: flex; gap: 6px; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 7px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--fg-2); font: inherit; font-size: 11px; cursor: pointer; }
+.effect-settings-actions button:hover:not(:disabled) { color: var(--fg-0); border-color: var(--line-strong); }
+.effect-settings-actions button:disabled { opacity: 0.4; cursor: default; }
+.effect-settings-actions button:not(:disabled) { color: var(--fg-1); background: oklch(1 0 0 / 0.04); }
+.effect-settings-actions .effect-settings-apply:not(:disabled) { color: var(--fg-0); border-color: var(--line-strong); background: oklch(1 0 0 / 0.06); }
+.effect-settings-loading { font-size: 11px; color: var(--fg-4); }
+.effect-setting-help { cursor: help; }

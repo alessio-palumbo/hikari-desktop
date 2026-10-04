@@ -13,6 +13,7 @@ The app is in active development, but it is ready to try with real LAN devices. 
 - Matrix custom grids and orientation-aware preview/apply behavior.
 - Device and firmware effects for supported multizone and matrix lights.
 - Local previews of Hikari effects without changing lights, using the eye control beside an effect. Previews show a bounded clip of settled frames, not firmware effects or device transition timing.
+- Every effect has speed settings behind a cog; Sparkle and Scanner also expose appearance controls. Adjustments update an open local preview only; Apply starts/restarts the effect with all selected settings. Reset returns the controls to Hikari defaults. Settings are session-only, and existing palette and restore behavior is retained.
 - Floor-plan view with multiple floors, editable rooms, draggable light placement, room power controls, and local layout persistence.
 - Sensaa presence sensor discovery, room assignment, occupancy state, and delayed room lighting.
 - Periodic refresh with pending-state reconciliation to avoid stale device updates fighting recent UI changes.

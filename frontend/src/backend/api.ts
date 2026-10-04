@@ -1,8 +1,9 @@
 import { DeviceKind, type Device, type DeviceSnapshot, type HslColor, type Matrix } from '../domain/lifx';
 import type { DeviceCommandIntent } from '../domain/commands';
-import type { DeviceEffect } from '../domain/effects';
+import type { DeviceEffect, EffectParameters } from '../domain/effects';
 
 interface WailsApp {
+  DeviceEffectParameters?: (serial: string, effect: DeviceEffect) => Promise<EffectParameter[]>;
   PreviewDeviceEffect?: (request: StartDeviceEffectRequest) => Promise<DeviceEffectPreview>;
   PingDevice?: (serial: string) => Promise<DevicePingResult>;
   GetDeviceSnapshot?: () => Promise<DeviceSnapshot>;
@@ -42,10 +43,27 @@ export interface DeviceEffectPreview {
   frames: HslColor[][];
 }
 
-export async function previewDeviceEffect(device: Device, effect: DeviceEffect, speedMs: number): Promise<DeviceEffectPreview> {
+export async function previewDeviceEffect(device: Device, effect: DeviceEffect, speedMs: number, params?: EffectParameters): Promise<DeviceEffectPreview> {
   const preview = window.go?.main?.App?.PreviewDeviceEffect;
   if (!preview) throw new Error('local effect preview is unavailable');
-  return preview({ device, effect, speedMs });
+  return preview({ device, effect, speedMs, params });
+}
+
+export interface EffectParameter {
+  key: string;
+  label: string;
+  description?: string;
+  min: number;
+  max: number;
+  step: number;
+  default: number;
+  value: number;
+}
+
+export async function getDeviceEffectParameters(serial: string, effect: DeviceEffect): Promise<EffectParameter[]> {
+  const parameters = window.go?.main?.App?.DeviceEffectParameters;
+  if (!parameters) throw new Error('effect settings are unavailable');
+  return parameters(serial, effect);
 }
 
 export async function pingDevice(serial: string): Promise<DevicePingResult> {
@@ -124,6 +142,7 @@ interface StopDeviceEffectRequest {
 }
 
 export interface StartDeviceEffectOptions {
+  params?: EffectParameters;
   effect?: DeviceEffect;
   speedMs?: number;
   direction?: 'forward' | 'reverse';

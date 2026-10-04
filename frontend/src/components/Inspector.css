@@ -675,8 +675,12 @@
 
 .effect-option-row { display: flex; align-items: center; min-width: 0; }
 .effect-option-row .effect-option-main { flex: 1; min-width: 0; }
-.effect-preview-toggle { display: grid; place-items: center; width: 26px; height: 26px; flex: 0 0 26px; margin-right: 6px; border: 0; border-radius: 4px; background: transparent; color: var(--fg-4); cursor: pointer; }
-.effect-preview-toggle:hover, .effect-preview-toggle[aria-pressed="true"] { color: var(--fg-1); background: oklch(1 0 0 / 0.05); }
+.effect-option-actions { display: flex; flex: 0 0 auto; gap: 2px; padding-right: 6px; }
+.effect-preview-toggle { display: grid; place-items: center; width: 24px; height: 26px; flex: 0 0 24px; border: 0; border-radius: 4px; background: transparent; color: var(--fg-4); cursor: pointer; }
+.effect-preview-toggle:hover, .effect-preview-toggle[aria-pressed="true"], .effect-preview-toggle[aria-expanded="true"] { color: var(--fg-1); background: oklch(1 0 0 / 0.05); }
+.effect-play-toggle[data-primary="true"] { color: var(--fg-1); }
+.effect-play-toggle[aria-pressed="true"] { color: var(--accent); background: oklch(0.58 0.13 230 / 0.18); }
+.effect-preview-toggle:disabled { opacity: 0.4; cursor: default; }
 
 .effect-option:hover,
 .effect-option[data-active="true"] {
@@ -974,39 +978,6 @@
 
 .effect-option[data-active="true"] .effect-swatch[data-effect="scanner"]::before {
   animation: fx-scanner 1.1s ease-in-out infinite alternate;
-}
-
-.effect-action {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 999px;
-  color: var(--fg-3);
-}
-
-.effect-action[data-running="true"] {
-  background: oklch(0.58 0.13 230 / 0.18);
-  color: var(--accent);
-}
-
-.effect-speed {
-  display: grid;
-  gap: 6px;
-  padding: 0 10px 10px 52px;
-}
-
-.effect-speed-label {
-  display: flex;
-  justify-content: space-between;
-  color: var(--fg-3);
-  font-size: 11px;
-}
-
-.effect-speed input {
-  width: 100%;
-  accent-color: var(--accent);
 }
 
 .effect-empty {

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { previewDeviceEffect, type DeviceEffectPreview } from '../backend/api';
-import type { DeviceEffect } from '../domain/effects';
-import { hsl, previewLightness, type Device } from '../domain/lifx';
+import type { DeviceEffect, EffectParameters } from '../domain/effects';
+import { effectPreviewColor, type Device } from '../domain/lifx';
 import './EffectPreview.css';
 
-export function EffectPreview({ device, effect, speedMs }: { device: Device; effect: DeviceEffect; speedMs: number }) {
+export function EffectPreview({ device, effect, speedMs, params }: { device: Device; effect: DeviceEffect; speedMs: number; params?: EffectParameters }) {
   const [preview, setPreview] = useState<DeviceEffectPreview>();
   const [error, setError] = useState('');
   const [replay, setReplay] = useState(0);
@@ -15,14 +15,14 @@ export function EffectPreview({ device, effect, speedMs }: { device: Device; eff
     let disposed = false;
     setError('');
     const request = setTimeout(() => {
-      void previewDeviceEffect(device, effect, speedMs).then((result) => {
+      void previewDeviceEffect(device, effect, speedMs, params).then((result) => {
         if (!disposed) setPreview(result);
       }).catch((failure) => {
         if (!disposed) setError(String(failure instanceof Error ? failure.message : failure));
       });
     }, 200);
     return () => { disposed = true; clearTimeout(request); };
-  }, [device.serial, effect, speedMs]);
+  }, [device.serial, effect, speedMs, params]);
 
   useEffect(() => {
     if (!preview || !canvas.current) return;
@@ -41,7 +41,7 @@ export function EffectPreview({ device, effect, speedMs }: { device: Device; eff
       context.clearRect(0, 0, width, height);
       preview.frames[frame]?.forEach((color, index) => {
         if (!preview.cells[index]) return;
-        context.fillStyle = color.l <= 0.001 ? '#202226' : hsl(color, previewLightness(color, color.l, true));
+        context.fillStyle = effectPreviewColor(color);
         context.fillRect(left + (index % preview.width) * cellSize + 1, top + Math.floor(index / preview.width) * cellSize + 1, Math.max(1, cellSize - 2), Math.max(1, cellSize - 2));
       });
       frame++;

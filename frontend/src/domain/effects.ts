@@ -3,12 +3,14 @@ import { DeviceKind, type Device } from './lifx.js';
 export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'worm' | 'concentric_frames' | 'waterfall' | 'rockets' | 'wave' | 'ring' | 'flow' | 'comet' | 'sparkle' | 'scanner';
 
 export type DeviceEffectSource = 'firmware' | 'app';
+export type EffectParameters = Record<string, number>;
 
 export interface DeviceEffectDefinition {
   id: DeviceEffect;
   label: string;
   description: string;
   source: DeviceEffectSource;
+  configurable?: boolean;
   deviceKinds: Device['kind'][];
   minFirmware?: string;
   speed: EffectSpeedDefinition;
@@ -129,6 +131,7 @@ export const deviceEffects: DeviceEffectDefinition[] = [
   },
   {
     id: 'sparkle',
+    configurable: true,
     label: 'Sparkle',
     description: 'Scattered fading highlights',
     source: 'app',
@@ -137,6 +140,7 @@ export const deviceEffects: DeviceEffectDefinition[] = [
   },
   {
     id: 'scanner',
+    configurable: true,
     label: 'Scanner',
     description: 'Soft side-to-side band',
     source: 'app',
@@ -178,6 +182,14 @@ export function unitToSpeedMs(value: number, speed: EffectSpeedDefinition): numb
 
 export function formatEffectSpeed(speedMs: number): string {
   return `${(speedMs / 1000).toFixed(speedMs % 1000 === 0 ? 0 : 2)}s`;
+}
+
+export function effectSettingsDiffer(speedMs: number, referenceSpeedMs: number, values: EffectParameters, reference: EffectParameters): boolean {
+  return speedMs !== referenceSpeedMs || Object.keys(reference).some((key) => Math.abs(values[key] - reference[key]) > 0.000001);
+}
+
+export function quantizeEffectParameter(value: number, range: { min: number; max: number; step: number }): number {
+  return clamp(Number((Math.round(value / range.step) * range.step).toFixed(6)), range.min, range.max);
 }
 
 function firmwareSupported(actual: string | undefined, minimum: string | undefined): boolean {

@@ -173,6 +173,19 @@ export function previewLightness(color: HslColor, brightness: number, on = true)
   return Math.max(0.28, Math.min(0.84, baseLightness * scaled));
 }
 
+// Effect frames need visible brightness contrast, unlike readable device thumbnails.
+export function effectPreviewColor(color: HslColor): string {
+  const brightness = Math.sqrt(Math.max(0, Math.min(1, color.l)));
+  if (color.kelvin && color.s === 0) {
+    return `rgb(${kelvinRgb(color.kelvin).map((channel) => clampRgb(channel * brightness)).join(' ')})`;
+  }
+  const hue = ((color.h % 360) + 360) % 360 / 60;
+  const saturation = Math.max(0, Math.min(1, color.s));
+  const secondary = 1 - Math.abs(hue % 2 - 1);
+  const sectors = [[1, secondary, 0], [secondary, 1, 0], [0, 1, secondary], [0, secondary, 1], [secondary, 0, 1], [1, 0, secondary]];
+  return `rgb(${sectors[Math.floor(hue)].map((channel) => clampRgb((1 - saturation + channel * saturation) * brightness * 255)).join(' ')})`;
+}
+
 export function previewOpacity(on = true): number {
   if (!on) return 0.3;
   return 1;

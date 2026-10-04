@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	lifxdevice "github.com/alessio-palumbo/lifxlan-go/pkg/device"
@@ -45,6 +46,9 @@ func (t *LifxTransport) PreviewDeviceEffect(ctx context.Context, req StartDevice
 	t.mu.RLock()
 	if active, ok := t.effects[req.Device.Serial]; ok {
 		current = active.previous
+		if req.Params == nil && active.effect == req.Effect {
+			req.Params = maps.Clone(active.params)
+		}
 	}
 	t.mu.RUnlock()
 	req.Device = current

@@ -32,3 +32,13 @@ func TestAppPreviewDeviceEffect(t *testing.T) {
 		t.Fatal("unsupported transport accepted")
 	}
 }
+
+func TestAppEffectParameterDefinitions(t *testing.T) {
+	parameters, err := NewAppWithTransport(&recordingTransport{}).DeviceEffectParameters("test", backend.DeviceEffectSparkle)
+	if err != nil || len(parameters) != 3 {
+		t.Fatalf("parameters %#v, error %v", parameters, err)
+	}
+	if _, err := NewAppWithTransport(&recordingTransport{}).DeviceEffectParameters("test", backend.DeviceEffectFlame); err == nil {
+		t.Fatal("firmware settings accepted")
+	}
+}
