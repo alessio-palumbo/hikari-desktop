@@ -219,7 +219,7 @@ export function formatEffectSpeed(speedMs: number): string {
 }
 
 export function effectSettingsDiffer(speedMs: number, referenceSpeedMs: number, values: EffectParameters, reference: EffectParameters): boolean {
-  return speedMs !== referenceSpeedMs || Object.keys(reference).some((key) => {
+  return speedMs !== referenceSpeedMs || [...new Set([...Object.keys(values), ...Object.keys(reference)])].some((key) => {
     const value = values[key];
     const baseline = reference[key];
     return typeof value === 'number' && typeof baseline === 'number' ? Math.abs(value - baseline) > 0.000001 : value !== baseline;

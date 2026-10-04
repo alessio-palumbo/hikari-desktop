@@ -331,3 +331,37 @@ func TestAppliedEffectParametersSurviveRestartsAndRestoreOriginalState(t *testin
 		t.Fatal("restore did not retain the newer user brightness")
 	}
 }
+
+func TestReapplyingAndResettingSettingsPreservesEffectRestoreState(t *testing.T) {
+	transport, ctrl, current := parameterTestTransport(t)
+	original := lifxdevice.CloneMatrixChains(ctrl.devices[0].MatrixProperties.ChainZones)
+	for _, params := range []map[string]any{
+		{"background_brightness_factor": .5, "peak_brightness_factor": 1.8},
+		{"background_brightness_factor": .7, "peak_brightness_factor": 1.6},
+		configurableEffectDefaults(DeviceEffectScanner),
+	} {
+		if _, err := transport.StartDeviceEffect(context.Background(), StartDeviceEffectRequest{
+			Device: current, Effect: DeviceEffectScanner, SpeedMS: 4000, Params: params,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		parameters, err := transport.EffectParameters(current.Serial, DeviceEffectScanner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, parameter := range parameters {
+			if parameter.Value != params[parameter.Key] {
+				t.Fatalf("%s = %v, want %v", parameter.Key, parameter.Value, params[parameter.Key])
+			}
+		}
+		if len(ctrl.restoredStateSnapshots()) != 0 {
+			t.Fatal("settings application restored the device between runs")
+		}
+	}
+	if _, err := transport.StopDeviceEffect(context.Background(), StopDeviceEffectRequest{Device: current}); err != nil {
+		t.Fatal(err)
+	}
+	if restored := restoredDeviceState(t, ctrl); !reflect.DeepEqual(restored.MatrixChains, original) {
+		t.Fatal("settings changes replaced the original restore pixels")
+	}
+}

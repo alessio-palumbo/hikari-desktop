@@ -251,7 +251,7 @@ export function Inspector(props: InspectorProps) {
       {props.error && mode !== 'effects' ? <div className="inspector-error">{props.error}</div> : null}
 
       {mode === 'effects' && hasEffects ? (
-        <EffectControls device={device} status={props.effectStatus} onStart={props.onStartEffect} onStop={props.onStopEffect} />
+        <EffectControls key={device.serial} device={device} status={props.effectStatus} onStart={props.onStartEffect} onStop={props.onStopEffect} />
       ) : null}
 
       {isLight && mode !== 'effects' && device.kind !== DeviceKind.Single ? (

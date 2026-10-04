@@ -20,8 +20,10 @@ export function EffectSettings({ serial, effect, speedMs, appliedSpeedMs, applie
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(!effect.configurable);
   useEffect(() => {
-    if (disabled || !effect.configurable) return;
+    if (!effect.configurable) return;
     let disposed = false;
+    setLoaded(false);
+    setParameters([]);
     setError('');
     void getDeviceEffectParameters(serial, effect.id).then((result) => {
       if (disposed) return;
@@ -30,9 +32,9 @@ export function EffectSettings({ serial, effect, speedMs, appliedSpeedMs, applie
       if (!values) onChange(appliedValues ?? Object.fromEntries(result.map((param) => [param.key, param.value])));
     }).catch((failure) => { if (!disposed) setError(String(failure instanceof Error ? failure.message : failure)); });
     return () => { disposed = true; };
-  }, [serial, effect.id, disabled]);
+  }, [serial, effect.id]);
   const observed = Object.fromEntries(parameters.map((param) => [param.key, param.value]));
-  const current = { ...observed, ...values };
+  const current = { ...observed, ...appliedValues, ...values };
   const dirty = effectSettingsDiffer(speedMs, appliedSpeedMs, current, { ...observed, ...appliedValues });
   const changedDefaults = effectSettingsDiffer(speedMs, effect.speed.defaultMs, current, Object.fromEntries(parameters.map((param) => [param.key, param.default])));
   return <div className="effect-settings" onClick={(event) => event.stopPropagation()}>

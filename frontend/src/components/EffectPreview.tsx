@@ -3,6 +3,7 @@ import { RotateCcw } from 'lucide-react';
 import { previewDeviceEffect, type DeviceEffectPreview } from '../backend/api';
 import type { DeviceEffect, EffectParameters } from '../domain/effects';
 import { effectPreviewColor, type Device } from '../domain/lifx';
+import { playEffectPreviewFrames } from '../domain/effectPreviewPlayback';
 import './EffectPreview.css';
 
 export function EffectPreview({ device, effect, speedMs, params }: { device: Device; effect: DeviceEffect; speedMs: number; params?: EffectParameters }) {
@@ -40,21 +41,14 @@ export function EffectPreview({ device, effect, speedMs, params }: { device: Dev
     const cellSize = Math.min(width / preview.width, height / preview.height);
     const left = (width - cellSize * preview.width) / 2;
     const top = (height - cellSize * preview.height) / 2;
-    let frame = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const draw = () => {
+    return playEffectPreviewFrames(preview.frames.length, preview.stepMs, (frame) => {
       context.clearRect(0, 0, width, height);
       preview.frames[frame]?.forEach((color, index) => {
         if (!preview.cells[index]) return;
         context.fillStyle = effectPreviewColor(color);
         context.fillRect(left + (index % preview.width) * cellSize + 1, top + Math.floor(index / preview.width) * cellSize + 1, Math.max(1, cellSize - 2), Math.max(1, cellSize - 2));
       });
-      frame++;
-      if (frame < preview.frames.length) timer = setTimeout(draw, preview.stepMs);
-      else timer = setTimeout(() => setFinished(true), preview.stepMs);
-    };
-    draw();
-    return () => { if (timer !== undefined) clearTimeout(timer); };
+    }, () => setFinished(true));
   }, [preview, replay, rendering, error]);
 
   const replayLabel = finished ? 'Preview finished - replay' : 'Replay local preview';

@@ -73,3 +73,15 @@ test('failed application must remain dirty against the last successful settings'
   assert.equal(effectSettingsDiffer(3000, 2000, draft, applied), true);
   assert.equal(effectSettingsDiffer(3000, 3000, draft, draft), false);
 });
+
+test('added and removed parameters both count as unapplied changes', () => {
+  assert.equal(effectSettingsDiffer(4000, 4000, { density: 0.3 }, {}), true);
+  assert.equal(effectSettingsDiffer(4000, 4000, {}, { density: 0.3 }), true);
+});
+
+test('applying a captured draft does not mark later edits as applied', () => {
+  const submitted = { density: 0.3, background_floor: 0.55 };
+  const newerDraft = { ...submitted, density: 0.4 };
+  assert.equal(effectSettingsDiffer(4000, 4000, submitted, submitted), false);
+  assert.equal(effectSettingsDiffer(4000, 4000, newerDraft, submitted), true);
+});
