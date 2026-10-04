@@ -1,9 +1,12 @@
 import { DeviceKind, type Device, type DeviceSnapshot, type HslColor, type Matrix } from '../domain/lifx';
 import type { DeviceCommandIntent } from '../domain/commands';
-import type { ThemeRequest, ThemePreview, ThemeApplyResult } from '../domain/themes';
+import type { ThemeRequest, ThemePreview, ThemeApplyResult, UserTheme, SaveUserThemeRequest } from '../domain/themes';
 import type { DeviceEffect, DeviceEffectPreferences, EffectParameters, EffectPreference } from '../domain/effects';
 
 interface WailsApp {
+  GetUserThemes?: () => Promise<UserTheme[]>;
+  SaveUserTheme?: (request: SaveUserThemeRequest) => Promise<UserTheme>;
+  DeleteUserTheme?: (id: string) => Promise<void>;
   PreviewTheme?: (request: ThemeRequest) => Promise<ThemePreview>;
   ApplyTheme?: (request: ThemeRequest) => Promise<ThemeApplyResult>;
   GetDeviceEffectPreferences?: (serial: string) => Promise<DeviceEffectPreferences>;
@@ -34,6 +37,24 @@ export async function previewTheme(request: ThemeRequest): Promise<ThemePreview>
   if (!preview) throw new Error('Theme preview is unavailable');
   const result = await preview(request);
   return { devices: result.devices ?? [] };
+}
+
+export async function getUserThemes(): Promise<UserTheme[]> {
+  const load = window.go?.main?.App?.GetUserThemes;
+  if (!load) throw new Error('User theme storage is unavailable');
+  return await load() ?? [];
+}
+
+export async function saveUserTheme(request: SaveUserThemeRequest): Promise<UserTheme> {
+  const save = window.go?.main?.App?.SaveUserTheme;
+  if (!save) throw new Error('User theme storage is unavailable');
+  return save(request);
+}
+
+export async function deleteUserTheme(id: string): Promise<void> {
+  const remove = window.go?.main?.App?.DeleteUserTheme;
+  if (!remove) throw new Error('User theme storage is unavailable');
+  return remove(id);
 }
 
 export async function applyTheme(request: ThemeRequest): Promise<ThemeApplyResult> {

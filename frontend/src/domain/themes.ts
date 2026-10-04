@@ -3,10 +3,12 @@ import { isLightDevice, type Device, type HslColor } from './lifx.js';
 export interface ThemeColor { Hue: number; Saturation: number; Brightness: number; Kelvin: number }
 export interface Theme {
   name: string;
-  palette: { Base: ThemeColor[] };
-  layout: 'gradient' | 'steps' | 'solid';
-  axis: 'horizontal' | 'vertical';
+  palette: { Name?: string; Base: ThemeColor[]; Accents?: ThemeColor[]; Backgrounds?: ThemeColor[] };
+  layout?: 'gradient' | 'steps' | 'solid';
+  axis?: 'horizontal' | 'vertical';
 }
+export interface UserTheme { id: string; theme: Theme }
+export interface SaveUserThemeRequest { id?: string; theme: Theme }
 export interface ThemeRequest { theme: Theme; serials: string[]; brightness: 'preserve' }
 export interface ThemeDevicePreview {
   serial: string; name: string; on: boolean; width: number; height: number;

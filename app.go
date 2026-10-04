@@ -25,6 +25,7 @@ type App struct {
 	commandEngine  *backend.CommandEngineService
 	floorPlans     backend.FloorPlanStore
 	effectSettings backend.EffectSettingsStore
+	themes         backend.ThemeStore
 	emitEvent      func(context.Context, string, ...interface{})
 }
 
@@ -68,6 +69,7 @@ func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvide
 		commandEngine:  backend.NewCommandEngineService(),
 		floorPlans:     backend.NewFloorPlanStore(),
 		effectSettings: backend.NewEffectSettingsStore(),
+		themes:         backend.NewThemeStore(),
 		emitEvent:      wailsruntime.EventsEmit,
 	}
 }
@@ -165,6 +167,18 @@ func (a *App) ApplyTheme(req backend.ThemeRequest) (backend.ThemeApplyResult, er
 	ctx, cancel := context.WithTimeout(a.context(), 10*time.Second)
 	defer cancel()
 	return applier.ApplyTheme(ctx, req)
+}
+
+func (a *App) GetUserThemes() ([]backend.UserTheme, error) {
+	return a.themes.Load()
+}
+
+func (a *App) SaveUserTheme(req backend.SaveUserThemeRequest) (backend.UserTheme, error) {
+	return a.themes.Save(req)
+}
+
+func (a *App) DeleteUserTheme(id string) error {
+	return a.themes.Delete(id)
 }
 
 func (a *App) DeviceEffectParameters(serial string, effect backend.DeviceEffect) ([]backend.EffectParameter, error) {
