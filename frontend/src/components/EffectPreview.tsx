@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { previewDeviceEffect, type DeviceEffectPreview } from '../backend/api';
 import type { DeviceEffect, EffectParameters } from '../domain/effects';
-import { effectPreviewColor, type Device } from '../domain/lifx';
+import { type Device } from '../domain/lifx';
+import { drawPreviewFrame, usePreviewCanvas } from './usePreviewCanvas';
 import { playEffectPreviewFrames } from '../domain/effectPreviewPlayback';
 import './EffectPreview.css';
 
@@ -12,7 +13,7 @@ export function EffectPreview({ device, effect, speedMs, params }: { device: Dev
   const [replay, setReplay] = useState(0);
   const [finished, setFinished] = useState(false);
   const [rendering, setRendering] = useState(true);
-  const canvas = useRef<HTMLCanvasElement>(null);
+  const { canvas, layout } = usePreviewCanvas(preview?.width, preview?.height, device.kind, !!preview && !error);
 
   useEffect(() => {
     let disposed = false;
@@ -31,25 +32,11 @@ export function EffectPreview({ device, effect, speedMs, params }: { device: Dev
 
   useEffect(() => {
     if (rendering || error || !preview || !canvas.current) return;
-    const context = canvas.current.getContext('2d');
-    if (!context) return;
     setFinished(false);
-    const width = 560;
-    const height = Math.max(40, Math.min(280, width * preview.height / preview.width));
-    canvas.current.width = width;
-    canvas.current.height = height;
-    const cellSize = Math.min(width / preview.width, height / preview.height);
-    const left = (width - cellSize * preview.width) / 2;
-    const top = (height - cellSize * preview.height) / 2;
     return playEffectPreviewFrames(preview.frames.length, preview.stepMs, (frame) => {
-      context.clearRect(0, 0, width, height);
-      preview.frames[frame]?.forEach((color, index) => {
-        if (!preview.cells[index]) return;
-        context.fillStyle = effectPreviewColor(color);
-        context.fillRect(left + (index % preview.width) * cellSize + 1, top + Math.floor(index / preview.width) * cellSize + 1, Math.max(1, cellSize - 2), Math.max(1, cellSize - 2));
-      });
+      if (canvas.current) drawPreviewFrame(canvas.current, preview.width, preview.cells, preview.frames[frame] ?? [], layout);
     }, () => setFinished(true));
-  }, [preview, replay, rendering, error]);
+  }, [preview, replay, rendering, error, layout.width, layout.height, layout.cellWidth, layout.cellHeight, layout.left]);
 
   const replayLabel = finished ? 'Preview finished - replay' : 'Replay local preview';
 
