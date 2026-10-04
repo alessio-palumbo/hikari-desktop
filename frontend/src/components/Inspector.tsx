@@ -7,9 +7,11 @@ import { deviceUptime } from '../domain/diagnostics';
 import {
   defaultEffectSpeedMs,
   supportedDeviceEffects,
+  toggleEffectPanel,
   type DeviceEffectDefinition,
   type DeviceEffect,
   type EffectParameters,
+  type EffectPanels,
 } from '../domain/effects';
 import { DeviceKind, hsl, isLightDevice, previewLightness, previewOpacity, type Device, type Group, type HslColor, type Location } from '../domain/lifx';
 import {
@@ -395,8 +397,8 @@ function EffectControls({
   const running = status?.running ?? false;
   const loading = status?.loading ?? false;
   const [selectedEffect, setSelectedEffect] = useState<DeviceEffect | undefined>();
-  const [previewEffect, setPreviewEffect] = useState<DeviceEffect>();
-  const [settingsEffect, setSettingsEffect] = useState<DeviceEffect>();
+  const [panels, setPanels] = useState<EffectPanels>({});
+  const { preview: previewEffect, settings: settingsEffect } = panels;
   const [effectParameters, setEffectParameters] = useState<Partial<Record<DeviceEffect, EffectParameters>>>({});
   const [effectSpeeds, setEffectSpeeds] = useState<Partial<Record<DeviceEffect, number>>>({});
   const [appliedSettings, setAppliedSettings] = useState<Partial<Record<DeviceEffect, { speedMs: number; params?: EffectParameters }>>>({});
@@ -414,8 +416,7 @@ function EffectControls({
 
   useEffect(() => {
     setSelectedEffect(undefined);
-    setPreviewEffect(undefined);
-    setSettingsEffect(undefined);
+    setPanels({});
     setEffectParameters({});
     setEffectSpeeds({});
     setAppliedSettings({});
@@ -443,10 +444,10 @@ function EffectControls({
                   loading={loading}
                   speedMs={speedMs}
                   previewing={previewEffect === effect.id}
-                  onPreview={source === 'app' ? () => setPreviewEffect((current) => current === effect.id ? undefined : effect.id) : undefined}
+                  onPreview={source === 'app' ? () => setPanels((current) => toggleEffectPanel(current, 'preview', effect.id)) : undefined}
                   preview={previewEffect === effect.id ? <EffectPreview device={device} effect={effect.id} speedMs={speedMs} params={effectParameters[effect.id]} /> : null}
                   configuring={settingsEffect === effect.id}
-                  onSettings={() => setSettingsEffect((current) => current === effect.id ? undefined : effect.id)}
+                  onSettings={() => setPanels((current) => toggleEffectPanel(current, 'settings', effect.id))}
                   settings={settingsEffect === effect.id ? <EffectSettings serial={device.serial} effect={effect} speedMs={speedMs} appliedSpeedMs={appliedSpeedMs} appliedValues={appliedSettings[effect.id]?.params} onSpeedChange={(nextSpeedMs) => setEffectSpeeds((current) => ({ ...current, [effect.id]: nextSpeedMs }))} values={effectParameters[effect.id]} disabled={loading} onChange={(params) => setEffectParameters((current) => ({ ...current, [effect.id]: params }))} onApply={(params) => void applySettings(effect.id, speedMs, params)} /> : null}
                   onSelect={() => setSelectedEffect(effect.id)}
                   onStart={(id, speed) => void applySettings(id, speed, effectParameters[id])}

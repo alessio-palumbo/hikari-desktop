@@ -9,25 +9,30 @@ export function EffectPreview({ device, effect, speedMs, params }: { device: Dev
   const [preview, setPreview] = useState<DeviceEffectPreview>();
   const [error, setError] = useState('');
   const [replay, setReplay] = useState(0);
+  const [finished, setFinished] = useState(false);
+  const [rendering, setRendering] = useState(true);
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     let disposed = false;
     setError('');
+    setFinished(false);
+    setRendering(true);
     const request = setTimeout(() => {
       void previewDeviceEffect(device, effect, speedMs, params).then((result) => {
-        if (!disposed) setPreview(result);
+        if (!disposed) { setPreview(result); setRendering(false); }
       }).catch((failure) => {
-        if (!disposed) setError(String(failure instanceof Error ? failure.message : failure));
+        if (!disposed) { setError(String(failure instanceof Error ? failure.message : failure)); setRendering(false); }
       });
     }, 200);
     return () => { disposed = true; clearTimeout(request); };
   }, [device.serial, effect, speedMs, params]);
 
   useEffect(() => {
-    if (!preview || !canvas.current) return;
+    if (rendering || error || !preview || !canvas.current) return;
     const context = canvas.current.getContext('2d');
     if (!context) return;
+    setFinished(false);
     const width = 560;
     const height = Math.max(40, Math.min(280, width * preview.height / preview.width));
     canvas.current.width = width;
@@ -46,13 +51,16 @@ export function EffectPreview({ device, effect, speedMs, params }: { device: Dev
       });
       frame++;
       if (frame < preview.frames.length) timer = setTimeout(draw, preview.stepMs);
+      else timer = setTimeout(() => setFinished(true), preview.stepMs);
     };
     draw();
     return () => { if (timer !== undefined) clearTimeout(timer); };
-  }, [preview, replay]);
+  }, [preview, replay, rendering, error]);
+
+  const replayLabel = finished ? 'Preview finished - replay' : 'Replay local preview';
 
   return <div className="effect-preview">
-    <div className="effect-preview-header"><span>preview</span><button type="button" aria-label="Replay local preview" title="Replay local preview" disabled={!preview} onClick={(event) => { event.stopPropagation(); setReplay((value) => value + 1); }}><RotateCcw size={12} /></button></div>
+    <div className="effect-preview-header"><span>preview</span><button type="button" aria-label={replayLabel} title={replayLabel} data-finished={finished} disabled={!preview || rendering || !!error} onClick={(event) => { event.stopPropagation(); setFinished(false); setReplay((value) => value + 1); }}><RotateCcw size={12} /></button></div>
     {error ? <div className="inspector-error" role="status">{error}</div> : preview ? <canvas ref={canvas} aria-label={`${effect} local preview`} role="img" /> : <div className="effect-preview-loading" role="status">rendering…</div>}
   </div>;
 }

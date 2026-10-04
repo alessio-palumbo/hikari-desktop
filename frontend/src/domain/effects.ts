@@ -5,6 +5,19 @@ export type DeviceEffect = 'move' | 'flame' | 'morph' | 'clouds' | 'snake' | 'wo
 export type DeviceEffectSource = 'firmware' | 'app';
 export type EffectParameters = Record<string, number>;
 
+export interface EffectPanels {
+  preview?: DeviceEffect;
+  settings?: DeviceEffect;
+}
+
+export function toggleEffectPanel(current: EffectPanels, panel: keyof EffectPanels, effect: DeviceEffect): EffectPanels {
+  const other = panel === 'preview' ? 'settings' : 'preview';
+  return {
+    [panel]: current[panel] === effect ? undefined : effect,
+    [other]: current[other] === effect ? effect : undefined,
+  };
+}
+
 export interface DeviceEffectDefinition {
   id: DeviceEffect;
   label: string;
