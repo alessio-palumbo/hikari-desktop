@@ -11,6 +11,7 @@ import (
 	lifxdevice "github.com/alessio-palumbo/lifxlan-go/pkg/device"
 	lifxeffects "github.com/alessio-palumbo/lifxlan-go/pkg/effects"
 	"github.com/alessio-palumbo/lifxlan-go/pkg/protocol"
+	lifxthemes "github.com/alessio-palumbo/lifxlan-go/pkg/themes"
 	"github.com/alessio-palumbo/lifxprotocol-go/gen/protocol/packets"
 )
 
@@ -76,6 +77,7 @@ func TestThemeApplyMatchesLocalPreviewAcrossOrientedChain(t *testing.T) {
 	ctrl := &fakeLifxController{devices: []lifxdevice.Device{d}}
 	transport := newTestLifxTransport(t, ctrl)
 	req := testThemeRequest(d)
+	req.Variation, req.Seed, req.MatrixLayout = 3, 19, lifxthemes.MatrixSpatial
 	preview, err := transport.PreviewTheme(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)

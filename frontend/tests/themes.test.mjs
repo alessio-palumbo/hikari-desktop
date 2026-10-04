@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { themeRequest, themes, themeColors, themeEditorDraft, moveThemeColor, sortedUserThemes, themeSelectionAction } from '../dist-test/domain/themes.js';
+import { themeRequest, themes, themeColors, themeEditorDraft, moveThemeColor, sortedUserThemes, themeSelectionAction, nextThemeVariation } from '../dist-test/domain/themes.js';
 import { compatibleInspectorMode } from '../dist-test/domain/inspectorMode.js';
 import { DeviceKind } from '../dist-test/domain/lifx.js';
 
@@ -78,4 +78,25 @@ test('user themes sort by name then stable identity without mutating the list', 
 test('theme selection applies directly unless local preview is open', () => {
   assert.equal(themeSelectionAction(false), 'apply');
   assert.equal(themeSelectionAction(true), 'preview');
+});
+
+test('repeat clicks advance runtime variations with a safe integer bound', () => {
+  assert.equal(nextThemeVariation(), 0);
+  assert.equal(nextThemeVariation(0), 1);
+  assert.equal(nextThemeVariation(1), 2);
+  assert.equal(nextThemeVariation(0xffffffff), 0);
+});
+
+test('preview and application requests share variation and spatial options without saving them', () => {
+  const theme = themes[0];
+  const devices = [{ serial: 'a', online: true, kind: DeviceKind.Single }];
+  const preview = themeRequest(theme, devices, 7);
+  const apply = themeRequest(theme, devices, 7);
+  assert.deepEqual(preview, apply);
+  assert.equal(preview.variation, 7);
+  assert.equal(preview.matrixLayout, 'spatial');
+  assert.notDeepEqual(themeRequest(theme, devices, 8), preview);
+  const saved = themeEditorDraft(theme);
+  assert.equal(saved.theme.variation, undefined);
+  assert.equal(saved.theme.matrixLayout, undefined);
 });

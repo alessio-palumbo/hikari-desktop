@@ -25,6 +25,11 @@ type ThemeRequest struct {
 	Serials []string         `json:"serials"`
 	// Empty uses PreserveBrightness, unlike the library's palette-mode default.
 	Brightness lifxthemes.BrightnessPolicy `json:"brightness,omitempty"`
+	// Runtime-only options shared by preview and application, not saved palettes.
+	Variation    uint32                  `json:"variation,omitempty"`
+	Seed         uint32                  `json:"seed,omitempty"`
+	Reverse      bool                    `json:"reverse,omitempty"`
+	MatrixLayout lifxthemes.MatrixLayout `json:"matrixLayout,omitempty"`
 }
 
 type ThemePreview struct {
@@ -47,6 +52,9 @@ func validateThemeRequest(req ThemeRequest) ([]lifxdevice.Serial, error) {
 	}
 	if req.Brightness != "" && req.Brightness != lifxthemes.PreserveBrightness && req.Brightness != lifxthemes.PaletteBrightness {
 		return nil, fmt.Errorf("unknown theme brightness policy %q", req.Brightness)
+	}
+	if req.MatrixLayout != "" && req.MatrixLayout != lifxthemes.MatrixThemeLayout && req.MatrixLayout != lifxthemes.MatrixSpatial {
+		return nil, fmt.Errorf("unknown matrix theme layout %q", req.MatrixLayout)
 	}
 	if len(req.Serials) == 0 || len(req.Serials) > maxThemePreviewTargets {
 		return nil, fmt.Errorf("theme requires 1..%d selected lights", maxThemePreviewTargets)
@@ -194,7 +202,8 @@ func planThemeFrames(ctx context.Context, req ThemeRequest, devices []lifxdevice
 	// The library bounds raw geometry before allocating surfaces. Check the
 	// resulting frames against Hikari's smaller interactive-preview budget before
 	// converting initial state or producing brightness-preserving frames.
-	plan, err := req.Theme.Plan(devices, defaultColorTransitionDuration)
+	options := lifxthemes.PlanOptions{Variation: uint64(req.Variation), Seed: uint64(req.Seed), Reverse: req.Reverse, MatrixLayout: req.MatrixLayout}
+	plan, err := req.Theme.PlanWithOptions(devices, defaultColorTransitionDuration, options)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +224,8 @@ func planThemeFrames(ctx context.Context, req ThemeRequest, devices []lifxdevice
 			}
 			initial[d.Serial] = frame
 		}
-		plan, err = req.Theme.PlanWithOptions(devices, defaultColorTransitionDuration, lifxthemes.PlanOptions{Brightness: lifxthemes.PreserveBrightness, InitialFrames: initial})
+		options.Brightness, options.InitialFrames = lifxthemes.PreserveBrightness, initial
+		plan, err = req.Theme.PlanWithOptions(devices, defaultColorTransitionDuration, options)
 		if err != nil {
 			return nil, err
 		}

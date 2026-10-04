@@ -59,6 +59,86 @@ func TestThemeGroupPlanningAssignsStableDistinctColors(t *testing.T) {
 	}
 }
 
+func TestThemeVariationCyclesSingleZoneGroupWithoutChangingBrightness(t *testing.T) {
+	a, b := themeTestLight(t, "d073d501a2c3"), themeTestLight(t, "d073d501a2c4")
+	b.Color.Brightness = 65
+	req := testThemeRequest(b, a)
+	for variation := range uint32(3) {
+		req.Variation = variation
+		preview, err := planThemePreview(context.Background(), req, []lifxdevice.Device{b, a})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for index, d := range []lifxdevice.Device{a, b} {
+			color := preview.Devices[index].Colors[0]
+			want := req.Theme.Palette.Base[(int(variation)+index)%2]
+			if math.Abs(color.H-want.Hue) > .01 || math.Abs(color.L-d.Color.Brightness/100) > .0001 {
+				t.Fatalf("variation %d light %d: %#v", variation, index, color)
+			}
+		}
+	}
+}
+
+func TestThemeRuntimeOptionsMatchNativePlanningAndRemainDeterministic(t *testing.T) {
+	strip := themeTestLight(t, "d073d501a2c3")
+	strip.LightType = lifxdevice.LightTypeMultiZone
+	for brightness := range 4 {
+		strip.MultizoneProperties.Zones = append(strip.MultizoneProperties.Zones, (lifxeffects.Color{Brightness: float64(brightness * 20), Kelvin: 3500}).ToDeviceColor())
+	}
+	devices := []lifxdevice.Device{strip}
+	for _, fixture := range []struct {
+		product               uint32
+		width, height, chains int
+	}{{55, 8, 8, 2}, {57, 5, 11, 1}} {
+		d := previewTestDevice(fixture.product, fixture.width, fixture.height, fixture.chains)
+		d.Serial, _ = lifxdevice.SerialFromHex("d073d501a2c3")
+		d.Type = lifxdevice.DeviceTypeLight
+		d.MatrixProperties.ChainZones = make([][]packets.LightHsbk, fixture.chains)
+		for chain := range d.MatrixProperties.ChainZones {
+			for i := range fixture.width * fixture.height {
+				d.MatrixProperties.ChainZones[chain] = append(d.MatrixProperties.ChainZones[chain], (lifxeffects.Color{Brightness: float64((i + chain*7) % 80), Kelvin: 3500}).ToDeviceColor())
+			}
+		}
+		devices = append(devices, d)
+	}
+	for _, d := range devices {
+		req := testThemeRequest(d)
+		req.Variation, req.Seed, req.Reverse, req.MatrixLayout = 5, 17, true, lifxthemes.MatrixSpatial
+		initial, err := lifxeffects.FrameFromDeviceState(d, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := req.Theme.PlanWithOptions([]lifxdevice.Device{d}, defaultColorTransitionDuration, lifxthemes.PlanOptions{Variation: 5, Seed: 17, Reverse: true, MatrixLayout: lifxthemes.MatrixSpatial, Brightness: lifxthemes.PreserveBrightness, InitialFrames: map[lifxdevice.Serial]lifxeffects.Frame{d.Serial: initial}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := planThemeFrames(context.Background(), req, []lifxdevice.Device{d})
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("native options were not forwarded: %v", err)
+		}
+		first, err := planThemePreview(context.Background(), req, []lifxdevice.Device{d})
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := planThemePreview(context.Background(), req, []lifxdevice.Device{d})
+		if err != nil || !reflect.DeepEqual(first, second) {
+			t.Fatal("preview is not deterministic")
+		}
+		if d.LightType == lifxdevice.LightTypeMatrix {
+			req.Variation++
+			changed, err := planThemeFrames(context.Background(), req, []lifxdevice.Device{d})
+			if err != nil || reflect.DeepEqual(changed, got) {
+				t.Fatal("matrix variation did not change spatial layout")
+			}
+		}
+	}
+	req := testThemeRequest(strip)
+	req.MatrixLayout = "invalid"
+	if _, err := validateThemeRequest(req); err == nil {
+		t.Fatal("invalid matrix layout accepted")
+	}
+}
+
 func TestThemePreservesZoneBrightnessIncludingBlack(t *testing.T) {
 	d := themeTestLight(t, "d073d501a2c3")
 	d.LightType = lifxdevice.LightTypeMultiZone

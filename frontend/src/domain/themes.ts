@@ -9,7 +9,10 @@ export interface Theme {
 }
 export interface UserTheme { id: string; theme: Theme }
 export interface SaveUserThemeRequest { id?: string; theme: Theme }
-export interface ThemeRequest { theme: Theme; serials: string[]; brightness: 'preserve' }
+export interface ThemeRequest {
+  theme: Theme; serials: string[]; brightness: 'preserve';
+  variation: number; matrixLayout: 'spatial';
+}
 export interface ThemeDevicePreview {
   serial: string; name: string; on: boolean; width: number; height: number;
   cells: boolean[]; colors: HslColor[];
@@ -28,8 +31,12 @@ export const themes: Theme[] = [
   { name: 'Warm whites', palette: { Base: [color(0, 0, 2000), color(0, 0, 2700), color(0, 0, 3500)] }, layout: 'gradient', axis: 'horizontal' },
 ];
 
-export function themeRequest(theme: Theme, devices: Device[]): ThemeRequest {
-  return { theme, serials: [...new Set(devices.filter((device) => device.online && isLightDevice(device)).map((device) => device.serial))].sort(), brightness: 'preserve' };
+export function themeRequest(theme: Theme, devices: Device[], variation = 0): ThemeRequest {
+  return { theme, serials: [...new Set(devices.filter((device) => device.online && isLightDevice(device)).map((device) => device.serial))].sort(), brightness: 'preserve', variation, matrixLayout: 'spatial' };
+}
+
+export function nextThemeVariation(previous?: number): number {
+  return previous === undefined || previous >= 0xffffffff ? 0 : previous + 1;
 }
 
 export function themeColors(theme: Theme): ThemeColor[] {
