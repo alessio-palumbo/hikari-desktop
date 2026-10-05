@@ -1,46 +1,47 @@
-# 光 (ひかり)
+<p align="center">
+  <img src="assets/icon/hikari-icon.svg" width="96" height="96" alt="hikari icon">
+</p>
 
-hikari is a Wails desktop app for controlling LIFX devices on the local network.
+# hikari · 光 (ひかり)
 
-The app is in active development, but it is ready to try with real LAN devices. It currently has a real `lifxlan-go` transport for LAN discovery and direct device control, plus a mock transport for UI development. Scenes, presets, full installer packaging, signing, and notarization are not implemented yet.
+A local desktop controller for LIFX lights. Adjust individual lights, paint strips and matrices, arrange your home or workspace on a floor plan, and explore effects and color themes without a cloud account.
 
-## Current Scope
-
-- Local LAN device discovery through `lifxlan-go`.
-- Single-zone power, brightness, color, and white temperature control.
-- Multizone and matrix global power, brightness, color, and white temperature control.
-- Multizone and matrix draft editing with brush, fill, picker, and gradient tools.
-- Matrix custom grids and orientation-aware preview/apply behavior.
-- Device and firmware effects for supported lights. Breathe pulses the current colour pattern between 10% and 100% of its original brightness (black pixels stay black). Color Cycle applies uniform palette transitions at the current device brightness. Both support single-zone, multizone and matrix lights; speed is the duration of a full cycle, defaulting to 4s and 8s respectively.
-- Local previews of Hikari effects without changing lights, using the eye control beside an effect. Previews show a bounded clip of settled frames, not firmware effects or device transition timing.
-- Every effect has speed settings behind a cog. Snake/Worm, Wave, Ring, Comet, Sparkle and Scanner also expose appearance controls such as trail length, thickness and relative brightness. Flow offers forward/reverse direction and a matrix-only axis selector; Frames offers inward/outward patterns. Adjustments update an open local preview only; Apply starts/restarts the effect with all selected settings. Successfully started/applied settings are remembered per device and effect. Reset returns the controls to Hikari defaults; Apply or Start saves that choice. Existing palette and restore behavior is retained.
-- Built-in and custom color themes for devices, groups, and rooms, with local previews, a palette editor, brightness preservation, and repeat-click application variations.
-- Floor-plan view with multiple floors, editable rooms, draggable light placement, room power controls, and local layout persistence.
-- Sensaa presence sensor discovery, room assignment, occupancy state, and delayed room lighting.
-- Device health view with signal quality, last-response age, uptime, and on-demand ping measurements.
-- Subscription-driven device updates with recovery snapshots and pending-state reconciliation to avoid stale observations fighting recent UI changes.
-- Optional local text commands through the rule-only `lifx-command-engine` sidecar.
+hikari is ready for everyday use with real LAN devices and remains in active development. It runs on macOS, Windows, and Linux, with an optional macOS voice edition.
 
 ## Download
 
-Prebuilt macOS, Windows, and Linux artifacts are published on the GitHub Releases page.
+**[Download the latest release](https://github.com/alessio-palumbo/hikari-desktop/releases/latest)**, extract the archive for your platform, and run `hikari` on the same network as your devices.
 
-To try hikari:
+| Platform | Artifact |
+| --- | --- |
+| macOS | `hikari-macos.zip` |
+| macOS with local voice commands | `hikari-macos-voice.zip` |
+| Windows | `hikari-windows.zip` |
+| Linux | `hikari-linux.tar.gz` |
 
-1. Open the latest release.
-2. Download the artifact for your platform.
-3. Extract the archive.
-4. Run `hikari`.
+The standard edition includes local text commands. The voice edition also includes whisper.cpp and the `base.en` speech model; no separate model setup is needed. macOS releases are signed and notarized. Windows builds are not signed, and Linux releases contain the Wails application rather than a distribution-specific installer.
 
-### macOS Quarantine
+## What You Can Do
 
-macOS builds are not notarized yet. After extracting the release archive, macOS may block the app. Remove the quarantine attribute before opening it:
+### Control and Edit
 
-```sh
-xattr -dr com.apple.quarantine hikari.app
-```
+Browse lights by location and group, search by name, and control power, brightness, color, and white temperature. Single-zone lights, multizone strips, and matrix devices share the same inspector, with controls suited to their capabilities. Supported switches have backlight, haptic, and relay controls.
 
-Run the command from the folder containing `hikari.app`, or replace `hikari.app` with the full app path.
+For strips and matrices, enter layout editing to paint with brush, fill, picker, and gradient tools. Changes stay in a draft until you apply them, with undo and revert available. Previews account for device orientation and irregular pixel layouts.
+
+### Map Your Space
+
+Place lights in rooms across multiple floors, reshape rooms, and control a room's lights together. Independent floor-plan profiles let you keep home and office layouts without tying a physical space to one LIFX location.
+
+### Explore Effects and Themes
+
+Run on-device firmware effects or animations generated by hikari. Preview hikari animations locally before starting them, and tune their speed and appearance. Stopping a hikari animation restores its starting state; firmware effects remain device-managed.
+
+Apply built-in color themes or create your own palettes for a light, group, or room. Themes preserve existing brightness, offer local previews, and vary color placement on repeated application.
+
+### Check Health and Use Commands
+
+See signal quality, last-response age, uptime, and on-demand ping results in the `health` view. Use the quick action prompt for local text commands, or speak short commands in the voice edition. Interpreted actions are validated before execution; high-confidence commands can optionally run without a confirmation step.
 
 ## Screenshots
 
@@ -63,80 +64,142 @@ Run the command from the folder containing `hikari.app`, or replace `hikari.app`
 
 ![hikari matrix editor with a pending gradient](docs/matrix-editor.png)
 
-### Presence Lighting
-
-![hikari room with Sensaa occupancy and presence lighting controls](docs/presence-lighting.png)
-
 ### Device Health
 
 ![hikari device health view with signal quality, uptime, and ping results](docs/device-health.png)
+
+### Presence Lighting
+
+![hikari room with Sensaa occupancy and presence lighting controls](docs/presence-lighting.png)
 
 </details>
 
 ## Shortcuts
 
-- `Cmd+F` on macOS or `Ctrl+F` on Windows/Linux: focus and select the search field.
-- `S`: focus and select the search field when focus is not in a text field or control.
-- `Space`: open the text command prompt when focus is not in a text field or control, or when the focused search field is empty.
-- `Esc` in search: clear the search text; when search is empty, blur the field.
-- `Esc` in the text command prompt: clear the prompt and preview; when empty, close the prompt.
-- `Esc` with the right panel open: close the active device or group panel.
+| Shortcut | Action |
+| --- | --- |
+| `Cmd+F` / `Ctrl+F` | Focus and select the search field. |
+| `S` | Focus search when not typing in a field or using a control. |
+| `Space` | Open the command prompt when not using a field or control, or when search is focused and empty. |
+| `Esc` in search | Clear the text; when empty, blur the field. |
+| `Esc` in the command prompt | Clear the prompt and preview; when empty, close it. |
+| `Esc` with the inspector open | Close the active device or group panel. |
 
 ## Floor Plans
 
-Use the `floor` center view to arrange the lights available on the current LAN across one or more floors. Enter edit mode to add floors and rooms, rename rooms, choose room types, and drag unassigned devices into place.
+Use the `floor` view to arrange lights across one or more floors. Enter edit mode to add floors and rooms, rename them, choose room types, and drag unassigned devices into place.
 
-Selecting a room in edit mode exposes its geometry controls. Drag the room body to move the room and its assigned devices, drag a vertex to reshape it, or use the smaller midpoint controls to add vertices. Double-click a vertex, or focus it and press `Delete` or `Backspace`, to remove it. Rooms retain at least three vertices.
+Select a room to expose its geometry controls. Drag the room body to move it with its assigned devices, drag a vertex or side to reshape it, or use the smaller midpoint controls to add vertices. Double-click a vertex, or focus it and press `Delete` or `Backspace`, to remove it. Rooms retain at least three vertices.
 
-Floor layouts are stored as independent profiles in `floor-plan.json` under the operating system's user configuration directory. The file is written atomically, survives replacing or upgrading the application bundle, and existing WebView-local floor plans migrate automatically. Hikari matches a profile using known device serials and LIFX location identifiers, and asks which profile to use when the available evidence is ambiguous. Locations with the same display name are merged in the sidebar without discarding their distinct identifiers, while a floor plan can include devices from every LIFX location found on the same physical LAN.
+Layouts are independent profiles matched using known device serials and LIFX location identifiers. hikari asks which profile to use when the match is ambiguous. Locations with the same display name are merged in the sidebar without losing their distinct identifiers, and a floor plan can include devices from every LIFX location on the same LAN.
 
-Effect preferences are stored atomically alongside the floor plans in `effect-settings.json`, keyed by stable device serial and effect. They survive application updates and are shared between development and installed builds. Only speed and appearance parameters are saved: effects never start automatically, and palettes continue to come from the device's current colours. Unapplied edits, playback state and temporary restore snapshots are not persisted.
+Removing a room or floor makes its devices unassigned. Temporary network loss does not erase placement: unavailable devices remain dimmed and inactive in the layout and recover their controls when discovered again.
 
-Removing a room or floor makes its devices unassigned; temporary LAN loss does not remove their saved placement. Devices that become unavailable during a session remain visible in the layout as dimmed, inactive markers and recover their normal controls when discovery finds them again.
+## Effects
 
-## Sensaa Sensors
+The `effects` inspector tab separates device effects from hikari effects. Availability depends on the light's capabilities and, for some firmware effects, its firmware version.
 
-Hikari discovers [Sensaa](https://github.com/alessio-palumbo/sensaa) nodes over mDNS and presents their available capability readings in the room inspector. Assign one or more presence-capable sensors there to view their online state, occupancy, and detected target count when supported. A sensor can be assigned to one room, while a room with multiple presence sensors uses simple OR semantics.
+Use Play/Stop to control an effect, the eye to preview a hikari animation without changing lights, and the cog to adjust settings. Settings update an open local preview; Apply starts or restarts the live effect with those settings. Reset returns the controls to hikari defaults, which take effect when applied or started.
 
-Presence lighting turns the room's currently assigned lights on when any assigned sensor reports presence. When every assigned online sensor reports no presence, Hikari waits for the configured delay before either turning the room off or dimming its currently-on lights. Returning presence conditionally restores brightness that Hikari still owns; subsequent manual changes take precedence. Re-entry during the delay cancels the pending action, and a disconnected sensor is treated as unknown rather than as evidence that the room is empty.
+Speed describes a full animation cycle. Appearance controls vary by effect, including trail length, thickness, direction, and background/highlight brightness. Breathe preserves the current color pattern while scaling brightness; Color Cycle moves uniformly through a palette. Local previews show a bounded clip of animation frames, not firmware effects or real-device transition timing.
 
-Assignments use the stable Sensaa node ID and are stored with the local floor-plan profile. IP addresses and observations are not persisted. Restarting Hikari or power-cycling a node retains the assignment and reconnects it after discovery finds the same node ID.
+Successfully started or applied settings are remembered per device and effect. Effects do not start automatically, and their palettes come from the device's current colors rather than a saved device snapshot.
 
 ## Themes
 
 Open the `themes` inspector tab for a light, group, or floor-plan room. Clicking a theme applies it directly, preserving each light's existing brightness, including individual zone/pixel brightness. Repeated clicks cycle palette assignments for single-zone lights and strips, and vary smooth spatial color placement on matrices.
 
-The eye button below the list opens a local preview without changing the lights. While preview is open, theme clicks update the preview only; the check icon applies the displayed variation. Closing preview returns to direct application. Theme application turns targeted lights on and stops their running effects. Exit matrix/multizone layout editing before applying a theme.
+The eye below the list opens a local preview. While it is open, theme clicks update only the preview; the check icon applies the displayed variation. Closing preview returns to direct application. Applying a theme turns targeted lights on and stops their running effects. Exit matrix/multizone layout editing before applying a theme.
 
-Use the plus icon to create a theme, or duplicate an existing palette. User themes can be renamed, edited, and deleted; built-ins remain unchanged. The editor supports color-wheel and white-temperature selection, adding/removing colors, and changing their order. Save stores the palette without applying it; Cancel discards unsaved edits.
-
-User themes are stored atomically in `themes.json` alongside the floor plans and effect settings in the operating system's user configuration directory. They survive application updates and are shared between development and installed builds. Target selections, application variations, and device state are not saved with a theme.
+Use the plus to create a theme or duplicate an existing palette. User themes can be renamed, edited, and deleted; built-ins remain unchanged. The editor supports color-wheel and white-temperature selection, adding/removing colors, and changing their order. Save stores the palette without applying it; Cancel discards unsaved edits.
 
 ## Device Health
 
 The `health` view shows signal quality, time since the last LAN response, and device uptime. Last response is an observation age, not a latency measurement.
 
-Use a device's ping icon to measure LIFX echo round-trip latency without changing its state. Each run takes five sequential samples with a one-second timeout per sample. The result shows median latency, min/max below it, and any timeouts; hover for the measurement time and reply count. Results are temporary, and checks run only when requested, one at a time.
+Use a device's ping icon to measure LIFX echo round-trip latency without changing its state. Each run takes five sequential samples with a one-second timeout per sample. Results show median latency, min/max, and any timeouts; hover for the measurement time and reply count. Checks run only when requested, one at a time, and results are temporary.
 
-## Local Text Commands
+## Text and Voice Commands
 
-Local text commands use the standalone `lifx-command-engine` JSONL sidecar. Release builds bundle the lightweight rule-only sidecar and enable local commands automatically. The sidecar only interprets text into a structured plan; hikari still validates targets, previews the action, asks for confirmation, and sends any LIFX commands itself.
+Open the quick action prompt from the search bar or with `Space`. Enter a command, press Enter to interpret it, review the targets and action, then press Enter again to confirm. The auto-execute option can skip confirmation for high-confidence plans that the engine does not flag for review. The same policy applies to text and voice.
 
-The quick action prompt can optionally auto-run high-confidence plans that the engine does not mark as requiring confirmation. Lower-confidence or confirmation-required plans still need explicit confirmation.
+In the voice edition, click the microphone to start recording and click again to stop, or hold Space while the command field is empty. Speech is transcribed locally, then follows the same interpretation and validation flow as text.
 
-For development, run `./scripts/bundle-command-sidecar.sh` after `wails build`, put `lifx-command-engine` on `PATH`, or set an explicit path with environment variables:
+Commands use [lifx-command-engine](https://github.com/alessio-palumbo/lifx-command-engine), a separate local process that returns structured plans. hikari owns discovery, current state, target/capability validation, and execution. The standard app bundles the lightweight rule-only engine, not Python, FunctionGemma, or speech models, and does not download models automatically.
+
+## Sensaa Sensors
+
+An optional DIY extension: [Sensaa](https://github.com/alessio-palumbo/sensaa) nodes can provide room presence observations over the LAN. hikari discovers them over mDNS and shows their capability readings in the room inspector, including online state, presence, and detected target count when supported.
+
+Assign presence-capable sensors to a room to enable presence lighting. A sensor belongs to one room; multiple sensors in a room use OR semantics. Presence turns the room's assigned lights on. Once all assigned sensors are online and report clear, a configurable delay leads to either turning lights off or dimming currently-on lights. Re-entry cancels the delay. After dimming, returning presence restores only brightness that hikari still owns; newer manual changes take precedence.
+
+Offline sensors are unknown, not evidence of an empty room. Assignments use stable Sensaa node IDs and survive application restarts and sensor power cycles. IP addresses and observations are not persisted.
+
+## Saved Data
+
+Floor plans, sensor assignments, effect preferences, and user themes are stored in the operating system's user configuration directory:
+
+| File | Contents |
+| --- | --- |
+| `floor-plan.json` | Layout profiles, device placement, and room sensor configuration. |
+| `effect-settings.json` | Per-device speed and appearance settings. |
+| `themes.json` | User palette definitions and stable identities. |
+
+These files are written atomically, shared by development and installed builds, and survive replacing the application with a new release. Existing WebView-local floor plans migrate automatically. Temporary previews, effect playback/restore state, and theme application variations are not durable settings.
+
+## Development
+
+### Requirements
+
+- Go 1.26
+- Node.js 22 or newer and npm
+- Wails v2.12.0
+- On Linux, the native Wails/WebKit dependencies for your distribution
 
 ```sh
-HIKARI_COMMANDS_ENABLED=1 \
-HIKARI_COMMAND_ENGINE_PATH=/path/to/lifx-command-engine \
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+cd frontend
+npm ci
+cd ..
 wails dev
 ```
 
-Optional FunctionGemma and whisper.cpp runtime/model paths belong in a `lifx-command-engine` config file, then in hikari set `HIKARI_COMMAND_ENGINE_CONFIG` to that file. The base hikari app does not download or bundle model weights or speech runtimes.
+For UI development without real lights:
 
-### Voice Command Development
+```sh
+HIKARI_TRANSPORT=mock wails dev
+```
 
-Voice commands are optional and are not bundled in the base app. Model download and evaluation lives in `lifx-command-engine`; `base.en` is the current default candidate for Hikari voice builds. For local testing, build the command sidecar and point Hikari at a local `whisper.cpp` CLI plus model:
+On Windows PowerShell, set `$env:HIKARI_TRANSPORT="mock"` before running `wails dev`.
+
+### Checks and Build
+
+```sh
+cd frontend
+npm run test
+npm run build
+cd ..
+go test ./...
+go vet ./...
+wails build -clean
+./scripts/bundle-command-sidecar.sh
+```
+
+Build the frontend before direct Go checks: `main.go` embeds `frontend/dist`. A committed `.gitkeep` allows initial Go compilation, but a production build needs actual frontend assets. `wails build` builds those assets and the desktop app; the sidecar script builds the pinned engine from `go.mod` into the app's resources on macOS or alongside the executable elsewhere.
+
+### Local Command Engine
+
+For development, build the sidecar with `./scripts/bundle-command-sidecar.sh` and point to it explicitly:
+
+```sh
+HIKARI_COMMAND_ENGINE_PATH="$PWD/build/bin/lifx-command-engine" wails dev
+```
+
+Alternatively, put the engine on `PATH`. Optional FunctionGemma or whisper.cpp paths can be configured in an engine config file selected with `HIKARI_COMMAND_ENGINE_CONFIG`.
+
+### Local Voice Testing
+
+Use a local whisper.cpp CLI and model; model download and evaluation belong to lifx-command-engine. `base.en` is the default for hikari voice releases.
 
 ```sh
 ./scripts/bundle-command-sidecar.sh
@@ -146,135 +209,52 @@ HIKARI_WHISPER_MODEL=/path/to/ggml-base.en.bin \
 wails dev
 ```
 
-Extra whisper.cpp arguments can be passed through the command sidecar with `HIKARI_WHISPER_ARGS`. Use a JSON array when an argument contains spaces, such as a seeded prompt:
+`HIKARI_WHISPER_ARGS` forwards extra arguments to the sidecar. Use a JSON array for arguments containing spaces:
 
 ```sh
 HIKARI_WHISPER_ARGS='["-ng","--prompt","turn tv off, set desk warm white, kitchen 30 percent"]'
 ```
 
-Hikari sends the selected language, currently `en`, in the transcribe request. Do not pass language through `HIKARI_WHISPER_ARGS`.
+hikari sends language (`en`) through the transcription request; do not pass it in `HIKARI_WHISPER_ARGS`. Recordings are temporary local WAV files.
 
-When voice is configured, click the mic button in the quick action prompt to start recording, then click again to stop. You can also hold Space while the command field is empty. Hikari records a temporary WAV payload locally, sends it to the command sidecar, shows the transcript, and requires confirmation before execution.
-
-To create a local voice bundle from existing artifacts, build the app and sidecar, then copy in a built `whisper-cli` and `ggml-base.en.bin`:
+To package existing local voice artifacts after building the app and sidecar:
 
 ```sh
-wails build -clean
-./scripts/bundle-command-sidecar.sh
 HIKARI_WHISPER_COMMAND=/path/to/whisper-cli \
 HIKARI_WHISPER_MODEL=/path/to/ggml-base.en.bin \
 ./scripts/bundle-voice-runtime.sh
 ```
 
-The voice bundling script only copies existing files. It does not download whisper.cpp or model weights.
-
-## Requirements
-
-- Go 1.26
-- Node.js 22 or newer
-- npm
-- Wails v2
-
-Install Wails:
-
-```sh
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-```
-
-Linux also needs the native Wails/WebKit dependencies for your distribution.
-
-## Run
-
-Install frontend dependencies:
-
-```sh
-cd frontend
-npm ci
-cd ..
-```
-
-Run with real LAN discovery:
-
-```sh
-wails dev
-```
-
-`frontend/dist/.gitkeep` is committed so Go embed works before the first production frontend build. If you remove `frontend/dist` entirely, recreate it or run `npm run build` in `frontend` before running direct Go commands such as `go test ./...`.
-
-Run with mock devices:
-
-```sh
-HIKARI_TRANSPORT=mock wails dev
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:HIKARI_TRANSPORT="mock"
-wails dev
-```
-
-## Test
-
-Run Go tests:
-
-```sh
-go test ./...
-```
-
-Run frontend tests:
-
-```sh
-cd frontend
-npm run test
-```
-
-Build the frontend:
-
-```sh
-cd frontend
-npm run build
-```
-
-## Build
-
-Build the desktop app for the current platform:
-
-```sh
-wails build -clean
-./scripts/bundle-command-sidecar.sh
-```
-
-`wails build` builds `frontend/dist` and the desktop app. The sidecar script only builds the pinned `lifx-command-engine` module from `go.mod` and places it next to the app binary, or in `hikari.app/Contents/Resources` on macOS. Voice runtime packaging is optional and only copies explicitly provided local artifacts.
-
-Release builds are intended to be produced natively on each platform through GitHub Actions.
+The bundling script copies existing artifacts; it does not download runtimes or models. Normal builds and tests do not download speech models.
 
 ## Architecture
 
-- `main.go` and `app.go`: Wails entry point and app binding.
-- `internal/backend`: device transport interface, LIFX transport, Sensaa discovery service, optional command-engine sidecar service, mock transport, DTOs, and backend tests.
-- `frontend/src/domain`: typed frontend models, draft editor state, floor-plan preferences, occupancy state, and refresh reconciliation.
-- `frontend/src/components`: React UI components for the shell, device list, floor plan, previews, and inspector.
-- `frontend/src/styles`: global styles and design tokens.
+```mermaid
+flowchart TB
+    UI[React / TypeScript UI] <-->|Wails bindings and events| App[Go application]
+    App --> Transport[Device transport]
+    Transport --> LIFX[lifxlan-go]
+    LIFX <-->|LAN discovery and control| Lights[LIFX devices]
+    Transport --> Mock[Mock devices]
+    App --> Store[Local JSON stores]
+    App <-->|Plans over JSONL| Commands[lifx-command-engine sidecar]
+    Commands --> Voice[Optional whisper.cpp runtime]
+    App <-->|Sensor observations| Sensaa[Sensaa service]
+    Sensaa <-->|mDNS and subscriptions| Sensors[Sensaa nodes]
+```
 
-The frontend calls:
+The UI owns interaction, drafts, previews, and room-level occupancy policy. Go services manage device transport, sensor subscriptions, command interpretation, and persistence. Device updates arrive through subscriptions and Wails events; recovery snapshots reconcile state without overwriting active edits.
 
-- `GetDeviceSnapshot()`
-- `GetSensorSnapshot()`
-- `SetDeviceState(req)`
-- `CommandEngineSettings()`
-- `SetCommandEngineSettings(req)`
-- `InterpretCommand(req)`
+Sensaa reports observations, and lifxlan-go handles light state and control. Room associations and lighting decisions stay in hikari; neither library depends on the other. The command engine interprets requests but never discovers or controls lights.
 
-The backend keeps `lifxlan-go` behind the transport boundary so real device behavior can be hardened without coupling the UI directly to LAN implementation details.
+| Path | Responsibility |
+| --- | --- |
+| `main.go`, `app.go` | Wails entry point, lifecycle, and application bindings. |
+| `internal/backend` | Transports, services, persistence, backend models, and tests. |
+| `frontend/src/domain` | Typed models, editing/occupancy state, and reconciliation. |
+| `frontend/src/components` | List, floor plan, health view, previews, and inspector. |
+| `frontend/src/styles` | Shared styles and design tokens. |
 
-## Release Builds
+### Release Builds
 
-The release workflow builds macOS, Windows, and Linux artifacts from tags matching `v*`. The normal artifacts stay lightweight and include the rule-only command sidecar. A separate `hikari-macos-voice.zip` artifact also bundles `whisper-cli` and the `base.en` model for local voice commands.
-
-Current release limitations:
-
-- macOS signing and notarization are not configured.
-- Voice packaging is currently macOS-only.
-- Windows signing is not configured.
-- Linux packaging is limited to the Wails build output.
+Tags matching `v*` trigger GitHub Actions to test and build natively on macOS, Windows, and Linux. Standard artifacts include the rule-only command sidecar. A separate macOS voice build adds whisper.cpp and `base.en`. Both macOS variants are signed and notarized; voice packaging for Windows and Linux is not available yet.
