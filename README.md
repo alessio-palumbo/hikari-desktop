@@ -14,9 +14,11 @@ The app is in active development, but it is ready to try with real LAN devices. 
 - Device and firmware effects for supported lights. Breathe pulses the current colour pattern between 10% and 100% of its original brightness (black pixels stay black). Color Cycle applies uniform palette transitions at the current device brightness. Both support single-zone, multizone and matrix lights; speed is the duration of a full cycle, defaulting to 4s and 8s respectively.
 - Local previews of Hikari effects without changing lights, using the eye control beside an effect. Previews show a bounded clip of settled frames, not firmware effects or device transition timing.
 - Every effect has speed settings behind a cog. Snake/Worm, Wave, Ring, Comet, Sparkle and Scanner also expose appearance controls such as trail length, thickness and relative brightness. Flow offers forward/reverse direction and a matrix-only axis selector; Frames offers inward/outward patterns. Adjustments update an open local preview only; Apply starts/restarts the effect with all selected settings. Successfully started/applied settings are remembered per device and effect. Reset returns the controls to Hikari defaults; Apply or Start saves that choice. Existing palette and restore behavior is retained.
+- Built-in and custom color themes for devices, groups, and rooms, with local previews, a palette editor, brightness preservation, and repeat-click application variations.
 - Floor-plan view with multiple floors, editable rooms, draggable light placement, room power controls, and local layout persistence.
 - Sensaa presence sensor discovery, room assignment, occupancy state, and delayed room lighting.
-- Periodic refresh with pending-state reconciliation to avoid stale device updates fighting recent UI changes.
+- Device health view with signal quality, last-response age, uptime, and on-demand ping measurements.
+- Subscription-driven device updates with recovery snapshots and pending-state reconciliation to avoid stale observations fighting recent UI changes.
 - Optional local text commands through the rule-only `lifx-command-engine` sidecar.
 
 ## Download
@@ -46,17 +48,30 @@ Run the command from the folder containing `hikari.app`, or replace `hikari.app`
 
 ![hikari group view with multiple LIFX devices](docs/group-list.png)
 
-### Matrix Editor
-
-![hikari matrix editor with a pending gradient](docs/matrix-editor.png)
-
 ### Floor Plan
 
 ![hikari floor plan with shaped rooms and active lights](docs/floor-plan.png)
 
+### Themes
+
+![hikari built-in and custom themes with a local matrix preview](docs/themes.png)
+
+<details>
+<summary>More Views</summary>
+
+### Matrix Editor
+
+![hikari matrix editor with a pending gradient](docs/matrix-editor.png)
+
 ### Presence Lighting
 
 ![hikari room with Sensaa occupancy and presence lighting controls](docs/presence-lighting.png)
+
+### Device Health
+
+![hikari device health view with signal quality, uptime, and ping results](docs/device-health.png)
+
+</details>
 
 ## Shortcuts
 
@@ -86,6 +101,16 @@ Hikari discovers [Sensaa](https://github.com/alessio-palumbo/sensaa) nodes over 
 Presence lighting turns the room's currently assigned lights on when any assigned sensor reports presence. When every assigned online sensor reports no presence, Hikari waits for the configured delay before either turning the room off or dimming its currently-on lights. Returning presence conditionally restores brightness that Hikari still owns; subsequent manual changes take precedence. Re-entry during the delay cancels the pending action, and a disconnected sensor is treated as unknown rather than as evidence that the room is empty.
 
 Assignments use the stable Sensaa node ID and are stored with the local floor-plan profile. IP addresses and observations are not persisted. Restarting Hikari or power-cycling a node retains the assignment and reconnects it after discovery finds the same node ID.
+
+## Themes
+
+Open the `themes` inspector tab for a light, group, or floor-plan room. Clicking a theme applies it directly, preserving each light's existing brightness, including individual zone/pixel brightness. Repeated clicks cycle palette assignments for single-zone lights and strips, and vary smooth spatial color placement on matrices.
+
+The eye button below the list opens a local preview without changing the lights. While preview is open, theme clicks update the preview only; the check icon applies the displayed variation. Closing preview returns to direct application. Theme application turns targeted lights on and stops their running effects. Exit matrix/multizone layout editing before applying a theme.
+
+Use the plus icon to create a theme, or duplicate an existing palette. User themes can be renamed, edited, and deleted; built-ins remain unchanged. The editor supports color-wheel and white-temperature selection, adding/removing colors, and changing their order. Save stores the palette without applying it; Cancel discards unsaved edits.
+
+User themes are stored atomically in `themes.json` alongside the floor plans and effect settings in the operating system's user configuration directory. They survive application updates and are shared between development and installed builds. Target selections, application variations, and device state are not saved with a theme.
 
 ## Device Health
 
