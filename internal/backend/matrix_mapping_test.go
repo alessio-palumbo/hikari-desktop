@@ -16,6 +16,62 @@ var matrixOrientations = []lifxdevice.Orientation{
 	lifxdevice.OrientationLeft, lifxdevice.OrientationRight,
 }
 
+func TestMatrixInfoCountsVisiblePixelsWithoutChangingPhysicalBuffers(t *testing.T) {
+	for _, tc := range []struct {
+		name                           string
+		product                        uint32
+		width, height, chains, visible int
+	}{
+		{"small Candle", 215, 5, 6, 1, 27},
+		{"Candle", 57, 5, 11, 1, 52},
+		{"Ceiling", 145, 8, 8, 1, 56},
+		{"Capsule", 201, 8, 16, 1, 120},
+		{"Luna", 219, 7, 5, 1, 31},
+		{"Tile chain", 55, 8, 8, 2, 128},
+		{"unknown rectangular", 999999, 3, 2, 1, 6},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			physicalCount := tc.width * tc.height
+			d := lifxdevice.Device{
+				Type: lifxdevice.DeviceTypeLight, LightType: lifxdevice.LightTypeMatrix, ProductID: tc.product,
+				MatrixProperties: lifxdevice.MatrixProperties{
+					Width: tc.width, Height: tc.height, NZones: physicalCount, ChainLength: tc.chains,
+					ChainZones: make([][]packets.LightHsbk, tc.chains),
+				},
+			}
+			for chain := range tc.chains {
+				d.MatrixProperties.ChainZones[chain] = make([]packets.LightHsbk, physicalCount)
+			}
+			before := d.Clone()
+			mapped := mapLifxDevice(d, "group")
+			if mapped.PixelCount != tc.visible || mapped.ChainLen != tc.chains {
+				t.Fatalf("pixels=%d chains=%d, want %d/%d", mapped.PixelCount, mapped.ChainLen, tc.visible, tc.chains)
+			}
+			if !reflect.DeepEqual(d, before) {
+				t.Fatal("mapping mutated physical state")
+			}
+			if len(mapped.Chain) != tc.chains {
+				t.Fatal("mapping dropped chain entries")
+			}
+			for _, matrix := range mapped.Chain {
+				if len(matrix.Pixels) != physicalCount || matrix.SendWidth != tc.width {
+					t.Fatal("visible count changed physical buffer dimensions")
+				}
+			}
+		})
+	}
+}
+
+func TestMatrixInfoRetainsReportedCountWhenGeometryIsUnknown(t *testing.T) {
+	d := lifxdevice.Device{
+		Type: lifxdevice.DeviceTypeLight, LightType: lifxdevice.LightTypeMatrix,
+		MatrixProperties: lifxdevice.MatrixProperties{NZones: 30},
+	}
+	if mapped := mapLifxDevice(d, "group"); mapped.PixelCount != 30 {
+		t.Fatalf("pixels=%d, want reported count 30", mapped.PixelCount)
+	}
+}
+
 func TestNativeMatrixMappingPreservesSquarePreviewAndSendOrder(t *testing.T) {
 	colors := make([]packets.LightHsbk, 64)
 	for i := range colors {

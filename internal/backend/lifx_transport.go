@@ -2198,6 +2198,9 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 		applyColorSummary(&device, device.Zones)
 	case DeviceKindMatrix:
 		device.PixelCount = d.MatrixProperties.NZones
+		if count, known := lifxdevice.VisibleZoneCount(d); known {
+			device.PixelCount = count
+		}
 		device.ChainLen = d.MatrixProperties.ChainLength
 		if device.ChainLen == 0 {
 			device.ChainLen = len(d.MatrixProperties.ChainZones)
