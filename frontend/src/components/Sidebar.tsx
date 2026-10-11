@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { ChevronDown, MessageSquareText, Network, RefreshCw, Search, X } from 'lucide-react';
 import type { NetworkSettings } from '../backend/api';
-import type { Device, Group } from '../domain/lifx';
+import { isLightDevice, type Device, type Group } from '../domain/lifx';
 import type { LocationCollection } from '../domain/locationCollections';
 import { devicesInLocationCollection, groupsInLocationCollection } from '../domain/locationCollections.js';
 import { PowerDot } from './primitives';
@@ -34,7 +34,8 @@ export function Sidebar(props: SidebarProps) {
   const selectedLocation = props.locations.find((location) => location.key === props.selectedLocationKey);
   const groupsInLocation = groupsInLocationCollection(selectedLocation, props.groups);
   const locationDevices = devicesInLocationCollection(selectedLocation, props.groups, props.devices);
-  const locationOn = locationDevices.some((device) => device.on);
+  const locationLights = locationDevices.filter(isLightDevice);
+  const locationOn = locationLights.some((device) => device.on);
   const statusText = props.refreshError
     ? props.refreshError
     : props.devices.length
@@ -95,7 +96,7 @@ export function Sidebar(props: SidebarProps) {
       </div>
 
       <div className="location-control">
-        <PowerDot disabled={!props.selectedLocationKey || !locationDevices.length} on={locationOn} size={7} onChange={(next) => props.onLocationPower(props.selectedLocationKey, next)} />
+        <PowerDot disabled={!props.selectedLocationKey || !locationLights.length} on={locationOn} size={7} onChange={(next) => props.onLocationPower(props.selectedLocationKey, next)} />
         <div className="location-select-wrap">
           <select className="location-select" value={props.selectedLocationKey} onChange={(event) => props.onLocationChange(event.target.value)} aria-label="Location">
             {props.locations.map((location) => (
@@ -110,7 +111,7 @@ export function Sidebar(props: SidebarProps) {
 
       <nav className="group-list" aria-label={`${selectedLocation?.name ?? 'Location'} groups`}>
         {groupsInLocation.map((group) => {
-          const groupDevices = props.devices.filter((device) => device.groupId === group.id);
+          const groupDevices = props.devices.filter(isLightDevice).filter((device) => device.groupId === group.id);
           const on = groupDevices.some((device) => device.on);
           return (
             <div
@@ -118,7 +119,7 @@ export function Sidebar(props: SidebarProps) {
               className="group-item"
               data-active={group.id === props.selectedGroupId}
             >
-              <PowerDot on={on} size={5} onChange={(next) => props.onGroupPower(group.id, next)} />
+              <PowerDot disabled={!groupDevices.length} on={on} size={5} onChange={(next) => props.onGroupPower(group.id, next)} />
               <button className="group-navigation" type="button" onClick={() => props.onGroupChange(group.id)}>
                 <span>{group.name.toLowerCase()}</span>
               </button>

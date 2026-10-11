@@ -1,10 +1,15 @@
-import { DeviceKind, type Device, type HslColor } from './lifx.js';
+import { DeviceKind, isLightDevice, type Device, type HslColor } from './lifx.js';
 
 export type DeviceCommandIntent = 'power' | 'brightness' | 'color' | 'zones' | 'matrix' | 'relay-power' | 'button-config';
 
 export interface PreparedDeviceUpdate {
   device: Device;
   intent: DeviceCommandIntent;
+}
+
+// Batch power is explicit even for members already in the requested state.
+export function prepareLightPowerUpdates(devices: Device[], on: boolean): PreparedDeviceUpdate[] {
+  return devices.filter(isLightDevice).map((device) => ({ device: { ...device, on }, intent: 'power' }));
 }
 
 export function prepareDeviceUpdate(

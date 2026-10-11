@@ -15,7 +15,7 @@ import { setLightPartState, type SetLightPartStateRequest } from './backend/api'
 import { applyPendingState, createPendingPartBrightness, createPendingPartPower } from './domain/reconcile';
 import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
 import { RoomInspector } from './components/RoomInspector';
-import { draftIntent, prepareDeviceUpdate, type DeviceCommandIntent } from './domain/commands';
+import { draftIntent, prepareDeviceUpdate, prepareLightPowerUpdates, type DeviceCommandIntent } from './domain/commands';
 import { activateEditedDevice, commitDraft, createDraft, mergeDraftMetadata, revertDraft, undoDraft, updateDraft, type DeviceDraft } from './domain/editor';
 import type { DeviceEffect, EffectParameters } from './domain/effects';
 import { applyTheme } from './backend/api';
@@ -1166,9 +1166,8 @@ export function App() {
         onLocationPower={(key, on) => {
           const collection = locationCollectionByKey(locationCollections, key);
           return void Promise.all(
-            devicesInLocationCollection(collection, snapshot.groups, snapshot.devices)
-              .filter(isLightDevice)
-              .map((device) => updateListDevice({ ...device, on })),
+            prepareLightPowerUpdates(devicesInLocationCollection(collection, snapshot.groups, snapshot.devices), on)
+              .map((command) => updateListDevice(command.device, command.intent)),
           );
         }}
         onNetworkInterfaceChange={(name) => void changeNetworkInterface(name)}
@@ -1176,7 +1175,7 @@ export function App() {
         onOpenCommands={openCommandModal}
         commandsOpen={commandOpen}
         onGroupPower={(id, on) =>
-          void Promise.all(snapshot.devices.filter(isLightDevice).filter((device) => device.groupId === id).map((device) => updateListDevice({ ...device, on })))
+          void Promise.all(prepareLightPowerUpdates(snapshot.devices.filter((device) => device.groupId === id), on).map((command) => updateListDevice(command.device, command.intent)))
         }
       />
 
@@ -1258,7 +1257,7 @@ export function App() {
               snapshot.devices
                 .filter(isLightDevice)
                 .filter((device) => device.groupId === groupId)
-                .map((device) => updateListDevice({ ...device, on, brightness: brightness ?? device.brightness })),
+                .map((device) => updateListDevice({ ...device, on, brightness: brightness ?? device.brightness }, brightness === undefined ? 'power' : 'brightness')),
             )
           }
         />
