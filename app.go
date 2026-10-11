@@ -26,6 +26,7 @@ type App struct {
 	floorPlans     backend.FloorPlanStore
 	effectSettings backend.EffectSettingsStore
 	themes         backend.ThemeStore
+	scenes         *backend.SceneService
 	emitEvent      func(context.Context, string, ...interface{})
 }
 
@@ -70,6 +71,7 @@ func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvide
 		floorPlans:     backend.NewFloorPlanStore(),
 		effectSettings: backend.NewEffectSettingsStore(),
 		themes:         backend.NewThemeStore(),
+		scenes:         backend.NewSceneService(transport, backend.NewSceneStore()),
 		emitEvent:      wailsruntime.EventsEmit,
 	}
 }
@@ -179,6 +181,32 @@ func (a *App) SaveUserTheme(req backend.SaveUserThemeRequest) (backend.UserTheme
 
 func (a *App) DeleteUserTheme(id string) error {
 	return a.themes.Delete(id)
+}
+
+func (a *App) GetScenes() ([]backend.SceneSummary, error) { return a.scenes.List() }
+
+func (a *App) CaptureScene(req backend.CaptureSceneRequest) (backend.SceneSummary, error) {
+	ctx, cancel := context.WithTimeout(a.context(), 5*time.Second)
+	defer cancel()
+	return a.scenes.Capture(ctx, req)
+}
+
+func (a *App) RenameScene(req backend.RenameSceneRequest) (backend.SceneSummary, error) {
+	return a.scenes.Rename(req)
+}
+
+func (a *App) EditScene(req backend.EditSceneRequest) (backend.SceneSummary, error) {
+	ctx, cancel := context.WithTimeout(a.context(), 5*time.Second)
+	defer cancel()
+	return a.scenes.Edit(ctx, req)
+}
+
+func (a *App) DeleteScene(id string) error { return a.scenes.Delete(id) }
+
+func (a *App) RecallScene(id string) (backend.SceneRecallResult, error) {
+	ctx, cancel := context.WithTimeout(a.context(), 10*time.Second)
+	defer cancel()
+	return a.scenes.Recall(ctx, id)
 }
 
 func (a *App) DeviceEffectParameters(serial string, effect backend.DeviceEffect) ([]backend.EffectParameter, error) {

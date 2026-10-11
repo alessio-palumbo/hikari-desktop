@@ -9,6 +9,9 @@ import { FloorPlan } from './components/FloorPlan';
 import { FloorPlanChooser } from './components/FloorPlanChooser';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
+import { Scenes } from './components/Scenes';
+import { captureScene, editScene, recallScene } from './backend/api';
+import { sceneCaptureScopes, type CaptureSceneRequest, type SceneSummary } from './domain/scenes';
 import { reconnectionStatus } from './domain/reconnection';
 import { isRecoverableNetworkError, networkErrorMessage } from './domain/networkErrors';
 import { setLightPartState, type SetLightPartStateRequest } from './backend/api';
@@ -478,6 +481,10 @@ export function App() {
   const currentGroup = snapshot.groups.find((group) => group.id === groupId);
   const locationDevices = devicesInLocationCollection(selectedLocationCollection, snapshot.groups, snapshot.devices);
   const floorPlanDevices = floorPlanProfile ? devicesForFloorPlanProfile(floorPlanProfile, snapshot.devices) : [];
+  const captureScopes = centerView === 'scenes' ? sceneCaptureScopes(snapshot, floorPlanProfile?.layout.floors.flatMap((floor) => floor.rooms.map((room) => ({
+    id: `room:${floorPlanProfile.id}:${floor.id}:${room.id}`, name: `${floorPlanProfile.name} / ${floor.label} / ${room.label}`, kind: 'room' as const,
+    serials: devicesAssignedToRoom(floorPlanDevices, floor, room.id).map((device) => device.serial),
+  }))) ?? []) : [];
   const activeFloor = activeFloorPlanFloor(floorPlanProfile?.layout);
   const locateFloorDevice = (serial: string, floorId?: string) => {
     if (floorId && floorId !== activeFloor?.id) selectFloor(floorId);
@@ -706,6 +713,36 @@ export function App() {
   };
 
   updateListDeviceRef.current = updateListDevice;
+
+  const captureSelectedScene = async (request: CaptureSceneRequest, editing = false) => {
+    if (draftRef.current && request.serials.includes(draftRef.current.draft.serial)) throw new Error('Exit layout editing before capturing a scene.');
+    await Promise.all(request.serials.map((serial) => deviceCommandRef.current[serial]?.catch(() => undefined)));
+    return editing ? editScene(request) : captureScene(request);
+  };
+
+  const recallSelectedScene = async (scene: SceneSummary) => {
+    const serials = scene.targets.map((target) => target.serial);
+    if (draftRef.current && serials.includes(draftRef.current.draft.serial)) throw new Error('Exit layout editing before recalling a scene.');
+    const operation = Promise.all(serials.map((serial) => deviceCommandRef.current[serial]?.catch(() => undefined))).then(async () => {
+      const result = await recallScene(scene.id);
+      for (const device of result.devices) {
+        clearPendingState(device.serial);
+        replaceDevice(device);
+      }
+      for (const failure of result.failures) if (failure.stateMayHaveChanged) clearPendingState(failure.serial);
+      const stopped = new Set([...result.devices.map((device) => device.serial), ...result.failures.filter((failure) => failure.stateMayHaveChanged).map((failure) => failure.serial)]);
+      setDeviceEffectStatus((current) => {
+        const next = { ...current };
+        for (const serial of stopped) next[serial] = { serial, running: false, pendingUntil: Date.now() + EFFECT_OBSERVATION_TIMEOUT_MS };
+        return next;
+      });
+      return result;
+    });
+    const pending = operation.then(() => undefined, () => undefined);
+    for (const serial of serials) deviceCommandRef.current[serial] = pending;
+    try { return await operation; }
+    finally { for (const serial of serials) if (deviceCommandRef.current[serial] === pending) delete deviceCommandRef.current[serial]; }
+  };
 
   const applyInspectorTheme = async (request: ThemeRequest) => {
     if (draftRef.current && request.serials.includes(draftRef.current.draft.serial)) {
@@ -1179,7 +1216,9 @@ export function App() {
         }
       />
 
-      {centerView === 'health' ? (
+      {centerView === 'scenes' ? (
+        <Scenes devices={snapshot.devices} scopes={captureScopes} defaultScopeId={selectedSerial ? `device:${selectedSerial}` : `group:${groupId}`} query={query} view={centerView} onViewChange={setCenterView} onCapture={captureSelectedScene} onEdit={(request) => captureSelectedScene(request, true)} onRecall={recallSelectedScene} />
+      ) : centerView === 'health' ? (
         <DeviceHealth
           snapshot={snapshot}
           query={query}
@@ -1286,7 +1325,7 @@ export function App() {
         }}
       />
 
-      {inspectorDevice ? (
+      {centerView === 'scenes' ? null : inspectorDevice ? (
         <Inspector
           device={inspectorDevice}
           locations={snapshot.locations}
@@ -1425,7 +1464,7 @@ function floorPlanProfileName(locationHints: string[], collections: ReturnType<t
 
 function loadCenterViewPreference(): CenterView {
   const view = loadPreference(CENTER_VIEW_KEY);
-  return view === 'floor' || view === 'health' ? view : 'list';
+  return view === 'floor' || view === 'health' || view === 'scenes' ? view : 'list';
 }
 
 function activeFloorPlanFloor(layout: FloorPlanPreferences['locations'][string] | undefined) {

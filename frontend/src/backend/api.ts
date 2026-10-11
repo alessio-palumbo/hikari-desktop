@@ -2,8 +2,15 @@ import { DeviceKind, type Device, type DeviceSnapshot, type HslColor, type Matri
 import type { DeviceCommandIntent } from '../domain/commands';
 import type { ThemeRequest, ThemePreview, ThemeApplyResult, UserTheme, SaveUserThemeRequest } from '../domain/themes';
 import type { DeviceEffect, DeviceEffectPreferences, EffectParameters, EffectPreference } from '../domain/effects';
+import type { SceneSummary, CaptureSceneRequest, SceneRecallResult } from '../domain/scenes';
 
 interface WailsApp {
+  GetScenes?: () => Promise<SceneSummary[]>;
+  CaptureScene?: (request: CaptureSceneRequest) => Promise<SceneSummary>;
+  EditScene?: (request: CaptureSceneRequest) => Promise<SceneSummary>;
+  RenameScene?: (request: { id: string; name: string }) => Promise<SceneSummary>;
+  DeleteScene?: (id: string) => Promise<void>;
+  RecallScene?: (id: string) => Promise<SceneRecallResult>;
   GetUserThemes?: () => Promise<UserTheme[]>;
   SaveUserTheme?: (request: SaveUserThemeRequest) => Promise<UserTheme>;
   DeleteUserTheme?: (id: string) => Promise<void>;
@@ -38,6 +45,41 @@ export async function previewTheme(request: ThemeRequest): Promise<ThemePreview>
   if (!preview) throw new Error('Theme preview is unavailable');
   const result = await preview(request);
   return { devices: result.devices ?? [] };
+}
+
+export async function getScenes(): Promise<SceneSummary[]> {
+  return await window.go?.main?.App?.GetScenes?.() ?? [];
+}
+
+export async function captureScene(request: CaptureSceneRequest): Promise<SceneSummary> {
+  const capture = window.go?.main?.App?.CaptureScene;
+  if (!capture) throw new Error('Scene capture is unavailable');
+  return capture(request);
+}
+
+export async function editScene(request: CaptureSceneRequest): Promise<SceneSummary> {
+  const edit = window.go?.main?.App?.EditScene;
+  if (!edit) throw new Error('Scene editing is unavailable');
+  return edit(request);
+}
+
+export async function renameScene(id: string, name: string): Promise<SceneSummary> {
+  const rename = window.go?.main?.App?.RenameScene;
+  if (!rename) throw new Error('Scene storage is unavailable');
+  return rename({ id, name });
+}
+
+export async function deleteScene(id: string): Promise<void> {
+  const remove = window.go?.main?.App?.DeleteScene;
+  if (!remove) throw new Error('Scene storage is unavailable');
+  await remove(id);
+}
+
+export async function recallScene(id: string): Promise<SceneRecallResult> {
+  const recall = window.go?.main?.App?.RecallScene;
+  if (!recall) throw new Error('Scene recall is unavailable');
+  const result = await recall(id);
+  return { devices: result.devices ?? [], failures: result.failures ?? [] };
 }
 
 export async function getUserThemes(): Promise<UserTheme[]> {
