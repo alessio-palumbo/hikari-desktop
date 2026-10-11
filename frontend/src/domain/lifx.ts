@@ -71,6 +71,9 @@ export interface Device {
   model: string;
   kind: DeviceKind;
   ipAddress?: string;
+  endpointRevision?: number;
+  lightParts?: LightPartInfo[];
+  lightPartStates?: Partial<Record<LightPart, LightPartState>>;
   productId?: number;
   firmware?: string;
   rssi?: number;
@@ -98,6 +101,22 @@ export interface DeviceCapability {
   hasColor: boolean;
   kelvinMin: number;
   kelvinMax: number;
+}
+
+export type LightPart = 'all' | 'main' | 'uplight';
+
+export interface LightPartInfo {
+  part: Exclude<LightPart, 'all'>;
+  zoneCount: number;
+  zonesKnown: boolean;
+  capability: DeviceCapability;
+}
+
+export interface LightPartState {
+  known: boolean;
+  on: boolean;
+  brightness: number;
+  devicePoweredOn: boolean;
 }
 
 export interface DeviceSnapshot {

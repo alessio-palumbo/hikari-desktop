@@ -5,7 +5,7 @@ import { activateEditedDevice } from '../dist-test/domain/editor.js';
 import { defaultEffectSpeedMs, formatEffectSpeed, speedToUnit, supportedDeviceEffects, supportedFirmwareEffects, unitToSpeedMs } from '../dist-test/domain/effects.js';
 import { DeviceKind, kelvinCss, previewLightness, previewOpacity } from '../dist-test/domain/lifx.js';
 import { applyDeviceBrightness, applyDeviceColor, initialPaintColor, kelvinToHsl, paintMatrixBrush, paintMatrixFill, paintMatrixGradient, paintMultizoneBrush, paintMultizoneFill, paintMultizoneGradient } from '../dist-test/domain/paint.js';
-import { createPendingState, isPendingConfirmed, isSnapshotStale, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
+import { applyPendingState, createPendingPartBrightness, createPendingPartPower, createPendingState, isPendingConfirmed, isSnapshotStale, reconcileSnapshot } from '../dist-test/domain/reconcile.js';
 
 const base = {
   locations: [{ id: 'home', name: 'Home' }],
@@ -24,6 +24,116 @@ const base = {
     },
   ],
 };
+
+function partDevice() {
+  return {
+    ...base.devices[0],
+    kind: DeviceKind.Matrix,
+    brightness: 0.8,
+    lightParts: [{ part: 'main' }, { part: 'uplight' }],
+    lightPartStates: {
+      main: { known: true, on: true, brightness: 0.8, devicePoweredOn: true },
+      uplight: { known: true, on: false, brightness: 0.2, devicePoweredOn: true },
+      all: { known: true, on: true, brightness: 0.8, devicePoweredOn: true },
+    },
+  };
+}
+
+test('positive part brightness updates the slider and power dot without changing shared power or colors', () => {
+  const device = partDevice();
+  const pending = createPendingPartBrightness(device, 'uplight', 0.6, undefined, 1000);
+  const optimistic = applyPendingState(device, pending, 1100);
+  assert.equal(optimistic.lightPartStates.uplight.brightness, 0.6);
+  assert.equal(optimistic.lightPartStates.main.brightness, 0.8);
+  assert.equal(optimistic.lightPartStates.uplight.on, true);
+  assert.equal(optimistic.lightPartStates.uplight.devicePoweredOn, true);
+  assert.deepEqual(optimistic.zones, device.zones);
+  assert.equal(isPendingConfirmed(device, pending), false);
+});
+
+test('all-part brightness is optimistic in both list and inspector, including zero', () => {
+  const device = partDevice();
+  const pending = createPendingPartBrightness(device, 'all', 0, undefined, 1000);
+  const optimistic = applyPendingState(device, pending, 1100);
+  assert.equal(optimistic.brightness, 0);
+  for (const part of ['main', 'uplight', 'all']) assert.equal(optimistic.lightPartStates[part].brightness, 0);
+  assert.equal(optimistic.on, false);
+  assert.equal(optimistic.lightPartStates.main.on, false);
+  assert.equal(optimistic.lightPartStates.main.devicePoweredOn, true);
+});
+
+test('stale part observations cannot reset optimistic brightness; confirmation and timeout release it', () => {
+  const device = partDevice();
+  const pending = createPendingPartBrightness(device, 'main', 0.6, undefined, 1000);
+  assert.equal(applyPendingState(device, pending, 1100).lightPartStates.main.brightness, 0.6);
+  const confirmed = {
+    ...device, brightness: 0.601,
+    lightPartStates: { ...device.lightPartStates, main: { ...device.lightPartStates.main, brightness: 0.601 }, all: { ...device.lightPartStates.all, brightness: 0.601 } },
+  };
+  assert.equal(isPendingConfirmed(confirmed, pending), true);
+  assert.equal(applyPendingState(confirmed, pending, 1200), confirmed);
+  assert.equal(applyPendingState(device, pending, 6000), device);
+});
+
+test('rapid edits across parts retain requested brightness without predicting aggregate inherited brightness', () => {
+  const device = partDevice();
+  const mainPending = createPendingPartBrightness(device, 'main', 0.4, undefined, 1000);
+  const next = applyPendingState(device, mainPending, 1100);
+  const latest = createPendingPartBrightness(next, 'uplight', 0.7, mainPending, 1200);
+  const optimistic = applyPendingState(device, latest, 1300);
+  assert.equal(optimistic.lightPartStates.main.brightness, 0.4);
+  assert.equal(optimistic.lightPartStates.uplight.brightness, 0.7);
+  assert.equal(optimistic.brightness, device.brightness);
+  assert.equal(optimistic.lightPartStates.uplight.on, true);
+});
+
+test('unknown or migrated part state is not made known by a pending slider value', () => {
+  const device = partDevice();
+  const pending = createPendingPartBrightness(device, 'main', 0.4, undefined, 1000);
+  const unknown = { ...device, lightPartStates: { ...device.lightPartStates, main: { ...device.lightPartStates.main, known: false } } };
+  assert.equal(isPendingConfirmed(unknown, pending), false);
+  assert.equal(applyPendingState(unknown, pending, 1100).lightPartStates.main.known, false);
+  const moved = { ...device, endpointRevision: 1 };
+  assert.equal(applyPendingState(moved, pending, 1100), moved);
+});
+
+test('part power toggle updates immediately but does not invent shared power or inherited brightness', () => {
+  const device = partDevice();
+  const pending = createPendingPartPower(device, 'uplight', true, undefined, 1000);
+  const optimistic = applyPendingState(device, pending, 1100);
+  assert.equal(optimistic.lightPartStates.uplight.on, true);
+  assert.equal(optimistic.lightPartStates.uplight.brightness, 0.2);
+  assert.equal(optimistic.lightPartStates.uplight.devicePoweredOn, true);
+  assert.equal(optimistic.lightPartStates.main.on, true);
+  const stale = reconcileSnapshot({ ...base, devices: [optimistic] }, { ...base, devices: [device] }, { pending: { [device.serial]: pending }, now: 1200 });
+  assert.equal(stale.devices[0].lightPartStates.uplight.on, true);
+  const confirmed = { ...device, lightPartStates: { ...device.lightPartStates, uplight: { ...device.lightPartStates.uplight, on: true, brightness: 0.8 } } };
+  assert.equal(isPendingConfirmed(confirmed, pending), true);
+  assert.equal(applyPendingState(confirmed, pending, 1300), confirmed);
+  assert.equal(applyPendingState(device, pending, 6000), device);
+});
+
+test('all-part power toggles both inspector dots and list state without setting brightness', () => {
+  const device = partDevice();
+  const pending = createPendingPartPower(device, 'all', false, undefined, 1000);
+  const optimistic = applyPendingState(device, pending, 1100);
+  assert.equal(optimistic.on, false);
+  for (const part of ['main', 'uplight', 'all']) {
+    assert.equal(optimistic.lightPartStates[part].on, false);
+    assert.equal(optimistic.lightPartStates[part].brightness, device.lightPartStates[part].brightness);
+    assert.equal(optimistic.lightPartStates[part].devicePoweredOn, true);
+  }
+});
+
+test('power activation drops previous zero-brightness expectation and accepts inherited brightness', () => {
+  const device = partDevice();
+  const zero = createPendingPartBrightness(device, 'uplight', 0, undefined, 1000);
+  const pending = createPendingPartPower(applyPendingState(device, zero, 1100), 'uplight', true, zero, 1200);
+  assert.equal(pending.partBrightness, undefined);
+  const inherited = { ...device, lightPartStates: { ...device.lightPartStates, uplight: { ...device.lightPartStates.uplight, on: true, brightness: 0.8 } } };
+  assert.equal(isPendingConfirmed(inherited, pending), true);
+  assert.equal(applyPendingState(inherited, pending, 1300).lightPartStates.uplight.brightness, 0.8);
+});
 
 test('preserves active multizone draft edits during refresh', () => {
   const incoming = {
@@ -65,6 +175,31 @@ test('keeps missing devices as offline instead of dropping them', () => {
   assert.equal(got.devices.length, 1);
   assert.equal(got.devices[0].serial, 'd073d501a2c3');
   assert.equal(got.devices[0].online, false);
+});
+
+test('endpoint moves replace stale pending state without changing device identity', () => {
+  const previous = { ...base.devices[0], endpointRevision: 0, ipAddress: '192.168.1.10' };
+  const optimistic = { ...previous, brightness: 0.9 };
+  const pending = createPendingState(optimistic, previous, 1000);
+  const moved = { ...previous, endpointRevision: 1, ipAddress: '192.168.1.42', brightness: 0.2 };
+  const incoming = { ...base, devices: [moved] };
+  const got = reconcileSnapshot({ ...base, devices: [optimistic] }, incoming, { pending: { [previous.serial]: pending }, now: 1500 });
+  assert.equal(got.devices.length, 1);
+  assert.equal(got.devices[0].serial, previous.serial);
+  assert.equal(got.devices[0].brightness, 0.2);
+  assert.equal(got.devices[0].ipAddress, '192.168.1.42');
+  assert.equal(isPendingConfirmed(moved, pending), true);
+  const later = reconcileSnapshot(got, incoming, { pending: { [previous.serial]: pending }, now: 1600 });
+  assert.equal(later.devices[0].brightness, 0.2);
+});
+
+test('draft reconciliation accepts current network metadata and part observations', () => {
+  const current = { ...base.devices[0], lightPartStates: { main: { known: true, on: true, brightness: 0.5, devicePoweredOn: true } } };
+  const states = { main: { known: false, on: false, brightness: 0, devicePoweredOn: false } };
+  const incoming = { ...base, devices: [{ ...current, ipAddress: '192.168.1.42', lightPartStates: states }] };
+  const got = reconcileSnapshot({ ...base, devices: [current] }, incoming, { draftSerials: new Set([current.serial]) });
+  assert.equal(got.devices[0].ipAddress, '192.168.1.42');
+  assert.deepEqual(got.devices[0].lightPartStates, states);
 });
 
 test('keeps hierarchy referenced by retained offline devices', () => {

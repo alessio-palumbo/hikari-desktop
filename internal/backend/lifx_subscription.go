@@ -123,6 +123,10 @@ func (t *LifxTransport) storeObservedDevice(generation uint64, event lifxcontrol
 	if generation != t.subscriptionGeneration || (t.observedReady && event.Revision <= t.observedRevision) {
 		return false, t.observedReady
 	}
+	previous, exists := t.observed[event.Device.Serial]
+	if event.Changes.Has(lifxcontroller.DeviceChangeAddress) || (exists && deviceEndpointChanged(previous, event.Device)) {
+		t.invalidateEndpointLocked(event.Device.Serial.String())
+	}
 	t.observed[event.Device.Serial] = event.Device.Clone()
 	if !event.Initial {
 		t.observedRevision = event.Revision
@@ -167,6 +171,11 @@ func (t *LifxTransport) resyncObservedDevices(ctrl lifxController, generation ui
 	if generation != t.subscriptionGeneration || revision < t.observedRevision {
 		return false, t.observedReady
 	}
+	for serial, device := range next {
+		if previous, exists := t.observed[serial]; exists && deviceEndpointChanged(previous, device) {
+			t.invalidateEndpointLocked(serial.String())
+		}
+	}
 	t.observed = next
 	t.observedReady = true
 	t.observedRevision = revision
@@ -203,6 +212,7 @@ func (t *LifxTransport) notifyDeviceSnapshot(ctrl lifxController, generation uin
 	devices, revision := t.snapshotSourceDevices(ctrl)
 	snapshot := mapLifxDevices(devices)
 	snapshot.Revision = revision
+	t.observeLightParts(ctrl, &snapshot)
 	t.reconcileFirmwareEffectSnapshot(&snapshot, time.Now())
 	t.reconcileRestoreSnapshot(&snapshot, time.Now())
 	t.reconcileMetadataSnapshot(&snapshot, time.Now())

@@ -4,7 +4,7 @@ import { EffectPreview } from './EffectPreview';
 import { EffectSettings } from './EffectSettings';
 import { ThemeControls } from './ThemeControls';
 import type { ThemeRequest } from '../domain/themes';
-import { getDeviceEffectPreferences, saveDeviceEffectPreference, type DeviceEffectStatus } from '../backend/api';
+import { getDeviceEffectPreferences, saveDeviceEffectPreference, type DeviceEffectStatus, type SetLightPartStateRequest } from '../backend/api';
 import { deviceUptime } from '../domain/diagnostics';
 import { compatibleInspectorMode, type InspectorMode } from '../domain/inspectorMode';
 import {
@@ -17,7 +17,7 @@ import {
   type EffectParameters,
   type EffectPanels,
 } from '../domain/effects';
-import { DeviceKind, hsl, isLightDevice, previewLightness, previewOpacity, type Device, type Group, type HslColor, type Location } from '../domain/lifx';
+import { DeviceKind, hsl, isLightDevice, previewLightness, previewOpacity, type Device, type Group, type HslColor, type Location, type LightPart } from '../domain/lifx';
 import {
   applyDeviceBrightness,
   applyDeviceColor,
@@ -56,6 +56,7 @@ interface InspectorProps {
   onChange: (device: Device) => void;
   onMetadataSave: (request: { serial: string; label: string; locationId: string; groupId: string }) => Promise<void>;
   onPowerChange: (on: boolean) => void;
+  onLightPartChange: (request: SetLightPartStateRequest) => void;
   onStartEffect: (effect: DeviceEffect, speedMs: number, params?: EffectParameters) => Promise<boolean>;
   onStopEffect: () => void;
   onApplyTheme: (request: ThemeRequest) => Promise<void>;
@@ -80,10 +81,15 @@ export function Inspector(props: InspectorProps) {
   const [gradientStops, setGradientStops] = useState<GradientStops>({});
   const [gradientDirection, setGradientDirection] = useState<GradientDirection>('e');
   const [showInfo, setShowInfo] = useState(false);
+  const [lightPart, setLightPart] = useState<LightPart>('all');
   const [showMetadataEditor, setShowMetadataEditor] = useState(false);
   const editRequestedRef = useRef(false);
   const isLight = isLightDevice(device);
-  const hasColor = isLight && (device.capability?.hasColor ?? true);
+  const hasUplight = device.lightParts?.some((part) => part.part === 'uplight') ?? false;
+  const partControls = hasUplight && !props.editing;
+  const partState = device.lightPartStates?.[lightPart];
+  const partCapability = device.lightParts?.find((part) => part.part === lightPart)?.capability ?? device.capability;
+  const hasColor = isLight && (partControls ? partCapability?.hasColor ?? true : device.capability?.hasColor ?? true);
   const hasEffects = isLight && supportedDeviceEffects(device).length > 0;
 
   useEffect(() => {
@@ -97,6 +103,7 @@ export function Inspector(props: InspectorProps) {
     setGradientStops({});
     setGradientDirection('e');
     setShowInfo(false);
+    setLightPart('all');
     setShowMetadataEditor(false);
   }, [device.serial]);
 
@@ -110,11 +117,15 @@ export function Inspector(props: InspectorProps) {
     setWhiteColor((current) => ({ ...current, l: device.brightness }));
   }, [device.brightness, props.editing]);
 
-  const kelvinMin = device.capability?.kelvinMin ?? 2500;
-  const kelvinMax = device.capability?.kelvinMax ?? 6500;
+  const kelvinMin = partCapability?.kelvinMin ?? 2500;
+  const kelvinMax = partCapability?.kelvinMax ?? 6500;
   const whiteValue = Math.max(0, Math.min(1, (whiteKelvin - kelvinMin) / Math.max(1, kelvinMax - kelvinMin)));
   const activePaintColor = mode === 'white' ? whiteColor : paintColor;
-  const brightnessValue = props.editing ? activePaintColor.l : device.brightness;
+  const brightnessValue = props.editing ? activePaintColor.l : partControls ? (partState?.known ? partState.brightness : 0) : device.brightness;
+  const sendPartChange = (change: Omit<SetLightPartStateRequest, 'serial' | 'part'>) => {
+    if (!device.online || props.saving || !partState?.known) return;
+    props.onLightPartChange({ serial: device.serial, part: lightPart, ...change });
+  };
 
   const setInspectorMode = (next: InspectorMode) => {
     setMode(next);
@@ -124,10 +135,13 @@ export function Inspector(props: InspectorProps) {
   const setColor = (color: HslColor) => {
     const next = { ...color, l: brightnessValue };
     setPaintColor(next);
-    if (!props.editing && !editRequestedRef.current && hasColor) props.onChange(applyDeviceColor(device, next));
+    if (!props.editing && !editRequestedRef.current && hasColor) {
+      if (!partControls) props.onChange(applyDeviceColor(device, next));
+    }
   };
 
   const commitColor = (color: HslColor) => {
+    if (partControls) sendPartChange({ hue: color.h, saturation: color.s * 100 });
     recordGradientColor({ ...color, l: brightnessValue });
   };
 
@@ -136,16 +150,23 @@ export function Inspector(props: InspectorProps) {
     const color = { ...kelvinToHsl(nextKelvin), l: brightnessValue };
     setWhiteKelvin(nextKelvin);
     setWhiteColor(color);
-    if (!props.editing && !editRequestedRef.current) props.onChange(applyDeviceColor(device, color));
+    if (!props.editing && !editRequestedRef.current) {
+      if (!partControls) props.onChange(applyDeviceColor(device, color));
+    }
   };
 
   const commitKelvin = (value: number) => {
     const nextKelvin = Math.round(kelvinMin + value * (kelvinMax - kelvinMin));
+    if (partControls) sendPartChange({ saturation: 0, kelvin: nextKelvin });
     recordGradientColor({ ...kelvinToHsl(nextKelvin), l: brightnessValue });
   };
 
   const setBrightness = (value: number) => {
     if (!props.editing && !editRequestedRef.current) {
+      if (partControls) {
+        sendPartChange({ brightness: value });
+        return;
+      }
       props.onChange(applyDeviceBrightness(device, value));
       return;
     }
@@ -226,6 +247,16 @@ export function Inspector(props: InspectorProps) {
       {!isLight ? <SwitchDetails device={device} onChange={props.onChange} /> : null}
 
       {isLight ? <ModeToggle value={mode} hasColor={hasColor} hasEffects={hasEffects} hasThemes onChange={setInspectorMode} /> : null}
+      {partControls && (mode === 'color' || mode === 'white') ? (
+        <div className="light-part-controls">
+          <div className="mode-toggle" role="group" aria-label="Light part">
+            {(['all', 'main', 'uplight'] as const).map((part) => (
+              <button type="button" key={part} data-active={lightPart === part ? 'true' : 'false'} aria-pressed={lightPart === part} onClick={() => setLightPart(part)}>{part}</button>
+            ))}
+          </div>
+          {!partState?.known ? <p className="light-part-status">waiting for device state</p> : null}
+        </div>
+      ) : null}
       {isLight && mode === 'themes' ? <ThemeControls key={device.serial} devices={[device]} showDeviceNames={false} editing={props.editing} disabled={props.saving || props.loading} onApply={props.onApplyTheme} /> : null}
 
       {isLight && mode === 'color' ? (
@@ -242,12 +273,13 @@ export function Inspector(props: InspectorProps) {
 
       {isLight && (mode === 'color' || mode === 'white') ? (
         <PowerSlider
-          powerOn={props.powerOn ?? device.on}
-          powerDisabled={!device.online || props.loading || props.saving}
-          onPowerChange={props.onPowerChange}
+          powerOn={partControls ? partState?.known === true && partState.on : props.powerOn ?? device.on}
+          powerDisabled={!device.online || props.loading || props.saving || (partControls && !partState?.known)}
+          disabled={partControls && (!partState?.known || props.saving)}
+          onPowerChange={partControls ? (power) => sendPartChange({ power }) : props.onPowerChange}
           label={props.editing ? 'paint brightness' : 'brightness'}
           value={brightnessValue}
-          valueLabel={!props.editing && !(props.powerOn ?? device.on) ? 'off' : undefined}
+          valueLabel={partControls ? (!partState?.known ? 'unknown' : undefined) : !props.editing && !(props.powerOn ?? device.on) ? 'off' : undefined}
           onChange={setBrightness}
         />
       ) : null}
@@ -688,13 +720,18 @@ function DeviceInfo({ device, locationName, groupName }: { device: Device; locat
 }
 
 function deviceShapeRows(device: Device): string[][] {
+  const mainPart = device.lightParts?.find((part) => part.part === 'main');
   if (device.kind === DeviceKind.Multizone) {
-    return [['zones', String(device.zoneCount ?? device.zones?.length ?? 'unknown')]];
+    return [['zones', mainPart ? (mainPart.zonesKnown ? String(mainPart.zoneCount) : 'unknown') : String(device.zoneCount ?? device.zones?.length ?? 'unknown')]];
   }
   if (device.kind === DeviceKind.Matrix) {
-    const pixelCount = device.pixelCount ?? device.chain?.[0]?.pixels.length;
+    const pixelCount = mainPart ? (mainPart.zonesKnown ? mainPart.zoneCount : undefined) : device.pixelCount ?? device.chain?.[0]?.pixels.length;
     const chainLength = device.chainLength ?? device.chain?.length;
-    const rows = [['pixels', pixelCount === undefined ? 'unknown' : String(pixelCount)]];
+    const rows = [[device.lightParts?.some((part) => part.part === 'uplight') ? 'main pixels' : 'pixels', pixelCount === undefined ? 'unknown' : String(pixelCount)]];
+    const uplight = device.lightParts?.find((part) => part.part === 'uplight');
+    if (uplight) rows.push(['uplight zones', uplight.zonesKnown ? String(uplight.zoneCount) : 'unknown']);
+    const partState = device.lightPartStates?.all;
+    if (partState) rows.push(['device power', partState.known ? (partState.devicePoweredOn ? 'on' : 'off') : 'unknown']);
     if (chainLength !== undefined && chainLength > 1) rows.push(['chain length', String(chainLength)]);
     return rows;
   }

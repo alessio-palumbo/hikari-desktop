@@ -1597,3 +1597,12 @@
 .switch-color-wheel {
   margin-top: 2px;
 }
+.light-part-controls {
+  margin-top: 12px;
+}
+
+.light-part-status {
+  margin: 8px 0 0;
+  color: var(--fg-2);
+  font-size: 11px;
+}

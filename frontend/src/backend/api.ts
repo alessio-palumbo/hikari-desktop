@@ -1,4 +1,4 @@
-import { DeviceKind, type Device, type DeviceSnapshot, type HslColor, type Matrix } from '../domain/lifx';
+import { DeviceKind, type Device, type DeviceSnapshot, type HslColor, type Matrix, type LightPart } from '../domain/lifx';
 import type { DeviceCommandIntent } from '../domain/commands';
 import type { ThemeRequest, ThemePreview, ThemeApplyResult, UserTheme, SaveUserThemeRequest } from '../domain/themes';
 import type { DeviceEffect, DeviceEffectPreferences, EffectParameters, EffectPreference } from '../domain/effects';
@@ -22,6 +22,7 @@ interface WailsApp {
   SetNetworkInterface?: (request: SetNetworkInterfaceRequest) => Promise<NetworkSettings>;
   RestartDeviceDiscovery?: () => Promise<NetworkSettings>;
   SetDeviceState?: (request: SetDeviceStateRequest) => Promise<Device>;
+  SetLightPartState?: (request: SetLightPartStateRequest) => Promise<void>;
   SetDeviceMetadata?: (request: SetDeviceMetadataRequest) => Promise<Device>;
   StartDeviceEffect?: (request: StartDeviceEffectRequest) => Promise<DeviceEffectStatus>;
   StopDeviceEffect?: (request: StopDeviceEffectRequest) => Promise<DeviceEffectStatus>;
@@ -181,6 +182,22 @@ interface SetDeviceStateRequest {
   device: Device;
   preview: boolean;
   intent: DeviceCommandIntent;
+}
+
+export interface SetLightPartStateRequest {
+  serial: string;
+  part: LightPart;
+  power?: boolean;
+  hue?: number;
+  saturation?: number;
+  brightness?: number;
+  kelvin?: number;
+}
+
+export async function setLightPartState(request: SetLightPartStateRequest): Promise<void> {
+  const send = window.go?.main?.App?.SetLightPartState;
+  if (!send) throw new Error('Light part controls are unavailable');
+  await send(request);
 }
 
 export interface SetDeviceMetadataRequest {

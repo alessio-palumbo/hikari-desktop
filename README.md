@@ -29,6 +29,8 @@ Browse lights by location and group, search by name, and control power, brightne
 
 For strips and matrices, enter layout editing to paint with brush, fill, picker, and gradient tools. Changes stay in a draft until you apply them, with undo and revert available. Previews account for device orientation and irregular pixel layouts.
 
+Supported uplight devices remain a single light in the inventory. In the color/white inspector, select `main`, `uplight`, or `all` for partial color, white temperature, brightness, and explicit power controls. Stored brightness is shown separately from effective part power; zero brightness does not send device power-off. Reactivating a part inherits brightness through lifxlan-go, rather than restoring a historical part setting; if every part retains zero brightness, activation uses a 1% fallback. Choosing a color, white temperature, or positive brightness prepares the selected part's state before activating it when off. Sliders and power dots respond immediately and reconcile with observations, while shared-device power and inherited brightness remain library-owned. Controls wait for known observed state, and successful sends are not treated as acknowledgements. Matrix layout edits, themes, and effects still act on the device's raw surface and may overwrite the uplight.
+
 ### Map Your Space
 
 Place lights in rooms across multiple floors, reshape rooms, and control a room's lights together. Independent floor-plan profiles let you keep home and office layouts without tying a physical space to one LIFX location.
@@ -244,6 +246,8 @@ flowchart TB
 ```
 
 The UI owns interaction, drafts, previews, and room-level occupancy policy. Go services manage device transport, sensor subscriptions, command interpretation, and persistence. Device updates arrive through subscriptions and Wails events; recovery snapshots reconcile state without overwriting active edits.
+
+Device endpoint changes preserve serial identity but invalidate dependent observations and pending state. Same-interface network returns refresh discovery on the existing controller; intentional interface changes or closed sockets recreate it. Provisioning remains outside hikari, in the separate onboarding library.
 
 Sensaa reports observations, and lifxlan-go handles light state and control. Room associations and lighting decisions stay in hikari; neither library depends on the other. The command engine interprets requests but never discovers or controls lights.
 

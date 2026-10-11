@@ -1,9 +1,12 @@
-import { DeviceKind, type Device, type DeviceSnapshot } from './lifx.js';
+import { DeviceKind, type Device, type DeviceSnapshot, type LightPart } from './lifx.js';
 
 export const PENDING_STATE_TIMEOUT_MS = 4500;
 
 export interface PendingDeviceState {
   serial: string;
+  endpointRevision?: number;
+  partBrightness?: Partial<Record<LightPart, number>>;
+  partPower?: Partial<Record<LightPart, boolean>>;
   expected: Pick<Partial<Device>, 'on' | 'brightness' | 'color' | 'kelvin' | 'zones' | 'chain' | 'relays' | 'buttonConfig'>;
   expiresAt: number;
 }
@@ -22,8 +25,9 @@ export function reconcileSnapshot(current: DeviceSnapshot, incoming: DeviceSnaps
   const currentBySerial = new Map(current.devices.map((device) => [device.serial, device]));
   const devices = incoming.devices.map((device) => {
     const currentDevice = currentBySerial.get(device.serial);
+    if (currentDevice && (currentDevice.endpointRevision ?? 0) !== (device.endpointRevision ?? 0)) return device;
     if (currentDevice && draftSerials.has(device.serial) && currentDevice.kind !== DeviceKind.Single) {
-      return applyPendingState({ ...currentDevice, online: device.online }, pending[device.serial], now);
+      return applyPendingState({ ...currentDevice, online: device.online, ipAddress: device.ipAddress, lightPartStates: device.lightPartStates }, pending[device.serial], now);
     }
     return applyPendingState(device, pending[device.serial], now);
   });
@@ -87,10 +91,19 @@ export function createPendingState(device: Device, previous?: Device, now = Date
   if (device.kind === DeviceKind.Switch && (!previous || !sameValue(previous.relays, device.relays))) expected.relays = clone(device.relays);
   if (device.kind === DeviceKind.Switch && (!previous || !sameValue(previous.buttonConfig, device.buttonConfig))) expected.buttonConfig = clone(device.buttonConfig);
   if (!hasExpectedState(expected)) return undefined;
-  return { serial: device.serial, expected, expiresAt: now + PENDING_STATE_TIMEOUT_MS };
+  return { serial: device.serial, endpointRevision: device.endpointRevision, expected, expiresAt: now + PENDING_STATE_TIMEOUT_MS };
 }
 
 export function isPendingConfirmed(device: Device, pending: PendingDeviceState): boolean {
+  if ((device.endpointRevision ?? 0) !== (pending.endpointRevision ?? 0)) return true;
+  for (const [part, brightness] of Object.entries(pending.partBrightness ?? {})) {
+    const observed = device.lightPartStates?.[part as LightPart];
+    if (!observed?.known || !near(observed.brightness, brightness)) return false;
+  }
+  for (const [part, on] of Object.entries(pending.partPower ?? {})) {
+    const observed = device.lightPartStates?.[part as LightPart];
+    if (!observed?.known || observed.on !== on) return false;
+  }
   if (pending.expected.on !== undefined && device.on !== pending.expected.on) return false;
   if (pending.expected.brightness !== undefined && !near(device.brightness, pending.expected.brightness)) return false;
   if (pending.expected.color !== undefined && !sameValue(device.color, pending.expected.color)) return false;
@@ -106,9 +119,73 @@ export function isPendingExpired(pending: PendingDeviceState, now = Date.now()):
   return now >= pending.expiresAt;
 }
 
-function applyPendingState(device: Device, pending: PendingDeviceState | undefined, now: number): Device {
+export function applyPendingState(device: Device, pending: PendingDeviceState | undefined, now = Date.now()): Device {
   if (!pending || isPendingExpired(pending, now) || isPendingConfirmed(device, pending)) return device;
-  return { ...device, ...pending.expected };
+  const next = { ...device, ...pending.expected };
+  if ((pending.partBrightness || pending.partPower) && device.lightPartStates) {
+    next.lightPartStates = { ...device.lightPartStates };
+    for (const [part, brightness] of Object.entries(pending.partBrightness ?? {})) {
+      const key = part as LightPart;
+      const observed = device.lightPartStates[key];
+      if (observed?.known) next.lightPartStates[key] = { ...observed, brightness };
+    }
+    for (const [part, on] of Object.entries(pending.partPower ?? {})) {
+      const key = part as LightPart;
+      const current = next.lightPartStates[key];
+      if (current?.known) next.lightPartStates[key] = { ...current, on };
+    }
+  }
+  return next;
+}
+
+// Show requested slider/dot values immediately, without predicting shared
+// device power or the library's inherited brightness after activation.
+export function createPendingPartBrightness(device: Device, part: LightPart, brightness: number, previous?: PendingDeviceState, now = Date.now()): PendingDeviceState {
+  const reusable = previous && !isPendingExpired(previous, now) && (previous.endpointRevision ?? 0) === (device.endpointRevision ?? 0);
+  const values = { ...(reusable ? previous.partBrightness : {}) };
+  if (part === 'all') {
+    values.all = brightness;
+    for (const info of device.lightParts ?? []) values[info.part] = brightness;
+  } else {
+    values[part] = brightness;
+    // Activation can change dormant state in the other part. Let observations
+    // provide aggregate brightness rather than predicting library sequencing.
+    delete values.all;
+  }
+  const pending = createPendingPartPower(device, part, brightness > 0, previous, now);
+  const expected = { ...pending.expected };
+  if (values.all === undefined) delete expected.brightness;
+  else expected.brightness = values.all;
+  return { ...pending, partBrightness: values, expected };
+}
+
+export function createPendingPartPower(device: Device, part: LightPart, on: boolean, previous?: PendingDeviceState, now = Date.now()): PendingDeviceState {
+  const reusable = previous && !isPendingExpired(previous, now) && (previous.endpointRevision ?? 0) === (device.endpointRevision ?? 0);
+  const values = { ...(reusable ? previous.partPower : {}) };
+  if (part === 'all') {
+    values.all = on;
+    for (const info of device.lightParts ?? []) values[info.part] = on;
+  } else {
+    values[part] = on;
+    const other = part === 'main' ? 'uplight' : 'main';
+    const otherState = device.lightPartStates?.[other];
+    if (on) values.all = true;
+    else if (otherState?.known) values.all = values[other] ?? otherState.on;
+    else delete values.all;
+  }
+  const expected = { ...(reusable ? previous.expected : {}) };
+  // Explicit power can inherit or clear stored brightness. Do not carry an
+  // earlier slider expectation across that operation.
+  delete expected.brightness;
+  if (values.all === undefined) delete expected.on;
+  else expected.on = values.all;
+  return {
+    serial: device.serial,
+    endpointRevision: device.endpointRevision,
+    partPower: values,
+    expected,
+    expiresAt: now + PENDING_STATE_TIMEOUT_MS,
+  };
 }
 
 function near(a: number, b: number) {

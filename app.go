@@ -242,6 +242,18 @@ func (a *App) SetDeviceState(req backend.SetDeviceStateRequest) (backend.Device,
 	return a.transport.SetDeviceState(a.context(), req)
 }
 
+func (a *App) SetLightPartState(req backend.SetLightPartStateRequest) error {
+	transport, ok := a.transport.(interface {
+		SetLightPartState(context.Context, backend.SetLightPartStateRequest) error
+	})
+	if !ok {
+		return fmt.Errorf("light part controls are unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.context(), 5*time.Second)
+	defer cancel()
+	return transport.SetLightPartState(ctx, req)
+}
+
 func (a *App) SetDeviceMetadata(req backend.SetDeviceMetadataRequest) (backend.Device, error) {
 	return a.transport.SetDeviceMetadata(a.context(), req)
 }

@@ -18,8 +18,8 @@ require (
 
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
-	github.com/alessio-palumbo/lifxlan-go v0.14.4
-	github.com/alessio-palumbo/lifxregistry-go v0.4.0 // indirect
+	github.com/alessio-palumbo/lifxlan-go v0.15.0
+	github.com/alessio-palumbo/lifxregistry-go v0.5.1 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect

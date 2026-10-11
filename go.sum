@@ -2,12 +2,12 @@ git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 h1:N3IGoHHp9pb6mj1cbXbuaSXV/UMKwmbKLf
 git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3/go.mod h1:QtOLZGz8olr4qH2vWK0QH0w0O4T9fEIjMuWpKUsH7nc=
 github.com/alessio-palumbo/lifx-command-engine v0.2.5 h1:kdbidmpmyzXw+F7ZAXHhaSzu9+C+5rFSTWXaay0jJ4I=
 github.com/alessio-palumbo/lifx-command-engine v0.2.5/go.mod h1:cR577vCtCj3rgYaSAuidcV55vLXCD47/Di+3PX7vNCo=
-github.com/alessio-palumbo/lifxlan-go v0.14.4 h1:6VDlkf4vJUFwExycInqVJ7zZSXKj/tDMSTAkj/fqD7U=
-github.com/alessio-palumbo/lifxlan-go v0.14.4/go.mod h1:FMyKzB+KBU2gtiCF+KORDLLtrbV3wtbIoyJXy4afTHs=
+github.com/alessio-palumbo/lifxlan-go v0.15.0 h1:JUg1TMBvWEXkTdeMn0atBHn+3vM2d7vMeE+zPsNgZsk=
+github.com/alessio-palumbo/lifxlan-go v0.15.0/go.mod h1:IofNBTvK2XpfNv6PgcOqt0ePfJK+pEkowuk87G48RTE=
 github.com/alessio-palumbo/lifxprotocol-go v0.4.0 h1:oTweXfIyw5oC7OXdDezuY3lx1uhDju3p/CZRUE2HUYk=
 github.com/alessio-palumbo/lifxprotocol-go v0.4.0/go.mod h1:Wvmw7KNc2ieF6CPM8Of0EdWW0e/w5nlTwK7sLwMDbJ0=
-github.com/alessio-palumbo/lifxregistry-go v0.4.0 h1:Yu7KbNbwEu6RUJQ1Z99+s9RNjxZysdTggEJHWgqGgj4=
-github.com/alessio-palumbo/lifxregistry-go v0.4.0/go.mod h1:42P1qmWK+kzuqJp9cvWjFUgcru+10bZ+w4MSRAQGCZo=
+github.com/alessio-palumbo/lifxregistry-go v0.5.1 h1:1GxAHJsyqL5FCjzwYpQ9IXuoJwDVaq6Y5V1EKJquFR0=
+github.com/alessio-palumbo/lifxregistry-go v0.5.1/go.mod h1:42P1qmWK+kzuqJp9cvWjFUgcru+10bZ+w4MSRAQGCZo=
 github.com/alessio-palumbo/sensaa v0.2.0 h1:lZ4DkAiYfRfzgPpQZYKndN8qMJ+T0WEJlZfIucF1Df4=
 github.com/alessio-palumbo/sensaa v0.2.0/go.mod h1:hOryAiysrI6bYKPLVXB4CFutnQlLAVCYdNAsLFDEfXo=
 github.com/bep/debounce v1.2.1 h1:v67fRdBA9UQu2NhLFXrSg0Brw7CexQekrBwDMM8bzeY=

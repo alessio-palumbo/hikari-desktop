@@ -9,6 +9,8 @@ import { FloorPlan } from './components/FloorPlan';
 import { FloorPlanChooser } from './components/FloorPlanChooser';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
+import { setLightPartState, type SetLightPartStateRequest } from './backend/api';
+import { applyPendingState, createPendingPartBrightness, createPendingPartPower } from './domain/reconcile';
 import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
 import { RoomInspector } from './components/RoomInspector';
 import { draftIntent, prepareDeviceUpdate, type DeviceCommandIntent } from './domain/commands';
@@ -518,12 +520,29 @@ export function App() {
   };
 
   const clearPendingState = (serial: string) => {
+    const pending = { ...pendingStateRef.current };
+    delete pending[serial];
+    pendingStateRef.current = pending;
     setPendingState((prev) => {
       if (!prev[serial]) return prev;
       const next = { ...prev };
       delete next[serial];
       return next;
     });
+  };
+
+  const showPendingPartBrightness = (device: Device, part: SetLightPartStateRequest['part'], brightness: number) => {
+    const pending = createPendingPartBrightness(device, part, brightness, pendingStateRef.current[device.serial]);
+    pendingStateRef.current = { ...pendingStateRef.current, [device.serial]: pending };
+    setPendingState((current) => ({ ...current, [device.serial]: pending }));
+    replaceDevice(applyPendingState(device, pending));
+  };
+
+  const showPendingPartPower = (device: Device, part: SetLightPartStateRequest['part'], on: boolean) => {
+    const pending = createPendingPartPower(device, part, on, pendingStateRef.current[device.serial]);
+    pendingStateRef.current = { ...pendingStateRef.current, [device.serial]: pending };
+    setPendingState((current) => ({ ...current, [device.serial]: pending }));
+    replaceDevice(applyPendingState(device, pending));
   };
 
   const clearSettledPending = useCallback((next: DeviceSnapshot, pending: PendingDeviceStates) => {
@@ -643,22 +662,31 @@ export function App() {
   const updateListDevice = async (next: Device, requestedIntent?: DeviceCommandIntent) => {
     const previous = snapshotRef.current.devices.find((device) => device.serial === next.serial);
     const prepared = prepareDeviceUpdate(next, previous, requestedIntent);
-    const { device: command, intent } = prepared;
-    replaceDevice(command);
-    recordPendingState(command, previous);
+    const partControlled = next.lightParts?.some((part) => part.part === 'uplight') ?? false;
+    const { device: command, intent } = partControlled ? { device: next, intent: prepared.intent } : prepared;
+    if (!partControlled) {
+      replaceDevice(command);
+      recordPendingState(command, previous);
+    } else if (intent === 'brightness' && previous) {
+      showPendingPartBrightness(previous, 'all', command.brightness);
+    } else if (intent === 'power' && previous) {
+      showPendingPartPower(previous, 'all', command.on);
+    } else clearPendingState(command.serial);
     setDeviceLoading(command.serial, true);
 
     const priorOperation = deviceCommandRef.current[command.serial] ?? Promise.resolve();
     const operation = priorOperation.catch(() => undefined).then(async () => {
       try {
         const committed = await setDeviceState(command, true, intent);
-        replaceDevice(committed);
+        if (!partControlled) replaceDevice(committed);
         setDeviceLoading(command.serial, false);
       } catch (error) {
+        if (partControlled && deviceCommandRef.current[command.serial] !== operation) return;
         clearPendingState(command.serial);
         if (handleRecoverableNetworkError(error)) return;
-        if (previous) replaceDevice(previous);
+        if (previous && !partControlled) replaceDevice(previous);
         setDeviceLoading(command.serial, false, errorMessage(error));
+        if (partControlled) await refreshSnapshot();
       }
     });
     deviceCommandRef.current[command.serial] = operation;
@@ -792,6 +820,35 @@ export function App() {
     const timer = window.setInterval(() => setOccupancyNow(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, [roomOccupancy]);
+
+  const updateInspectorLightPart = async (request: SetLightPartStateRequest) => {
+    const device = snapshotRef.current.devices.find((entry) => entry.serial === request.serial);
+    if (request.brightness !== undefined) {
+      if (device) showPendingPartBrightness(device, request.part, request.brightness);
+    } else if (request.power !== undefined) {
+      if (device) showPendingPartPower(device, request.part, request.power);
+    } else if (device?.lightPartStates?.[request.part]?.known && !device.lightPartStates[request.part]?.on) {
+      showPendingPartPower(device, request.part, true);
+    }
+    const prior = deviceCommandRef.current[request.serial] ?? Promise.resolve();
+    const operation = prior.catch(() => undefined).then(async () => {
+      setDeviceLoading(request.serial, true);
+      try {
+        await setLightPartState(request);
+        // Sliders/dots remain optimistic until observed or timed out. Shared
+        // device power and inherited brightness remain library-owned.
+        setDeviceLoading(request.serial, false);
+      } catch (error) {
+        if (deviceCommandRef.current[request.serial] !== operation) return;
+        clearPendingState(request.serial);
+        setDeviceLoading(request.serial, false, errorMessage(error));
+        await refreshSnapshot();
+      }
+    });
+    deviceCommandRef.current[request.serial] = operation;
+    await operation;
+    if (deviceCommandRef.current[request.serial] === operation) delete deviceCommandRef.current[request.serial];
+  };
 
   const updateInspectorDevice = async (next: Device) => {
     if (!isLightDevice(next) || next.kind === DeviceKind.Single || !draft) {
@@ -1237,6 +1294,7 @@ export function App() {
           effectStatus={displayedDeviceEffectStatus[inspectorDevice.serial]}
           onClose={() => setSelectedSerial(undefined)}
           onChange={updateInspectorDevice}
+          onLightPartChange={(request) => void updateInspectorLightPart(request)}
           onMetadataSave={updateInspectorDeviceMetadata}
           onApplyTheme={applyInspectorTheme}
           onPowerChange={(on) => {
@@ -1416,6 +1474,7 @@ function isRecoverableNetworkError(error: unknown): boolean {
     lower.includes('network interfaces') ||
     lower.includes('network connection') ||
     lower.includes('connection lost') ||
+    lower.includes('closed network connection') ||
     lower.includes('failed to send message to device') ||
     lower.includes('send message to device')
   );
@@ -1424,6 +1483,7 @@ function isRecoverableNetworkError(error: unknown): boolean {
 function networkErrorMessage(error: unknown): string {
   const message = errorMessage(error);
   const lower = message.toLowerCase();
+  if (lower.includes('closed network connection')) return 'Connection lost. Reconnecting discovery.';
   if ((lower.includes('network interface') || lower.includes('network interfaces')) && (lower.includes('not available') || lower.includes('unavailable'))) {
     return 'Selected network interface unavailable. Choose another interface or Automatic.';
   }

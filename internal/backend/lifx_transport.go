@@ -83,6 +83,10 @@ type LifxTransport struct {
 	firmware               map[string]runningFirmwareEffect
 	restores               map[string]effectRestore
 	metadata               map[string]pendingDeviceMetadata
+	endpointRevision       map[string]uint64
+	endpointNeedsState     map[string]bool
+	networkNeedsRefresh    bool
+	networkSignature       string
 	observed               map[lifxdevice.Serial]lifxdevice.Device
 	observedReady          bool
 	observedRevision       uint64
@@ -152,15 +156,17 @@ func newLifxTransport(factory lifxControllerFactory, lister broadcastInterfaceLi
 		store = &memoryNetworkSettingsStore{}
 	}
 	return &LifxTransport{
-		controllerFactory: factory,
-		interfaceLister:   lister,
-		settingsStore:     store,
-		cache:             make(map[string]Device),
-		effects:           make(map[string]runningAppEffect),
-		firmware:          make(map[string]runningFirmwareEffect),
-		restores:          make(map[string]effectRestore),
-		metadata:          make(map[string]pendingDeviceMetadata),
-		observed:          make(map[lifxdevice.Serial]lifxdevice.Device),
+		controllerFactory:  factory,
+		interfaceLister:    lister,
+		settingsStore:      store,
+		cache:              make(map[string]Device),
+		effects:            make(map[string]runningAppEffect),
+		firmware:           make(map[string]runningFirmwareEffect),
+		restores:           make(map[string]effectRestore),
+		metadata:           make(map[string]pendingDeviceMetadata),
+		endpointRevision:   make(map[string]uint64),
+		endpointNeedsState: make(map[string]bool),
+		observed:           make(map[lifxdevice.Serial]lifxdevice.Device),
 	}
 }
 
@@ -280,6 +286,19 @@ func (t *LifxTransport) RestartDeviceDiscovery(ctx context.Context) (NetworkSett
 	if err != nil {
 		return NetworkSettings{SelectedInterfaceName: "", Interfaces: []NetworkInterface{}, Warning: userFriendlyNetworkError(err)}, err
 	}
+	if ctrl := t.currentController(); ctrl != nil && t.currentInterfaceName() == selectedName {
+		if refresh, ok := ctrl.(interface{ RefreshDiscovery() error }); ok {
+			if err := refresh.RefreshDiscovery(); err == nil {
+				t.mu.Lock()
+				t.networkNeedsRefresh = false
+				t.networkWarning = warning
+				t.mu.Unlock()
+				return t.networkSettings()
+			} else if !errors.Is(err, net.ErrClosed) {
+				return NetworkSettings{SelectedInterfaceName: selectedName, Warning: userFriendlyNetworkError(err)}, err
+			}
+		}
+	}
 	if err := t.restartController(ctx, selectedName, warning); err != nil {
 		settings, settingsErr := t.networkSettings()
 		if settingsErr != nil {
@@ -303,6 +322,7 @@ func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 	log.Printf("hikari: lifx snapshot read %d devices", len(devices))
 	snapshot := mapLifxDevices(devices)
 	snapshot.Revision = revision
+	t.observeLightParts(ctrl, &snapshot)
 	t.reconcileFirmwareEffectSnapshot(&snapshot, time.Now())
 	t.reconcileRestoreSnapshot(&snapshot, time.Now())
 	t.reconcileMetadataSnapshot(&snapshot, time.Now())
@@ -417,18 +437,57 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 	}
 	defer unlock()
 
+	if err := t.validateEndpointRequest(req.Device); err != nil {
+		return req.Device, err
+	}
+	if err := t.refreshEndpointState(ctx, ctrl, serial); err != nil {
+		return req.Device, err
+	}
 	current := t.cachedDevice(req.Device.Serial)
 	if current == nil {
 		if lifxDevice, ok := ctrl.GetDevice(serial); ok && isSupportedDevice(lifxDevice) {
 			locationID := mapLifxLocationID(lifxDevice)
 			groupID := mapLifxGroupID(lifxDevice, locationID)
 			mapped := mapLifxDevice(lifxDevice, groupID)
+			mappedSnapshot := DeviceSnapshot{Devices: []Device{mapped}}
+			t.observeLightParts(ctrl, &mappedSnapshot)
+			mapped = mappedSnapshot.Devices[0]
 			t.storeCachedDevice(mapped)
 			current = &mapped
 		}
 	}
 
 	intent := normalizeDeviceCommandIntent(req.Intent, req.Device)
+	if d, ok := ctrl.GetDevice(serial); ok && lifxdevice.HasUplight(d) && (intent == DeviceCommandPower || intent == DeviceCommandBrightness || intent == DeviceCommandColor) {
+		partReq := SetLightPartStateRequest{Serial: req.Device.Serial, Part: lifxdevice.LightPartAll}
+		switch intent {
+		case DeviceCommandPower:
+			partReq.Power = &req.Device.On
+		case DeviceCommandBrightness:
+			partReq.Brightness = &req.Device.Brightness
+		case DeviceCommandColor:
+			if req.Device.Color == nil {
+				return req.Device, fmt.Errorf("color is required")
+			}
+			partReq.Hue = &req.Device.Color.H
+			saturation := req.Device.Color.S * 100
+			partReq.Saturation = &saturation
+			if req.Device.Color.Kelvin > 0 {
+				partReq.Kelvin = &req.Device.Color.Kelvin
+			}
+		}
+		if err := sendLightPartState(ctx, ctrl, serial, partReq); err != nil {
+			return req.Device, err
+		}
+		// Return observed state, not a fabricated part-power acknowledgement.
+		d, found := ctrl.GetDevice(serial)
+		if !found {
+			return req.Device, lifxcontroller.ErrDeviceNotFound
+		}
+		observed := DeviceSnapshot{Devices: []Device{mapLifxDevice(d, req.Device.GroupID)}}
+		t.observeLightParts(ctrl, &observed)
+		return observed.Devices[0], nil
+	}
 	restart, wasRunning := t.stopAppEffectForStateChange(req.Device.Serial)
 	if err := sendDeviceState(ctx, ctrl, serial, req.Device, req.Preview, intent, current); err != nil {
 		log.Printf("hikari: set device state failed for %s: %v", req.Device.Serial, err)
@@ -465,6 +524,12 @@ func (t *LifxTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEf
 		return DeviceEffectStatus{Serial: req.Device.Serial, Error: err.Error()}, err
 	}
 	defer unlock()
+	if err := t.validateEndpointRequest(req.Device); err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Error: err.Error()}, err
+	}
+	if err := t.refreshEndpointState(ctx, ctrl, serial); err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Error: err.Error()}, err
+	}
 	req.Device = t.effectRequestDevice(req.Device)
 	if req.Params == nil {
 		t.mu.RLock()
@@ -1204,7 +1269,7 @@ func captureAppEffectSnapshot(ctx context.Context, ctrl lifxController, serial l
 }
 
 func overlayAppEffectState(state *lifxdevice.DeviceStateSnapshot, current Device) {
-	state.PoweredOn = current.On
+	state.PoweredOn = devicePoweredOn(current)
 	if current.Color != nil {
 		state.Color = lifxdevice.NewColor(hslColorToHSBK(*current.Color, current.Brightness, current.Kelvin, current.Capability))
 	}
@@ -1610,6 +1675,10 @@ func (t *LifxTransport) clearRuntimeStateLocked() {
 	t.firmware = make(map[string]runningFirmwareEffect)
 	t.restores = make(map[string]effectRestore)
 	t.metadata = make(map[string]pendingDeviceMetadata)
+	t.endpointRevision = make(map[string]uint64)
+	t.endpointNeedsState = make(map[string]bool)
+	t.networkSignature = ""
+	t.networkNeedsRefresh = false
 	t.observed = make(map[lifxdevice.Serial]lifxdevice.Device)
 	t.observedReady = false
 	t.observedRevision = 0
@@ -1658,6 +1727,30 @@ func (t *LifxTransport) networkSettingsForSelection(name string) (NetworkSetting
 }
 
 func (t *LifxTransport) ensureNetworkInterfaceAvailable() error {
+	err := t.checkNetworkInterfaceAvailable()
+	if err != nil {
+		t.mu.Lock()
+		t.networkNeedsRefresh = true
+		t.mu.Unlock()
+		return err
+	}
+	t.mu.RLock()
+	refreshNeeded := t.networkNeedsRefresh
+	t.mu.RUnlock()
+	if refreshNeeded {
+		if ctrl, ok := t.currentController().(interface{ RefreshDiscovery() error }); ok {
+			if err := ctrl.RefreshDiscovery(); err != nil {
+				return fmt.Errorf("refresh discovery after network change: %w", err)
+			}
+		}
+		t.mu.Lock()
+		t.networkNeedsRefresh = false
+		t.mu.Unlock()
+	}
+	return nil
+}
+
+func (t *LifxTransport) checkNetworkInterfaceAvailable() error {
 	interfaces, err := t.interfaceLister()
 	if err != nil {
 		return fmt.Errorf("check network interfaces: %w", err)
@@ -1666,6 +1759,20 @@ func (t *LifxTransport) ensureNetworkInterfaceAvailable() error {
 		return fmt.Errorf("no suitable broadcast interface found")
 	}
 	selected := t.currentInterfaceName()
+	var addresses []string
+	for _, entry := range interfaces {
+		if selected == "" || entry.Name == selected {
+			addresses = append(addresses, entry.Name+":"+entry.IP.String()+":"+entry.Broadcast.String())
+		}
+	}
+	sort.Strings(addresses)
+	signature := strings.Join(addresses, ",")
+	t.mu.Lock()
+	if t.networkSignature != "" && t.networkSignature != signature {
+		t.networkNeedsRefresh = true
+	}
+	t.networkSignature = signature
+	t.mu.Unlock()
 	if selected == "" {
 		return nil
 	}
@@ -1767,6 +1874,9 @@ func (t *LifxTransport) replaceCache(devices []Device) {
 func (t *LifxTransport) storeCachedDevice(device Device) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if device.EndpointRevision != t.endpointRevision[device.Serial] {
+		return
+	}
 	if t.cache == nil {
 		t.cache = make(map[string]Device)
 	}
@@ -1861,12 +1971,12 @@ func (t *LifxTransport) captureFirmwareEffectWasOff(serial string, restored *Dev
 		return running.wasOff
 	}
 	if restored != nil {
-		return !restored.On
+		return !devicePoweredOn(*restored)
 	}
 	if cached := t.cachedDevice(serial); cached != nil {
-		return !cached.On
+		return !devicePoweredOn(*cached)
 	}
-	return !requested.On
+	return !devicePoweredOn(requested)
 }
 
 func (t *LifxTransport) stopFirmwareEffect(serial string, now time.Time) *stoppedFirmwareEffect {
@@ -2179,6 +2289,7 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 		Kelvin:              kelvin,
 		Relays:              mapLifxRelays(d.Relays),
 		FirmwareEffect:      mapLifxFirmwareEffect(d),
+		LightParts:          mapLightParts(d),
 	}
 
 	if device.Kind == DeviceKindSwitch {
@@ -2190,16 +2301,22 @@ func mapLifxDevice(d lifxdevice.Device, groupID string) Device {
 		device.ButtonConfig = mapLifxButtonConfig(d, DeviceCapability{HasColor: true, KelvinMin: 1500, KelvinMax: 9000})
 		return device
 	}
+	if len(device.LightParts) > 0 {
+		device.Capability = device.LightParts[0].Capability
+	}
 
 	switch device.Kind {
 	case DeviceKindMultizone:
 		device.ZoneCount = len(d.MultizoneProperties.Zones)
+		if len(device.LightParts) > 0 && device.LightParts[0].ZonesKnown {
+			device.ZoneCount = device.LightParts[0].ZoneCount
+		}
 		device.Zones = mapLifxColors(d.MultizoneProperties.Zones, capability)
 		applyColorSummary(&device, device.Zones)
 	case DeviceKindMatrix:
 		device.PixelCount = d.MatrixProperties.NZones
-		if count, known := lifxdevice.VisibleZoneCount(d); known {
-			device.PixelCount = count
+		if len(device.LightParts) > 0 && device.LightParts[0].ZonesKnown {
+			device.PixelCount = device.LightParts[0].ZoneCount
 		}
 		device.ChainLen = d.MatrixProperties.ChainLength
 		if device.ChainLen == 0 {
