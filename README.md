@@ -29,7 +29,7 @@ Browse lights by location and group, search by name, and control power, brightne
 
 For strips and matrices, enter layout editing to paint with brush, fill, picker, and gradient tools. Changes stay in a draft until you apply them, with undo and revert available. Previews account for device orientation and irregular pixel layouts.
 
-Supported uplight devices remain a single light in the inventory. In the color/white inspector, select `main`, `uplight`, or `all` for partial color, white temperature, brightness, and explicit power controls. Stored brightness is shown separately from effective part power; zero brightness does not send device power-off. Reactivating a part inherits brightness through lifxlan-go, rather than restoring a historical part setting; if every part retains zero brightness, activation uses a 1% fallback. Choosing a color, white temperature, or positive brightness prepares the selected part's state before activating it when off. Sliders and power dots respond immediately and reconcile with observations, while shared-device power and inherited brightness remain library-owned. Controls wait for known observed state, and successful sends are not treated as acknowledgements. Matrix layout edits, themes, and effects still act on the device's raw surface and may overwrite the uplight.
+Supported uplight devices remain a single light in the inventory. In the color/white inspector, select `main`, `uplight`, or `all` for partial color, white temperature, brightness, and explicit power controls. Stored brightness is shown separately from effective part power; zero brightness does not send device power-off. Reactivating a part inherits brightness through lifxlan-go, rather than restoring a historical part setting; if every part retains zero brightness, activation uses a 1% fallback. Choosing a color, white temperature, or positive brightness prepares the selected part's state before activating it when off. Sliders and power dots respond immediately and reconcile with observations, while shared-device power and inherited brightness remain library-owned. Controls wait for known observed state, and successful sends are not treated as acknowledgements. Themes include both parts; raw matrix layout edits and effects may still overwrite the uplight.
 
 ### Map Your Space
 
@@ -110,6 +110,8 @@ Successfully started or applied settings are remembered per device and effect. E
 ## Themes
 
 Open the `themes` inspector tab for a light, group, or floor-plan room. Clicking a theme applies it directly, preserving each light's existing brightness, including individual zone/pixel brightness. Repeated clicks cycle palette assignments for single-zone lights and strips, and vary smooth spatial color placement on matrices.
+
+On uplight-capable lights, themes color both the main surface and uplight. Local preview shows the uplight separately below the matrix. Both parts retain their existing brightness, including zero: a dark uplight stays dark until activated through its light-part controls. Palette assignment and composition come from lifxlan-go, and preview replays the same color packets used for application.
 
 The eye below the list opens a local preview. While it is open, theme clicks update only the preview; the check icon applies the displayed variation. Closing preview returns to direct application. Applying a theme turns targeted lights on and stops their running effects. Exit matrix/multizone layout editing before applying a theme.
 

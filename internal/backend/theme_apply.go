@@ -7,9 +7,9 @@ import (
 
 	lifxdevice "github.com/alessio-palumbo/lifxlan-go/pkg/device"
 	lifxeffects "github.com/alessio-palumbo/lifxlan-go/pkg/effects"
-	lifxadapters "github.com/alessio-palumbo/lifxlan-go/pkg/effects/adapters"
 	"github.com/alessio-palumbo/lifxlan-go/pkg/messages"
 	"github.com/alessio-palumbo/lifxlan-go/pkg/protocol"
+	lifxthemes "github.com/alessio-palumbo/lifxlan-go/pkg/themes"
 )
 
 type ThemeApplier interface {
@@ -50,7 +50,7 @@ func (t *LifxTransport) ApplyTheme(ctx context.Context, req ThemeRequest) (Theme
 		if cached := t.cachedDevice(d.Serial.String()); cached != nil {
 			before = *cached
 		}
-		target, err := compileThemeTarget(ctx, d, application.Frame, before)
+		target, err := compileThemeTarget(ctx, d, application, before)
 		if err != nil {
 			return ThemeApplyResult{}, fmt.Errorf("compile theme target %s: %w", d.Serial, err)
 		}
@@ -79,19 +79,18 @@ func (t *LifxTransport) ApplyTheme(ctx context.Context, req ThemeRequest) (Theme
 	return result, nil
 }
 
-func compileThemeTarget(ctx context.Context, d lifxdevice.Device, frame lifxeffects.Frame, before Device) (compiledThemeTarget, error) {
+func compileThemeTarget(ctx context.Context, d lifxdevice.Device, application lifxthemes.PartApplication, before Device) (compiledThemeTarget, error) {
 	surface := lifxdevice.SurfaceFromDevice(d)
 	state := lifxeffects.NewPhysicalColorState(surface)
 	target := compiledThemeTarget{serial: d.Serial, before: before}
-	renderer := lifxadapters.NewRendererForDevice(d, func(msg *protocol.Message) error {
+	for _, msg := range application.Messages {
+		if err := ctx.Err(); err != nil {
+			return compiledThemeTarget{}, err
+		}
 		if err := applyPreviewPacket(&state, surface, msg); err != nil {
-			return err
+			return compiledThemeTarget{}, err
 		}
 		target.messages = append(target.messages, msg)
-		return nil
-	})
-	if err := renderer.RenderFrame(ctx, frame); err != nil {
-		return compiledThemeTarget{}, err
 	}
 	if len(target.messages) == 0 {
 		return compiledThemeTarget{}, fmt.Errorf("theme produced no colour commands")
@@ -106,6 +105,10 @@ func compileThemeTarget(ctx context.Context, d lifxdevice.Device, frame lifxeffe
 	// Preserve UI metadata, replacing only the state actually being applied.
 	after := before
 	after.On, after.Color, after.Brightness, after.Kelvin = true, mapped.Color, mapped.Brightness, mapped.Kelvin
+	if application.Uplight != nil {
+		after.Brightness = max(after.Brightness, application.Uplight.Brightness/100)
+		after.On = after.Brightness > 0
+	}
 	after.Zones, after.Chain = mapped.Zones, mapped.Chain
 	after.FirmwareEffect = &FirmwareEffectState{Running: false}
 	target.after = after
@@ -141,7 +144,7 @@ func (t *LifxTransport) sendThemeTarget(ctx context.Context, ctrl lifxController
 			return changed, fmt.Errorf("apply theme colours: %w", err)
 		}
 	}
-	if !target.before.On {
+	if !devicePoweredOn(target.before) {
 		if err := ctx.Err(); err != nil {
 			return changed, err
 		}

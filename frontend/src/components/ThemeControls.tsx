@@ -160,5 +160,16 @@ function ThemeCanvas({ device, kind, showName }: { device: ThemeDevicePreview; k
     if (!canvas.current || device.width < 1 || device.height < 1) return;
     drawPreviewFrame(canvas.current, device.width, device.cells, device.colors, layout);
   }, [device, layout.width, layout.height, layout.cellWidth, layout.cellHeight, layout.left]);
-  return <figure>{showName ? <figcaption>{device.name}</figcaption> : null}<canvas ref={canvas} role="img" aria-label={`${device.name} theme preview`} /></figure>;
+  return <div className="theme-device-preview">
+    <figure>{showName ? <figcaption>{device.name}</figcaption> : null}<canvas ref={canvas} role="img" aria-label={`${device.name} theme preview`} /></figure>
+    {device.uplight ? <UplightThemeCanvas name={device.name} color={device.uplight} /> : null}
+  </div>;
+}
+
+function UplightThemeCanvas({ name, color }: { name: string; color: ThemeDevicePreview['colors'][number] }) {
+  const { canvas, layout } = usePreviewCanvas(1, 1, DeviceKind.Single);
+  useEffect(() => {
+    if (canvas.current) drawPreviewFrame(canvas.current, 1, [true], [color], layout);
+  }, [color, layout.width, layout.height, layout.cellWidth, layout.cellHeight, layout.left]);
+  return <figure className="theme-uplight-preview"><figcaption>uplight</figcaption><canvas ref={canvas} role="img" aria-label={`${name} uplight theme preview`} /></figure>;
 }

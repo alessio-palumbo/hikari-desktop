@@ -104,11 +104,7 @@ func TestThemeRuntimeOptionsMatchNativePlanningAndRemainDeterministic(t *testing
 	for _, d := range devices {
 		req := testThemeRequest(d)
 		req.Variation, req.Seed, req.Reverse, req.MatrixLayout = 5, 17, true, lifxthemes.MatrixSpatial
-		initial, err := lifxeffects.FrameFromDeviceState(d, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		want, err := req.Theme.PlanWithOptions([]lifxdevice.Device{d}, defaultColorTransitionDuration, lifxthemes.PlanOptions{Variation: 5, Seed: 17, Reverse: true, MatrixLayout: lifxthemes.MatrixSpatial, Brightness: lifxthemes.PreserveBrightness, InitialFrames: map[lifxdevice.Serial]lifxeffects.Frame{d.Serial: initial}})
+		want, err := req.Theme.PlanParts([]lifxdevice.Device{d}, defaultColorTransitionDuration, lifxthemes.PartPlanOptions{Part: lifxdevice.LightPartAll, Variation: 5, Seed: 17, Reverse: true, MatrixLayout: lifxthemes.MatrixSpatial, Brightness: lifxthemes.PreserveBrightness})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -19,6 +19,7 @@
 .theme-status { margin-top: 12px; color: var(--fg-3); font-size: 11px; }
 .theme-previews { display: grid; gap: 14px; margin-top: 16px; }
 .theme-previews figure { margin: 0; }
+.theme-previews .theme-uplight-preview { margin-top: 10px; }
 .theme-previews figcaption { margin-bottom: 6px; color: var(--fg-3); font-size: 11px; }
 .theme-previews canvas { display: block; width: 100%; height: auto; }
 .theme-preview-section { margin-top: 18px; }

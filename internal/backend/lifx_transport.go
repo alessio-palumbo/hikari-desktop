@@ -1856,7 +1856,9 @@ func (t *LifxTransport) replaceCache(devices []Device) {
 	for _, device := range devices {
 		if t.restoreActiveLocked(device.Serial, time.Now()) {
 			if restore, ok := t.restores[device.Serial]; ok {
-				next[device.Serial] = restore.device
+				protected := restore.device
+				protected.LightPartStates = device.LightPartStates
+				next[device.Serial] = protected
 				continue
 			}
 		}
@@ -2097,6 +2099,9 @@ func (t *LifxTransport) reconcileRestoreSnapshot(snapshot *DeviceSnapshot, now t
 			continue
 		}
 		snapshot.Devices[index] = restore.device
+		// A colour guard must not freeze independently observed part power and
+		// shared-device power while a theme or effect restore settles.
+		snapshot.Devices[index].LightPartStates = device.LightPartStates
 	}
 }
 

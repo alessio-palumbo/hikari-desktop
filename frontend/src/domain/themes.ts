@@ -16,6 +16,7 @@ export interface ThemeRequest {
 export interface ThemeDevicePreview {
   serial: string; name: string; on: boolean; width: number; height: number;
   cells: boolean[]; colors: HslColor[];
+  uplight?: HslColor;
 }
 export interface ThemePreview { devices: ThemeDevicePreview[] }
 export interface ThemeApplyResult {

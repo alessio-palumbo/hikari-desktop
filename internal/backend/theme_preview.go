@@ -37,13 +37,14 @@ type ThemePreview struct {
 }
 
 type ThemeDevicePreview struct {
-	Serial string     `json:"serial"`
-	Name   string     `json:"name"`
-	On     bool       `json:"on"`
-	Width  int        `json:"width"`
-	Height int        `json:"height"`
-	Cells  []bool     `json:"cells"`
-	Colors []HSLColor `json:"colors"`
+	Serial  string     `json:"serial"`
+	Name    string     `json:"name"`
+	On      bool       `json:"on"`
+	Width   int        `json:"width"`
+	Height  int        `json:"height"`
+	Cells   []bool     `json:"cells"`
+	Colors  []HSLColor `json:"colors"`
+	Uplight *HSLColor  `json:"uplight,omitempty"`
 }
 
 func validateThemeRequest(req ThemeRequest) ([]lifxdevice.Serial, error) {
@@ -91,7 +92,7 @@ func (t *LifxTransport) PreviewTheme(ctx context.Context, req ThemeRequest) (The
 type preparedTheme struct {
 	controller lifxController
 	devices    []lifxdevice.Device
-	plan       []lifxthemes.Application
+	plan       []lifxthemes.PartApplication
 	release    func()
 }
 
@@ -178,8 +179,8 @@ func (t *LifxTransport) prepareTheme(ctx context.Context, req ThemeRequest) (pre
 }
 
 // Inputs must contain complete observed state. Planning and preview rendering
-// are pure; the resulting library frames are shared by preview and application.
-func planThemeFrames(ctx context.Context, req ThemeRequest, devices []lifxdevice.Device) ([]lifxthemes.Application, error) {
+// are pure; the composed library packets are shared by preview and application.
+func planThemeFrames(ctx context.Context, req ThemeRequest, devices []lifxdevice.Device) ([]lifxthemes.PartApplication, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -215,25 +216,21 @@ func planThemeFrames(ctx context.Context, req ThemeRequest, devices []lifxdevice
 		}
 		totalCells += cells
 	}
-	if req.Brightness == "" || req.Brightness == lifxthemes.PreserveBrightness {
-		initial := make(map[lifxdevice.Serial]lifxeffects.Frame, len(devices))
-		for _, d := range devices {
-			frame, err := lifxeffects.FrameFromDeviceState(d, 0)
-			if err != nil {
-				return nil, fmt.Errorf("theme initial state %s: %w", d.Serial, err)
-			}
-			initial[d.Serial] = frame
-		}
-		options.Brightness, options.InitialFrames = lifxthemes.PreserveBrightness, initial
-		plan, err = req.Theme.PlanWithOptions(devices, defaultColorTransitionDuration, options)
-		if err != nil {
-			return nil, err
-		}
+	brightness := req.Brightness
+	if brightness == "" {
+		brightness = lifxthemes.PreserveBrightness
+	}
+	parts, err := req.Theme.PlanParts(devices, defaultColorTransitionDuration, lifxthemes.PartPlanOptions{
+		Part: lifxdevice.LightPartAll, Brightness: brightness,
+		Variation: uint64(req.Variation), Seed: uint64(req.Seed), Reverse: req.Reverse, MatrixLayout: req.MatrixLayout,
+	})
+	if err != nil {
+		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return plan, nil
+	return parts, nil
 }
 
 func planThemePreview(ctx context.Context, req ThemeRequest, devices []lifxdevice.Device) (ThemePreview, error) {
@@ -244,7 +241,7 @@ func planThemePreview(ctx context.Context, req ThemeRequest, devices []lifxdevic
 	return previewThemeFrames(ctx, plan, devices)
 }
 
-func previewThemeFrames(ctx context.Context, plan []lifxthemes.Application, devices []lifxdevice.Device) (ThemePreview, error) {
+func previewThemeFrames(ctx context.Context, plan []lifxthemes.PartApplication, devices []lifxdevice.Device) (ThemePreview, error) {
 	bySerial := make(map[lifxdevice.Serial]lifxdevice.Device, len(devices))
 	for _, d := range devices {
 		bySerial[d.Serial] = d
@@ -254,7 +251,7 @@ func previewThemeFrames(ctx context.Context, plan []lifxthemes.Application, devi
 		if err := ctx.Err(); err != nil {
 			return ThemePreview{}, err
 		}
-		preview, err := renderThemeDevicePreview(ctx, bySerial[application.Serial], application.Frame)
+		preview, err := renderThemeDevicePreview(ctx, bySerial[application.Serial], application)
 		if err != nil {
 			return ThemePreview{}, err
 		}
@@ -263,7 +260,8 @@ func previewThemeFrames(ctx context.Context, plan []lifxthemes.Application, devi
 	return result, nil
 }
 
-func renderThemeDevicePreview(ctx context.Context, d lifxdevice.Device, frame lifxeffects.Frame) (ThemeDevicePreview, error) {
+func renderThemeDevicePreview(ctx context.Context, d lifxdevice.Device, application lifxthemes.PartApplication) (ThemeDevicePreview, error) {
+	frame := application.Frame
 	surface := lifxdevice.SurfaceFromDevice(d)
 	state := lifxeffects.NewPhysicalColorState(surface)
 	renderer := lifxadapters.NewRendererForDevice(d, func(msg *protocol.Message) error { return applyPreviewPacket(&state, surface, msg) })
@@ -276,8 +274,15 @@ func renderThemeDevicePreview(ctx context.Context, d lifxdevice.Device, frame li
 		return ThemeDevicePreview{}, err
 	}
 	state = lifxeffects.NewPhysicalColorState(surface)
-	if err := renderer.RenderFrame(ctx, frame); err != nil {
-		return ThemeDevicePreview{}, err
+	// Replay the exact composed packets used for live application, including
+	// auxiliary emitters that the main logical frame deliberately hides.
+	for _, msg := range application.Messages {
+		if err := ctx.Err(); err != nil {
+			return ThemeDevicePreview{}, err
+		}
+		if err := applyPreviewPacket(&state, surface, msg); err != nil {
+			return ThemeDevicePreview{}, err
+		}
 	}
 	logical, err := lifxeffects.AdaptPhysicalColorStateToFrame(state, surface, frame.Duration)
 	if err != nil {
@@ -285,6 +290,22 @@ func renderThemeDevicePreview(ctx context.Context, d lifxdevice.Device, frame li
 	}
 	preview := ThemeDevicePreview{Serial: d.Serial.String(), Name: d.Label, On: d.PoweredOn, Width: logical.Width, Height: logical.Height, Cells: make([]bool, len(logical.Colors)), Colors: make([]HSLColor, len(logical.Colors))}
 	capability := mapLifxDevice(d, "").Capability
+	if application.Uplight != nil {
+		mask, err := lifxeffects.LightPartPhysicalMask(d, lifxdevice.LightPartUplight)
+		if err != nil {
+			return ThemeDevicePreview{}, err
+		}
+		if len(state.MatrixChains) == 0 || len(state.MatrixChains[0]) != len(mask) {
+			return ThemeDevicePreview{}, fmt.Errorf("uplight preview geometry does not match physical state")
+		}
+		for i, cell := range mask {
+			if cell.Brightness > 0 {
+				color := mapLifxHSBK(state.MatrixChains[0][i], capability)
+				preview.Uplight = &color
+				break
+			}
+		}
+	}
 	for i, color := range logical.Colors {
 		preview.Cells[i] = visible.Colors[i].Brightness > 0
 		preview.Colors[i] = mapLifxColor(color, capability)
