@@ -9,6 +9,8 @@ import { FloorPlan } from './components/FloorPlan';
 import { FloorPlanChooser } from './components/FloorPlanChooser';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
+import { reconnectionStatus } from './domain/reconnection';
+import { isRecoverableNetworkError, networkErrorMessage } from './domain/networkErrors';
 import { setLightPartState, type SetLightPartStateRequest } from './backend/api';
 import { applyPendingState, createPendingPartBrightness, createPendingPartPower } from './domain/reconcile';
 import { NetworkInterfaceControl, Sidebar } from './components/Sidebar';
@@ -67,6 +69,7 @@ export function App() {
   const [startupReady, setStartupReady] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [refreshError, setRefreshError] = useState<string | undefined>();
+  const [networkFailureStartedAt, setNetworkFailureStartedAt] = useState<number>();
   const [networkSettings, setNetworkSettings] = useState<NetworkSettings>({ selectedInterfaceName: '', interfaces: [] });
   const [networkChanging, setNetworkChanging] = useState(false);
   const [commandSettings, setCommandSettings] = useState<CommandEngineSettings>({ enabled: false, available: false, transcription: false });
@@ -573,13 +576,14 @@ export function App() {
     setSnapshot(reconciled);
     clearSettledPending(next, pending);
     setRefreshError(undefined);
+    setNetworkFailureStartedAt(undefined);
     return true;
   }, [clearSettledPending]);
 
   const refreshSnapshot = useCallback(async () => {
     setRefreshing(true);
     try {
-      const next = await readSnapshotWithRecovery(networkRecoveryRef);
+      const next = await readSnapshotWithRecovery(networkRecoveryRef, handleSnapshotRefreshError);
       applyDeviceSnapshot(next);
       void getNetworkSettings()
         .then((settings) => setNetworkSettings({ ...settings, warning: undefined }))
@@ -623,6 +627,7 @@ export function App() {
 
   const handleSnapshotRefreshError = (error: unknown) => {
     const message = networkErrorMessage(error);
+    setNetworkFailureStartedAt((previous) => isRecoverableNetworkError(error) ? previous ?? Date.now() : undefined);
     setSelectedSerial(undefined);
     setSelectedGroupInspectorId(undefined);
     setDraft(undefined);
@@ -642,6 +647,7 @@ export function App() {
   const handleRecoverableNetworkError = (error: unknown): boolean => {
     if (!isRecoverableNetworkError(error)) return false;
     const message = networkErrorMessage(error);
+    setNetworkFailureStartedAt((previous) => previous ?? Date.now());
     setSelectedSerial(undefined);
     setSelectedGroupInspectorId(undefined);
     setDraft(undefined);
@@ -990,6 +996,7 @@ export function App() {
   };
 
   const resetDiscoveryState = () => {
+    setNetworkFailureStartedAt(undefined);
     setSelectedSerial(undefined);
     setSelectedGroupInspectorId(undefined);
     setDraft(undefined);
@@ -1014,6 +1021,7 @@ export function App() {
     } catch (error) {
       const message = networkErrorMessage(error);
       setNetworkSettings((prev) => ({ ...prev, warning: isRecoverableNetworkError(error) ? undefined : message }));
+      setNetworkFailureStartedAt((previous) => isRecoverableNetworkError(error) ? previous ?? Date.now() : undefined);
       setRefreshError(message);
     } finally {
       setNetworkChanging(false);
@@ -1032,6 +1040,7 @@ export function App() {
     } catch (error) {
       const message = networkErrorMessage(error);
       setNetworkSettings((prev) => ({ ...prev, warning: isRecoverableNetworkError(error) ? undefined : message }));
+      setNetworkFailureStartedAt((previous) => isRecoverableNetworkError(error) ? previous ?? Date.now() : undefined);
       setRefreshError(message);
     } finally {
       setNetworkChanging(false);
@@ -1106,19 +1115,20 @@ export function App() {
   }
 
   const showingInitialDiscovery = !snapshot.devices.length && now - discoveryStartedAt < DISCOVERY_GRACE_MS;
+  const connectionStatus = reconnectionStatus(refreshError, networkFailureStartedAt, now);
 
   if (showingInitialDiscovery) {
     return (
-      <DiscoveryStatus title="ひかり" message={refreshError ?? 'discovering LAN devices'}>
-        {refreshError ? <DiscoveryActions networkSettings={networkSettings} networkChanging={networkChanging} onNetworkChange={changeNetworkInterface} onRefresh={refreshDiscovery} /> : null}
+      <DiscoveryStatus title="ひかり" message={connectionStatus?.message ?? 'discovering LAN devices'}>
+        {connectionStatus?.showActions ? <DiscoveryActions networkSettings={networkSettings} networkChanging={networkChanging} onNetworkChange={changeNetworkInterface} onRefresh={refreshDiscovery} /> : null}
       </DiscoveryStatus>
     );
   }
 
   if (!snapshot.devices.length) {
     return (
-      <DiscoveryStatus title={refreshError ? 'ひかり' : 'No devices found.'} message={refreshError ?? 'Discovering'}>
-        <DiscoveryActions networkSettings={networkSettings} networkChanging={networkChanging} onNetworkChange={changeNetworkInterface} onRefresh={refreshDiscovery} />
+      <DiscoveryStatus title={refreshError ? 'ひかり' : 'No devices found.'} message={connectionStatus?.message ?? 'Discovering'}>
+        {(!connectionStatus || connectionStatus.showActions) ? <DiscoveryActions networkSettings={networkSettings} networkChanging={networkChanging} onNetworkChange={changeNetworkInterface} onRefresh={refreshDiscovery} /> : null}
       </DiscoveryStatus>
     );
   }
@@ -1346,11 +1356,13 @@ function isEditableShortcutTarget(target: EventTarget | null, options: { allowEm
   return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target.isContentEditable;
 }
 
-async function readSnapshotWithRecovery(recoveryRef: { current: boolean }): Promise<DeviceSnapshot> {
+async function readSnapshotWithRecovery(recoveryRef: { current: boolean }, onNetworkLoss: (error: unknown) => void): Promise<DeviceSnapshot> {
   try {
     return await getDeviceSnapshot();
   } catch (error) {
     if (!isRecoverableNetworkError(error) || recoveryRef.current) throw error;
+    // Show reconnection while recovery is in progress, not only after it fails.
+    onNetworkLoss(error);
     recoveryRef.current = true;
     try {
       await restartDeviceDiscovery();
@@ -1463,43 +1475,6 @@ function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   return 'device command failed';
-}
-
-function isRecoverableNetworkError(error: unknown): boolean {
-  const lower = errorMessage(error).toLowerCase();
-  return (
-    lower.includes('lifx transport has not been started') ||
-    lower.includes('no suitable broadcast interface') ||
-    lower.includes('network interface') ||
-    lower.includes('network interfaces') ||
-    lower.includes('network connection') ||
-    lower.includes('connection lost') ||
-    lower.includes('closed network connection') ||
-    lower.includes('failed to send message to device') ||
-    lower.includes('send message to device')
-  );
-}
-
-function networkErrorMessage(error: unknown): string {
-  const message = errorMessage(error);
-  const lower = message.toLowerCase();
-  if (lower.includes('closed network connection')) return 'Connection lost. Reconnecting discovery.';
-  if ((lower.includes('network interface') || lower.includes('network interfaces')) && (lower.includes('not available') || lower.includes('unavailable'))) {
-    return 'Selected network interface unavailable. Choose another interface or Automatic.';
-  }
-  if (lower.includes('no suitable broadcast interface') || lower.includes('broadcast interface') || lower.includes('network interfaces')) {
-    return 'No network interfaces found.';
-  }
-  if (
-    lower.includes('lifx transport has not been started') ||
-    lower.includes('network connection') ||
-    lower.includes('connection lost') ||
-    lower.includes('failed to send message to device') ||
-    lower.includes('send message to device')
-  ) {
-    return 'Connection lost. Refresh discovery to reconnect.';
-  }
-  return message;
 }
 
 function delay(ms: number) {
