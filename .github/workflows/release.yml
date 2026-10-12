@@ -99,7 +99,12 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       - name: Build Wails app
+        if: runner.os != 'macOS'
         run: wails build -clean -ldflags "-X main.version=${HIKARI_VERSION}"
+
+      - name: Build macOS app with light setup
+        if: runner.os == 'macOS'
+        run: ./scripts/wails-macos.sh build -clean -tags corewlan -ldflags "-X main.version=${HIKARI_VERSION}"
 
       - name: Bundle command sidecar
         shell: bash
@@ -199,7 +204,7 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       - name: Build Wails app
-        run: wails build -clean -ldflags "-X main.version=${HIKARI_VERSION}"
+        run: ./scripts/wails-macos.sh build -clean -tags corewlan -ldflags "-X main.version=${HIKARI_VERSION}"
 
       - name: Bundle command sidecar
         shell: bash

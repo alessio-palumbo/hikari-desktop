@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { ArrowDown, ArrowDownLeft, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight, Brush, ChevronDown, Droplet, Eye, Info, LogOut, Pipette, Play, RotateCcw, Settings, Square, Undo2, Wand2, X } from 'lucide-react';
 import { EffectPreview } from './EffectPreview';
 import { EffectSettings } from './EffectSettings';
 import { ThemeControls } from './ThemeControls';
+import { DeviceMetadataEditor } from './DeviceMetadataEditor';
 import type { ThemeRequest } from '../domain/themes';
 import { getDeviceEffectPreferences, saveDeviceEffectPreference, type DeviceEffectStatus, type SetLightPartStateRequest } from '../backend/api';
 import { deviceUptime } from '../domain/diagnostics';
@@ -345,78 +346,6 @@ export function Inspector(props: InspectorProps) {
   );
 }
 
-function DeviceMetadataEditor({
-  device,
-  locations,
-  groups,
-  saving,
-  onCancel,
-  onSave,
-}: {
-  device: Device;
-  locations: Location[];
-  groups: Group[];
-  saving: boolean;
-  onCancel: () => void;
-  onSave: (request: { serial: string; label: string; locationId: string; groupId: string }) => Promise<void>;
-}) {
-  const currentGroup = groups.find((group) => group.id === device.groupId);
-  const [label, setLabel] = useState(device.name);
-  const [locationId, setLocationId] = useState(currentGroup?.locationId ?? locations[0]?.id ?? '');
-  const locationGroups = groups.filter((group) => group.locationId === locationId);
-  const [groupId, setGroupId] = useState(locationGroups.some((group) => group.id === device.groupId) ? device.groupId : locationGroups[0]?.id ?? '');
-  const [error, setError] = useState<string>();
-  const normalizedLabel = label.trim();
-  const unchanged = normalizedLabel === device.name && groupId === device.groupId;
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!normalizedLabel || !locationId || !groupId || saving) return;
-    setError(undefined);
-    try {
-      await onSave({ serial: device.serial, label: normalizedLabel, locationId, groupId });
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : String(saveError));
-    }
-  };
-
-  return (
-    <form className="device-metadata-editor" onSubmit={submit}>
-      <label>
-        <span>label</span>
-        <input autoFocus maxLength={32} value={label} onChange={(event) => setLabel(event.target.value)} />
-      </label>
-      <label>
-        <span>location</span>
-        <span className="device-metadata-select">
-          <select value={locationId} onChange={(event) => {
-            const nextLocationId = event.target.value;
-            const nextGroups = groups.filter((group) => group.locationId === nextLocationId);
-            setLocationId(nextLocationId);
-            setGroupId(nextGroups[0]?.id ?? '');
-          }}>
-            {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-          </select>
-          <ChevronDown size={12} aria-hidden="true" />
-        </span>
-      </label>
-      <label>
-        <span>group</span>
-        <span className="device-metadata-select">
-          <select value={groupId} onChange={(event) => setGroupId(event.target.value)}>
-            {locationGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-          </select>
-          <ChevronDown size={12} aria-hidden="true" />
-        </span>
-      </label>
-      {error ? <p className="device-metadata-error">{error}</p> : null}
-      <div className="device-metadata-actions">
-        <button type="button" onClick={onCancel}>cancel</button>
-        <button type="submit" disabled={saving || unchanged || !normalizedLabel || !groupId}>{saving ? 'saving' : 'save'}</button>
-      </div>
-    </form>
-  );
-}
 
 function EffectControls({
   device,

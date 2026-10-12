@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ChevronDown, MessageSquareText, Network, RefreshCw, Search, X } from 'lucide-react';
+import { ChevronDown, MessageSquareText, Network, Plus, RefreshCw, Search, X } from 'lucide-react';
 import type { NetworkSettings } from '../backend/api';
 import { isLightDevice, type Device, type Group } from '../domain/lifx';
 import type { LocationCollection } from '../domain/locationCollections';
@@ -26,6 +26,7 @@ interface SidebarProps {
   onRefreshDiscovery: () => void;
   onOpenCommands: () => void;
   commandsOpen?: boolean;
+  onOpenSetup?: () => void;
   onGroupPower: (groupId: string, on: boolean) => void;
 }
 
@@ -133,7 +134,7 @@ export function Sidebar(props: SidebarProps) {
           <span />
           <span>{statusText}</span>
         </div>
-        <NetworkInterfaceControl settings={props.networkSettings} changing={props.networkChanging} onChange={props.onNetworkInterfaceChange} onRefresh={props.onRefreshDiscovery} compact />
+        <div className="lan-footer-actions">{props.onOpenSetup ? <button className="icon-button setup-open-button" type="button" title="Add a device to Wi-Fi" aria-label="Add device" onClick={props.onOpenSetup}><Plus size={14} /></button> : null}<NetworkInterfaceControl settings={props.networkSettings} changing={props.networkChanging} onChange={props.onNetworkInterfaceChange} onRefresh={props.onRefreshDiscovery} compact /></div>
       </div>
     </aside>
   );

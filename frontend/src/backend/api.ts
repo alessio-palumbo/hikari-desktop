@@ -3,8 +3,13 @@ import type { DeviceCommandIntent } from '../domain/commands';
 import type { ThemeRequest, ThemePreview, ThemeApplyResult, UserTheme, SaveUserThemeRequest } from '../domain/themes';
 import type { DeviceEffect, DeviceEffectPreferences, EffectParameters, EffectPreference } from '../domain/effects';
 import type { SceneSummary, CaptureSceneRequest, SceneRecallResult } from '../domain/scenes';
+import type { SetupLightDiscovery, SetupLightRequest, SetupLightResult, SetupProgress } from '../domain/onboarding';
 
 interface WailsApp {
+  OnboardingCapabilities?: () => Promise<{ available: boolean }>;
+  ScanSetupLights?: (refresh: boolean) => Promise<SetupLightDiscovery>;
+  SetupLight?: (request: SetupLightRequest) => Promise<SetupLightResult>;
+  CancelLightSetup?: (attemptId: string) => Promise<void>;
   GetScenes?: () => Promise<SceneSummary[]>;
   CaptureScene?: (request: CaptureSceneRequest) => Promise<SceneSummary>;
   EditScene?: (request: CaptureSceneRequest) => Promise<SceneSummary>;
@@ -38,6 +43,31 @@ interface WailsApp {
   InterpretCommand?: (request: InterpretCommandRequest) => Promise<CommandPreview>;
   TranscribeCommand?: (request: TranscribeCommandRequest) => Promise<SpeechCommandPreview>;
   TranscribeCommandAudio?: (request: TranscribeCommandAudioRequest) => Promise<SpeechCommandPreview>;
+}
+
+export async function getOnboardingCapabilities(): Promise<{ available: boolean }> {
+  return await window.go?.main?.App?.OnboardingCapabilities?.() ?? { available: false };
+}
+
+export async function scanSetupLights(refresh = false): Promise<SetupLightDiscovery> {
+  const scan = window.go?.main?.App?.ScanSetupLights;
+  if (!scan) throw new Error('Device setup is unavailable');
+  const result = await scan(refresh);
+  return { ...result, lights: result.lights ?? [], networks: result.networks ?? [] };
+}
+
+export async function setupLight(request: SetupLightRequest): Promise<SetupLightResult> {
+  const setup = window.go?.main?.App?.SetupLight;
+  if (!setup) throw new Error('Device setup is unavailable');
+  return setup(request);
+}
+
+export async function cancelLightSetup(attemptId = ''): Promise<void> {
+  await window.go?.main?.App?.CancelLightSetup?.(attemptId);
+}
+
+export function subscribeToSetupProgress(listener: (progress: SetupProgress) => void): (() => void) | undefined {
+  return window.runtime?.EventsOnMultiple?.('hikari:setup:progress', (value) => listener(value as SetupProgress), -1);
 }
 
 export async function previewTheme(request: ThemeRequest): Promise<ThemePreview> {

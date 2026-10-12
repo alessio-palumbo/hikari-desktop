@@ -10,6 +10,9 @@ import { FloorPlanChooser } from './components/FloorPlanChooser';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
 import { Scenes } from './components/Scenes';
+import { OnboardingModal } from './components/OnboardingModal';
+import { getOnboardingCapabilities, setupLight } from './backend/api';
+import type { SetupLightRequest, SetupLightResult } from './domain/onboarding';
 import { captureScene, editScene, recallScene } from './backend/api';
 import { sceneCaptureScopes, type CaptureSceneRequest, type SceneSummary } from './domain/scenes';
 import { reconnectionStatus } from './domain/reconnection';
@@ -77,6 +80,10 @@ export function App() {
   const [networkChanging, setNetworkChanging] = useState(false);
   const [commandSettings, setCommandSettings] = useState<CommandEngineSettings>({ enabled: false, available: false, transcription: false });
   const [commandOpen, setCommandOpen] = useState(false);
+  const [onboardingAvailable, setOnboardingAvailable] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingRunning, setOnboardingRunning] = useState(false);
+  const onboardingActiveRef = useRef(false);
   const [commandInterpreting, setCommandInterpreting] = useState(false);
   const [commandTranscribing, setCommandTranscribing] = useState(false);
   const [commandExecuting, setCommandExecuting] = useState(false);
@@ -177,6 +184,9 @@ export function App() {
       .catch((error) => {
         if (!cancelled) setNetworkSettings((prev) => ({ ...prev, warning: errorMessage(error) }));
       });
+    void getOnboardingCapabilities()
+      .then((capabilities) => { if (!cancelled) setOnboardingAvailable(capabilities.available); })
+      .catch(() => undefined);
     void getCommandEngineSettings()
       .then((settings) => {
         if (!cancelled) setCommandSettings(settings);
@@ -291,14 +301,14 @@ export function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-      if (commandOpen || isEditableShortcutTarget(event.target, { allowEmptySearch: true })) return;
+      if (onboardingOpen || commandOpen || isEditableShortcutTarget(event.target, { allowEmptySearch: true })) return;
       event.preventDefault();
       event.stopPropagation();
       openCommandModal();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [commandOpen, openCommandModal]);
+  }, [commandOpen, onboardingOpen, openCommandModal]);
 
   const selectedDevice = snapshot.devices.find((device) => device.serial === selectedSerial);
   const inspectorGroup = snapshot.groups.find((group) => group.id === selectedGroupInspectorId);
@@ -318,7 +328,7 @@ export function App() {
   useEffect(() => {
     if (!selectedSerial && !selectedGroupInspectorId) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (onboardingOpen || event.key !== 'Escape') return;
       event.preventDefault();
       event.stopPropagation();
       setSelectedSerial(undefined);
@@ -326,7 +336,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedGroupInspectorId, selectedSerial]);
+  }, [onboardingOpen, selectedGroupInspectorId, selectedSerial]);
 
   const selectDevice = (serial: string) => {
     setSelectedGroupInspectorId(undefined);
@@ -573,6 +583,7 @@ export function App() {
   }, []);
 
   const applyDeviceSnapshot = useCallback((next: DeviceSnapshot) => {
+    if (onboardingActiveRef.current) return false;
     const current = snapshotRef.current;
     if (isSnapshotStale(current, next)) return false;
     const currentDraft = draftRef.current;
@@ -588,6 +599,7 @@ export function App() {
   }, [clearSettledPending]);
 
   const refreshSnapshot = useCallback(async () => {
+    if (onboardingActiveRef.current) return;
     setRefreshing(true);
     try {
       const next = await readSnapshotWithRecovery(networkRecoveryRef, handleSnapshotRefreshError);
@@ -633,6 +645,7 @@ export function App() {
   };
 
   const handleSnapshotRefreshError = (error: unknown) => {
+    if (onboardingActiveRef.current) return;
     const message = networkErrorMessage(error);
     setNetworkFailureStartedAt((previous) => isRecoverableNetworkError(error) ? previous ?? Date.now() : undefined);
     setSelectedSerial(undefined);
@@ -652,6 +665,7 @@ export function App() {
   };
 
   const handleRecoverableNetworkError = (error: unknown): boolean => {
+    if (onboardingActiveRef.current) return true;
     if (!isRecoverableNetworkError(error)) return false;
     const message = networkErrorMessage(error);
     setNetworkFailureStartedAt((previous) => previous ?? Date.now());
@@ -673,6 +687,7 @@ export function App() {
   };
 
   const updateListDevice = async (next: Device, requestedIntent?: DeviceCommandIntent) => {
+    if (onboardingActiveRef.current) return;
     const previous = snapshotRef.current.devices.find((device) => device.serial === next.serial);
     const prepared = prepareDeviceUpdate(next, previous, requestedIntent);
     const partControlled = next.lightParts?.some((part) => part.part === 'uplight') ?? false;
@@ -789,6 +804,7 @@ export function App() {
   };
 
   useEffect(() => {
+    if (onboardingActiveRef.current || onboardingRunning) return;
     if (!floorPlanProfileId || !floorPlanProfile) {
       const ownership = Object.values(roomDimOwnershipRef.current);
       roomDimOwnershipRef.current = {};
@@ -855,14 +871,14 @@ export function App() {
       const on = command.action === 'on';
       void Promise.all(devices.map((device) => updateListDeviceRef.current({ ...device, on }, 'power')));
     }
-  }, [floorPlanProfile, floorPlanProfileId, occupancyNow, sensorSnapshot.nodes]);
+  }, [floorPlanProfile, floorPlanProfileId, occupancyNow, sensorSnapshot.nodes, onboardingRunning]);
 
   useEffect(() => {
     const hasPending = Object.values(roomOccupancy).some((state) => state.phase === 'pending-clear');
-    if (!hasPending) return undefined;
+    if (!hasPending || onboardingRunning) return undefined;
     const timer = window.setInterval(() => setOccupancyNow(Date.now()), 250);
     return () => window.clearInterval(timer);
-  }, [roomOccupancy]);
+  }, [roomOccupancy, onboardingRunning]);
 
   const updateInspectorLightPart = async (request: SetLightPartStateRequest) => {
     const device = snapshotRef.current.devices.find((entry) => entry.serial === request.serial);
@@ -1147,8 +1163,35 @@ export function App() {
     }
   };
 
+  const startLightSetup = async (request: SetupLightRequest, signal: AbortSignal): Promise<SetupLightResult> => {
+    onboardingActiveRef.current = true;
+    setOnboardingRunning(true);
+    setCommandOpen(false);
+    try {
+      await Promise.all(Object.values(deviceCommandRef.current).map((operation) => operation.catch(() => undefined)));
+      if (signal.aborted) return { serial: '', configured: false, verified: false, cancelled: true, error: 'Setup cancelled.' };
+      return await setupLight(request);
+    } finally {
+      onboardingActiveRef.current = false;
+      await refreshSnapshot();
+      setOnboardingRunning(false);
+    }
+  };
+  const openLightSetup = () => { if (!commandExecuting && !commandTranscribing && !commandInterpreting && !networkChanging) { setCommandOpen(false); setOnboardingOpen(true); } };
+  const setupModal = onboardingAvailable && onboardingOpen ? <OnboardingModal devices={snapshot.devices} locations={snapshot.locations} groups={snapshot.groups} saving={saving} onMetadataSave={updateInspectorDeviceMetadata} onSetup={startLightSetup} onClose={(serial) => {
+    setOnboardingOpen(false);
+    const device = snapshotRef.current.devices.find((device) => device.serial === serial);
+    if (device) {
+      const group = snapshotRef.current.groups.find((group) => group.id === device.groupId);
+      if (group) { setLocationId(group.locationId); setGroupId(group.id); }
+      setCenterView('list');
+      setSelectedSerial(serial); setSelectedGroupInspectorId(undefined); setSelectedRoomInspector(undefined);
+    }
+  }} /> : null;
+  const addLightAction = onboardingAvailable ? <button type="button" className="discovery-add-light" onClick={openLightSetup}>add device</button> : null;
+
   if (!startupReady) {
-    return <DiscoveryStatus title="ひかり" message="discovering LAN devices" />;
+    return <AppSurface setupModal={setupModal}><DiscoveryStatus title="ひかり" message="discovering LAN devices" /></AppSurface>;
   }
 
   const showingInitialDiscovery = !snapshot.devices.length && now - discoveryStartedAt < DISCOVERY_GRACE_MS;
@@ -1156,22 +1199,24 @@ export function App() {
 
   if (showingInitialDiscovery) {
     return (
-      <DiscoveryStatus title="ひかり" message={connectionStatus?.message ?? 'discovering LAN devices'}>
+      <AppSurface setupModal={setupModal}><DiscoveryStatus title="ひかり" message={connectionStatus?.message ?? 'discovering LAN devices'}>
         {connectionStatus?.showActions ? <DiscoveryActions networkSettings={networkSettings} networkChanging={networkChanging} onNetworkChange={changeNetworkInterface} onRefresh={refreshDiscovery} /> : null}
-      </DiscoveryStatus>
+        {addLightAction}
+      </DiscoveryStatus></AppSurface>
     );
   }
 
   if (!snapshot.devices.length) {
     return (
-      <DiscoveryStatus title={refreshError ? 'ひかり' : 'No devices found.'} message={connectionStatus?.message ?? 'Discovering'}>
+      <AppSurface setupModal={setupModal}><DiscoveryStatus title={refreshError ? 'ひかり' : 'No devices found.'} message={connectionStatus?.message ?? 'Discovering'}>
         {(!connectionStatus || connectionStatus.showActions) ? <DiscoveryActions networkSettings={networkSettings} networkChanging={networkChanging} onNetworkChange={changeNetworkInterface} onRefresh={refreshDiscovery} /> : null}
-      </DiscoveryStatus>
+        {addLightAction}
+      </DiscoveryStatus></AppSurface>
     );
   }
 
   return (
-    <div className="app-shell" data-center-view={centerView}>
+    <AppSurface setupModal={setupModal}><div className="app-shell" data-center-view={centerView}>
       <Sidebar
         locations={locationCollections}
         groups={snapshot.groups}
@@ -1210,7 +1255,8 @@ export function App() {
         onNetworkInterfaceChange={(name) => void changeNetworkInterface(name)}
         onRefreshDiscovery={() => void refreshDiscovery()}
         onOpenCommands={openCommandModal}
-        commandsOpen={commandOpen}
+        commandsOpen={commandOpen || onboardingOpen}
+        onOpenSetup={onboardingAvailable ? openLightSetup : undefined}
         onGroupPower={(id, on) =>
           void Promise.all(prepareLightPowerUpdates(snapshot.devices.filter((device) => device.groupId === id), on).map((command) => updateListDevice(command.device, command.intent)))
         }
@@ -1383,8 +1429,13 @@ export function App() {
           }}
         />
       ) : null}
-    </div>
+    </div></AppSurface>
   );
+}
+
+// Keep setup mounted when discovery transitions to an inventory (or back).
+function AppSurface({ children, setupModal }: { children: ReactNode; setupModal: ReactNode }) {
+  return <>{children}{setupModal}</>;
 }
 
 function isEditableShortcutTarget(target: EventTarget | null, options: { allowEmptySearch?: boolean } = {}): boolean {

@@ -142,6 +142,9 @@ button {
   box-shadow: var(--shadow-lg);
 }
 
+.discovery-add-light { height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--fg-2); font: inherit; font-size: 12px; cursor: pointer; }
+.discovery-add-light:hover { color: var(--fg-0); border-color: var(--line-strong); }
+
 .startup-error strong {
   font-size: 15px;
 }

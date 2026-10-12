@@ -5,6 +5,10 @@
   gap: 20px;
 }
 
+.lan-footer-actions { display: flex; align-items: center; gap: 4px; }
+.setup-open-button { width: 24px; height: 24px; flex: 0 0 24px; color: var(--fg-2); border-radius: 4px; }
+.setup-open-button:hover { color: var(--fg-0); background: #ffffff08; }
+
 .sidebar-search {
   display: flex;
   align-items: center;

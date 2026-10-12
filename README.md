@@ -131,6 +131,29 @@ Click a scene to recall it. The info icon lists its members, current availabilit
 
 Recall uses lifxlan-go's native snapshot restore and stops active effects on the targeted lights. Available compatible members can succeed while missing or failed members are reported individually. A successful send is not an acknowledgement, and recall is not an atomic transaction or automatic rollback. Scenes are manual, one-shot actions; they do not add schedules or sensor automation. Capture/recall currently requires the real LAN transport, not mock mode.
 
+## Device Setup (macOS)
+
+Both macOS downloads include Wi-Fi setup for one LIFX device at a time. Use the
+plus icon beside the network control in the left footer, or **add device** when
+no devices are found. Select a discovered device and Wi-Fi network (or enter a
+hidden network manually), enter its WPA2-personal password, then confirm. Leave
+the password empty for an open network; the confirmation explicitly identifies
+this choice. This computer briefly leaves its Wi-Fi
+network; setup reconnects it and waits for the device to appear on the LAN.
+
+Location access is requested only when scanning setup networks. Open the signed
+app through Finder/Dock so macOS can attribute this permission to hikari.
+Wi-Fi passwords are neither saved nor logged. Cancellation waits for the
+library's network-recovery attempt, rather than abandoning the computer on the
+device's network. Firmware effects may continue; stop running hikari effects
+before setup. Presence lighting is paused during the handoff.
+
+After discovery, an optional details step edits its label and selects existing
+locations/groups using the same editor as the inspector. Save or skip this step;
+creating new locations/groups is not part of setup yet. Setup does not
+automatically assign floor-plan rooms or scenes.
+Linux and Windows do not expose setup controls yet.
+
 ## Device Health
 
 The `health` view shows signal quality, time since the last LAN response, and device uptime. Last response is an observation age, not a latency measurement.
@@ -173,6 +196,7 @@ These files are written atomically, shared by development and installed builds, 
 - Go 1.27
 - Node.js 22 or newer and npm
 - Wails v2.16.0
+- macOS 13 or newer for macOS builds
 - On Linux, the native Wails/WebKit dependencies for your distribution
 
 ```sh
@@ -185,6 +209,12 @@ wails dev
 
 Reinstall an older Wails CLI using the command above after upgrading to Go 1.27.
 Earlier Wails package loaders may fail to generate bindings with this toolchain.
+
+For macOS setup development, use `./scripts/wails-macos.sh dev -tags corewlan`.
+Wi-Fi scanning may be redacted in `wails dev`; test permissions and provisioning
+with `./scripts/wails-macos.sh build -tags corewlan`, then
+`open build/bin/hikari.app`. The wrapper aligns native deployment targets with
+the packaged minimum OS. Other platforms continue to use the regular Wails commands.
 
 For UI development without real lights:
 

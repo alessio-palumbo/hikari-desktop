@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"hikari-desktop/internal/backend"
@@ -16,6 +18,7 @@ import (
 const (
 	deviceSnapshotEvent = "hikari:devices:snapshot"
 	sensorSnapshotEvent = "hikari:sensors:snapshot"
+	setupProgressEvent  = "hikari:setup:progress"
 )
 
 type App struct {
@@ -28,14 +31,22 @@ type App struct {
 	themes         backend.ThemeStore
 	scenes         *backend.SceneService
 	onboarding     onboardingProvider
+	controlGate    sync.RWMutex
+	settingUp      bool
+	closing        bool
+	setupMu        sync.Mutex
+	setupAttempt   string
+	setupCancel    context.CancelFunc
+	cancelledSetup string
 	emitEvent      func(context.Context, string, ...interface{})
 }
 
 type onboardingProvider interface {
 	Capabilities() backend.OnboardingCapabilities
-	Scan(context.Context) (backend.SetupLightDiscovery, error)
+	Discover(context.Context, bool) (backend.SetupLightDiscovery, error)
 	CancelScan()
 	Close(context.Context) error
+	Provision(context.Context, backend.SetupLightRequest, backend.SetupVerifier, func(backend.SetupProgress)) (backend.SetupLightResult, error)
 }
 
 type sensorProvider interface {
@@ -108,6 +119,9 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.controlGate.Lock()
+	a.closing = true
+	a.controlGate.Unlock()
 	if a.onboarding != nil {
 		if err := a.onboarding.Close(ctx); err != nil {
 			log.Printf("hikari: light setup shutdown failed: %v", err)
@@ -135,14 +149,113 @@ func (a *App) shutdown(ctx context.Context) {
 }
 
 func (a *App) OnboardingCapabilities() backend.OnboardingCapabilities {
-	return a.onboarding.Capabilities()
+	_, supported := a.transport.(backend.OnboardingNetwork)
+	return backend.OnboardingCapabilities{Available: supported && a.onboarding.Capabilities().Available}
 }
 
-func (a *App) ScanSetupLights() (backend.SetupLightDiscovery, error) {
-	return a.onboarding.Scan(a.context())
+func (a *App) ScanSetupLights(refresh bool) (backend.SetupLightDiscovery, error) {
+	if !a.OnboardingCapabilities().Available {
+		return backend.SetupLightDiscovery{}, backend.ErrOnboardingUnavailable
+	}
+	return a.onboarding.Discover(a.context(), refresh)
 }
 
-func (a *App) CancelOnboardingScan() { a.onboarding.CancelScan() }
+func (a *App) CancelLightSetup(attemptID string) {
+	if attemptID == "" {
+		a.onboarding.CancelScan()
+		return
+	}
+	a.setupMu.Lock()
+	defer a.setupMu.Unlock()
+	if a.setupAttempt == attemptID && a.setupCancel != nil {
+		a.setupCancel()
+	} else if len(attemptID) <= 64 {
+		a.cancelledSetup = attemptID
+	}
+}
+
+func (a *App) SetupLight(req backend.SetupLightRequest) (backend.SetupLightResult, error) {
+	if !a.OnboardingCapabilities().Available {
+		return backend.SetupLightResult{}, backend.ErrOnboardingUnavailable
+	}
+	network, ok := a.transport.(backend.OnboardingNetwork)
+	if !ok {
+		return backend.SetupLightResult{}, backend.ErrOnboardingUnavailable
+	}
+	a.setupMu.Lock()
+	if a.setupCancel != nil {
+		a.setupMu.Unlock()
+		return backend.SetupLightResult{}, backend.ErrOnboardingBusy
+	}
+	if strings.TrimSpace(req.AttemptID) == "" || len(req.AttemptID) > 64 {
+		a.setupMu.Unlock()
+		return backend.SetupLightResult{}, fmt.Errorf("invalid setup attempt")
+	}
+	if a.cancelledSetup == req.AttemptID {
+		a.cancelledSetup = ""
+		a.setupMu.Unlock()
+		return backend.SetupLightResult{Cancelled: true, Error: "Setup cancelled."}, nil
+	}
+	ctx, cancelSetup := context.WithCancel(a.context())
+	a.setupAttempt, a.setupCancel = req.AttemptID, cancelSetup
+	a.setupMu.Unlock()
+	defer func() { cancelSetup(); a.setupMu.Lock(); a.setupAttempt = ""; a.setupCancel = nil; a.setupMu.Unlock() }()
+	a.emitEvent(a.context(), setupProgressEvent, backend.SetupProgress{AttemptID: req.AttemptID, Phase: "prepare"})
+	a.controlGate.Lock()
+	if ctx.Err() != nil {
+		a.controlGate.Unlock()
+		return backend.SetupLightResult{Cancelled: true, Error: "Setup cancelled."}, nil
+	}
+	if a.closing {
+		a.controlGate.Unlock()
+		return backend.SetupLightResult{}, backend.ErrOnboardingClosed
+	}
+	if a.settingUp {
+		a.controlGate.Unlock()
+		return backend.SetupLightResult{}, backend.ErrOnboardingBusy
+	}
+	if err := network.CheckSetupReady(); err != nil {
+		a.controlGate.Unlock()
+		return backend.SetupLightResult{}, err
+	}
+	a.settingUp = true
+	a.controlGate.Unlock()
+	defer func() { a.controlGate.Lock(); a.settingUp = false; a.controlGate.Unlock() }()
+	result, err := a.onboarding.Provision(ctx, req, network.SetupVerifier(ctx), func(progress backend.SetupProgress) {
+		a.emitEvent(ctx, setupProgressEvent, progress)
+	})
+	if errors.Is(err, context.Canceled) {
+		result.Cancelled = true
+		result.Error = "Setup cancelled."
+		err = nil
+	}
+	// Cancellation may have interrupted verification, but the library has still
+	// attempted host-network recovery. Refresh even after a failed setup, never
+	// while the host is still deliberately on the light's setup network.
+	a.controlGate.RLock()
+	if err == nil && result.Serial != "" && a.context().Err() == nil && !a.closing {
+		rctx, cancel := context.WithTimeout(a.context(), 5*time.Second)
+		defer cancel()
+		if refreshErr := network.RefreshAfterSetup(rctx); refreshErr != nil {
+			result.Warning = "Discovery could not resume. Check your network and refresh discovery."
+		}
+	}
+	a.controlGate.RUnlock()
+	return result, err
+}
+
+func (a *App) beginControl() (func(), error) {
+	a.controlGate.RLock()
+	if a.closing {
+		a.controlGate.RUnlock()
+		return nil, backend.ErrOnboardingClosed
+	}
+	if a.settingUp {
+		a.controlGate.RUnlock()
+		return nil, backend.ErrOnboardingBusy
+	}
+	return a.controlGate.RUnlock, nil
+}
 
 func (a *App) context() context.Context {
 	if a.ctx == nil {
@@ -152,10 +265,20 @@ func (a *App) context() context.Context {
 }
 
 func (a *App) GetDeviceSnapshot() (backend.DeviceSnapshot, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.DeviceSnapshot{}, err
+	}
+	defer unlock()
 	return a.transport.Snapshot(a.context())
 }
 
 func (a *App) PingDevice(serial string) (backend.DevicePingResult, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.DevicePingResult{}, err
+	}
+	defer unlock()
 	diagnostics, ok := a.transport.(backend.DeviceDiagnostics)
 	if !ok {
 		return backend.DevicePingResult{}, fmt.Errorf("device ping is unavailable")
@@ -186,6 +309,11 @@ func (a *App) PreviewTheme(req backend.ThemeRequest) (backend.ThemePreview, erro
 }
 
 func (a *App) ApplyTheme(req backend.ThemeRequest) (backend.ThemeApplyResult, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.ThemeApplyResult{}, err
+	}
+	defer unlock()
 	applier, ok := a.transport.(backend.ThemeApplier)
 	if !ok {
 		return backend.ThemeApplyResult{}, fmt.Errorf("theme application is unavailable")
@@ -210,6 +338,11 @@ func (a *App) DeleteUserTheme(id string) error {
 func (a *App) GetScenes() ([]backend.SceneSummary, error) { return a.scenes.List() }
 
 func (a *App) CaptureScene(req backend.CaptureSceneRequest) (backend.SceneSummary, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.SceneSummary{}, err
+	}
+	defer unlock()
 	ctx, cancel := context.WithTimeout(a.context(), 5*time.Second)
 	defer cancel()
 	return a.scenes.Capture(ctx, req)
@@ -220,6 +353,11 @@ func (a *App) RenameScene(req backend.RenameSceneRequest) (backend.SceneSummary,
 }
 
 func (a *App) EditScene(req backend.EditSceneRequest) (backend.SceneSummary, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.SceneSummary{}, err
+	}
+	defer unlock()
 	ctx, cancel := context.WithTimeout(a.context(), 5*time.Second)
 	defer cancel()
 	return a.scenes.Edit(ctx, req)
@@ -228,6 +366,11 @@ func (a *App) EditScene(req backend.EditSceneRequest) (backend.SceneSummary, err
 func (a *App) DeleteScene(id string) error { return a.scenes.Delete(id) }
 
 func (a *App) RecallScene(id string) (backend.SceneRecallResult, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.SceneRecallResult{}, err
+	}
+	defer unlock()
 	ctx, cancel := context.WithTimeout(a.context(), 10*time.Second)
 	defer cancel()
 	return a.scenes.Recall(ctx, id)
@@ -283,18 +426,38 @@ func (a *App) NetworkSettings() (backend.NetworkSettings, error) {
 }
 
 func (a *App) SetNetworkInterface(req backend.SetNetworkInterfaceRequest) (backend.NetworkSettings, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.NetworkSettings{}, err
+	}
+	defer unlock()
 	return a.transport.SetNetworkInterface(a.context(), req)
 }
 
 func (a *App) RestartDeviceDiscovery() (backend.NetworkSettings, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.NetworkSettings{}, err
+	}
+	defer unlock()
 	return a.transport.RestartDeviceDiscovery(a.context())
 }
 
 func (a *App) SetDeviceState(req backend.SetDeviceStateRequest) (backend.Device, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.Device{}, err
+	}
+	defer unlock()
 	return a.transport.SetDeviceState(a.context(), req)
 }
 
 func (a *App) SetLightPartState(req backend.SetLightPartStateRequest) error {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	transport, ok := a.transport.(interface {
 		SetLightPartState(context.Context, backend.SetLightPartStateRequest) error
 	})
@@ -307,14 +470,29 @@ func (a *App) SetLightPartState(req backend.SetLightPartStateRequest) error {
 }
 
 func (a *App) SetDeviceMetadata(req backend.SetDeviceMetadataRequest) (backend.Device, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.Device{}, err
+	}
+	defer unlock()
 	return a.transport.SetDeviceMetadata(a.context(), req)
 }
 
 func (a *App) StartDeviceEffect(req backend.StartDeviceEffectRequest) (backend.DeviceEffectStatus, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.DeviceEffectStatus{}, err
+	}
+	defer unlock()
 	return a.transport.StartDeviceEffect(a.context(), req)
 }
 
 func (a *App) StopDeviceEffect(req backend.StopDeviceEffectRequest) (backend.DeviceEffectStatus, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.DeviceEffectStatus{}, err
+	}
+	defer unlock()
 	return a.transport.StopDeviceEffect(a.context(), req)
 }
 
@@ -327,6 +505,11 @@ func (a *App) SetCommandEngineSettings(req backend.SetCommandEngineSettingsReque
 }
 
 func (a *App) InterpretCommand(req backend.InterpretCommandRequest) (backend.CommandPreview, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.CommandPreview{}, err
+	}
+	defer unlock()
 	snapshot, err := a.transport.Snapshot(a.context())
 	if err != nil {
 		return backend.CommandPreview{}, err
@@ -335,6 +518,11 @@ func (a *App) InterpretCommand(req backend.InterpretCommandRequest) (backend.Com
 }
 
 func (a *App) TranscribeCommand(req backend.TranscribeCommandRequest) (backend.SpeechCommandPreview, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.SpeechCommandPreview{}, err
+	}
+	defer unlock()
 	snapshot, err := a.transport.Snapshot(a.context())
 	if err != nil {
 		return backend.SpeechCommandPreview{}, err
@@ -343,6 +531,11 @@ func (a *App) TranscribeCommand(req backend.TranscribeCommandRequest) (backend.S
 }
 
 func (a *App) TranscribeCommandAudio(req backend.TranscribeCommandAudioRequest) (backend.SpeechCommandPreview, error) {
+	unlock, err := a.beginControl()
+	if err != nil {
+		return backend.SpeechCommandPreview{}, err
+	}
+	defer unlock()
 	snapshot, err := a.transport.Snapshot(a.context())
 	if err != nil {
 		return backend.SpeechCommandPreview{}, err
