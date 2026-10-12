@@ -11,8 +11,13 @@ permissions:
 
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-22.04
+    name: Test ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -44,4 +49,9 @@ jobs:
         run: npm run build
 
       - name: Go tests
+        if: runner.os != 'macOS'
         run: go test ./...
+
+      - name: Go tests with macOS onboarding adapter
+        if: runner.os == 'macOS'
+        run: go test -race -tags corewlan ./...

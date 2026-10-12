@@ -27,7 +27,15 @@ type App struct {
 	effectSettings backend.EffectSettingsStore
 	themes         backend.ThemeStore
 	scenes         *backend.SceneService
+	onboarding     onboardingProvider
 	emitEvent      func(context.Context, string, ...interface{})
+}
+
+type onboardingProvider interface {
+	Capabilities() backend.OnboardingCapabilities
+	Scan(context.Context) (backend.SetupLightDiscovery, error)
+	CancelScan()
+	Close(context.Context) error
 }
 
 type sensorProvider interface {
@@ -72,6 +80,7 @@ func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvide
 		effectSettings: backend.NewEffectSettingsStore(),
 		themes:         backend.NewThemeStore(),
 		scenes:         backend.NewSceneService(transport, backend.NewSceneStore()),
+		onboarding:     backend.NewOnboardingService(),
 		emitEvent:      wailsruntime.EventsEmit,
 	}
 }
@@ -99,6 +108,11 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.onboarding != nil {
+		if err := a.onboarding.Close(ctx); err != nil {
+			log.Printf("hikari: light setup shutdown failed: %v", err)
+		}
+	}
 	if observable, ok := a.transport.(deviceSnapshotObserver); ok {
 		observable.SetSnapshotObserver(nil)
 	}
@@ -119,6 +133,16 @@ func (a *App) shutdown(ctx context.Context) {
 		}
 	}
 }
+
+func (a *App) OnboardingCapabilities() backend.OnboardingCapabilities {
+	return a.onboarding.Capabilities()
+}
+
+func (a *App) ScanSetupLights() (backend.SetupLightDiscovery, error) {
+	return a.onboarding.Scan(a.context())
+}
+
+func (a *App) CancelOnboardingScan() { a.onboarding.CancelScan() }
 
 func (a *App) context() context.Context {
 	if a.ctx == nil {
