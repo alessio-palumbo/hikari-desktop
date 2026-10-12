@@ -1,11 +1,11 @@
 module hikari-desktop
 
-go 1.26
+go 1.27
 
 require (
 	github.com/alessio-palumbo/lifxprotocol-go v0.4.0
 	github.com/alessio-palumbo/sensaa v0.2.0
-	github.com/wailsapp/wails/v2 v2.12.0
+	github.com/wailsapp/wails/v2 v2.16.0
 )
 
 require github.com/alessio-palumbo/lifx-command-engine v0.2.5

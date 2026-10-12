@@ -170,18 +170,21 @@ These files are written atomically, shared by development and installed builds, 
 
 ### Requirements
 
-- Go 1.26
+- Go 1.27
 - Node.js 22 or newer and npm
-- Wails v2.12.0
+- Wails v2.16.0
 - On Linux, the native Wails/WebKit dependencies for your distribution
 
 ```sh
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
 cd frontend
 npm ci
 cd ..
 wails dev
 ```
+
+Reinstall an older Wails CLI using the command above after upgrading to Go 1.27.
+Earlier Wails package loaders may fail to generate bindings with this toolchain.
 
 For UI development without real lights:
 
