@@ -117,6 +117,27 @@ func TestMusicTransportManualChangeStopsGroupButUnrelatedControlDoesNot(t *testi
 	}
 }
 
+func TestPresenceCommandDoesNotStopOrWriteMusicTargets(t *testing.T) {
+	d := musicLamp(t, "d073d501a2c3")
+	ctrl := &fakeLifxController{devices: []lifxdevice.Device{d}, sent: make(chan sentMessage, 32)}
+	transport := newTestLifxTransport(t, ctrl)
+	done := startTestMusic(t, transport, []string{d.Serial.String()})
+	waitForSentMessage(t, ctrl.sent)
+	request := mapLifxDevice(d, "desk")
+	request.On = false
+	count := len(ctrl.sentMessages())
+	result, err := transport.SetDeviceState(context.Background(), SetDeviceStateRequest{Device: request, Intent: DeviceCommandPower, Automation: true})
+	if err != nil || !result.On || len(ctrl.sentMessages()) != count || transport.MusicStatus().State != "running" {
+		t.Fatalf("automation competed with Music: result=%+v err=%v", result, err)
+	}
+	if err := transport.StopMusic(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := awaitMusicRun(t, done); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMusicTransportCapturesEveryTargetBeforeAnySend(t *testing.T) {
 	a, b := musicLamp(t, "d073d501a2c3"), musicLamp(t, "d073d501a2c4")
 	base := &fakeLifxController{devices: []lifxdevice.Device{a, b}}

@@ -19,6 +19,8 @@
   cursor: pointer;
 }
 
+.app-shell[data-music-running="true"] .center-view-toggle [data-music-tab] { color: var(--accent); }
+
 .center-view-toggle button:hover,
 .center-view-toggle button[data-active="true"] {
   background: oklch(1 0 0 / 0.06);

@@ -17,9 +17,11 @@ var (
 const musicCleanupTimeout = 20 * time.Second
 
 type MusicStatus struct {
-	State   string   `json:"state"`
-	Serials []string `json:"serials"`
-	Error   string   `json:"error,omitempty"`
+	State    string   `json:"state"`
+	Serials  []string `json:"serials"`
+	Error    string   `json:"error,omitempty"`
+	RunID    string   `json:"runId,omitempty"`
+	Revision uint64   `json:"revision,omitempty"`
 }
 
 type musicRun struct {
@@ -33,10 +35,11 @@ type musicRun struct {
 // bound to validated serials and owns capture/power/restore; after Stop returns
 // successfully, no more frames can be sent by that run.
 type MusicService struct {
-	mu     sync.Mutex
-	closed bool
-	run    *musicRun
-	status MusicStatus
+	mu       sync.Mutex
+	closed   bool
+	run      *musicRun
+	status   MusicStatus
+	observer func(MusicStatus)
 }
 
 func NewMusicService() *MusicService {
@@ -49,6 +52,23 @@ func (s *MusicService) Status() MusicStatus {
 	status := s.status
 	status.Serials = append([]string{}, status.Serials...)
 	return status
+}
+
+func (s *MusicService) SetStatusObserver(observer func(MusicStatus)) {
+	s.mu.Lock()
+	s.observer = observer
+	s.mu.Unlock()
+}
+
+func (s *MusicService) notify() {
+	s.mu.Lock()
+	observer := s.observer
+	status := s.status
+	status.Serials = append([]string{}, status.Serials...)
+	s.mu.Unlock()
+	if observer != nil {
+		observer(status)
+	}
 }
 
 // Run blocks until cancellation, input completion or failure. A validated,
@@ -87,6 +107,7 @@ func (s *MusicService) runWithLifecycle(ctx context.Context, config maestrolive.
 	}
 	s.status = MusicStatus{State: "running", Serials: serials}
 	s.mu.Unlock()
+	s.notify()
 
 	if prepare != nil {
 		err = prepare(runCtx)
@@ -114,6 +135,7 @@ func (s *MusicService) runWithLifecycle(ctx context.Context, config maestrolive.
 	}
 	close(run.done)
 	s.mu.Unlock()
+	s.notify()
 	return err
 }
 
@@ -124,6 +146,9 @@ func (s *MusicService) Stop(ctx context.Context) error {
 		s.status.State = "stopping"
 	}
 	s.mu.Unlock()
+	if run != nil {
+		s.notify()
+	}
 	return waitForMusicRun(ctx, run)
 }
 
@@ -137,6 +162,9 @@ func (s *MusicService) Close(ctx context.Context) error {
 		s.status.State = "stopping"
 	}
 	s.mu.Unlock()
+	if run != nil {
+		s.notify()
+	}
 	return waitForMusicRun(ctx, run)
 }
 

@@ -13,7 +13,6 @@ import (
 	lifxcontroller "github.com/alessio-palumbo/lifxlan-go/pkg/controller"
 	lifxdevice "github.com/alessio-palumbo/lifxlan-go/pkg/device"
 	lifxeffects "github.com/alessio-palumbo/lifxlan-go/pkg/effects"
-	lifxadapters "github.com/alessio-palumbo/lifxlan-go/pkg/effects/adapters"
 	"github.com/alessio-palumbo/lifxlan-go/pkg/messages"
 	"github.com/alessio-palumbo/lifxlan-go/pkg/protocol"
 )
@@ -49,6 +48,10 @@ func (t *LifxTransport) MusicStatus() MusicStatus {
 		return MusicStatus{State: "idle", Serials: []string{}}
 	}
 	return service.Status()
+}
+
+func (t *LifxTransport) SetMusicStatusObserver(observer func(MusicStatus)) {
+	t.musicService().SetStatusObserver(observer)
 }
 
 func (t *LifxTransport) MusicOwnsSerial(serial string) bool {
@@ -87,6 +90,8 @@ type musicTarget struct {
 // own Analyzer.Close. Manual writes to any target stop the complete session
 // before taking a device lock, while unrelated devices remain controllable.
 func (t *LifxTransport) RunMusic(ctx context.Context, input MusicInput) error {
+	ctx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
 	ctrl, err := t.requireController()
 	if err != nil {
 		return err
@@ -113,6 +118,38 @@ func (t *LifxTransport) RunMusic(ctx context.Context, input MusicInput) error {
 	}
 	slices.SortFunc(targets, func(a, b *musicTarget) int { return strings.Compare(a.serial.String(), b.serial.String()) })
 	var releases []func()
+	var dispatcher *musicFrameDispatcher
+	bySerial := make(map[string]*musicTarget)
+	var targetIDs []string
+	for _, target := range targets {
+		id := target.serial.String()
+		bySerial[id] = target
+		targetIDs = append(targetIDs, id)
+	}
+	render := func(ctx context.Context, output maestrolive.TargetFrame) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		target := bySerial[output.Target]
+		first := !target.touched
+		target.touched = true // Failed sends may still have partially changed a chain.
+		if err := target.renderer.RenderFrame(ctx, constrainMusicFrame(output.Frame, target.previous.Capability)); err != nil {
+			return err
+		}
+		if first && !devicePoweredOn(target.previous) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			current, found := ctrl.GetDevice(target.serial)
+			if !found || deviceEndpointChanged(target.device, current) || t.validateEndpointRequest(target.previous) != nil {
+				return lifxcontroller.ErrEndpointChanged
+			}
+			msg := messages.SetPowerOn()
+			logLifxSend(target.serial, target.previous, "music-power-on", msg)
+			return ctrl.Send(target.serial, msg)
+		}
+		return nil
+	}
 	prepare := func(ctx context.Context) error {
 		for _, target := range targets {
 			unlock, err := t.lockDeviceCommand(ctx, target.serial)
@@ -153,7 +190,7 @@ func (t *LifxTransport) RunMusic(ctx context.Context, input MusicInput) error {
 			if err != nil {
 				return fmt.Errorf("capture music state for %s: %w", target.serial, err)
 			}
-			target.renderer = lifxadapters.NewRendererForDevice(d, func(msg *protocol.Message) error {
+			target.renderer = newMusicRenderer(d, func(msg *protocol.Message) error {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
@@ -168,6 +205,7 @@ func (t *LifxTransport) RunMusic(ctx context.Context, input MusicInput) error {
 				return ctrl.Send(target.serial, msg)
 			})
 		}
+		dispatcher = newMusicFrameDispatcher(ctx, targetIDs, render, cancelRun)
 		return nil
 	}
 	cleanup := func(ctx context.Context) error {
@@ -177,6 +215,9 @@ func (t *LifxTransport) RunMusic(ctx context.Context, input MusicInput) error {
 			}
 		}()
 		var result error
+		if dispatcher != nil {
+			result = dispatcher.Close()
+		}
 		for _, target := range targets {
 			if !target.touched {
 				continue
@@ -195,43 +236,13 @@ func (t *LifxTransport) RunMusic(ctx context.Context, input MusicInput) error {
 		}
 		return result
 	}
-	bySerial := make(map[string]*musicTarget)
 	config := maestrolive.Config{Source: input.Source, Analyzer: input.Analyzer, Style: input.Style, Dynamics: input.Dynamics, Tracker: input.Tracker, Observer: input.Observer}
 	for _, target := range targets {
 		id := target.serial.String()
-		bySerial[id] = target
 		config.Targets = append(config.Targets, maestrolive.Target{ID: id, Surface: target.surface})
 	}
 	config.Sink = maestrolive.SinkFunc(func(ctx context.Context, batch maestrolive.FrameBatch) error {
-		for _, output := range batch {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			target := bySerial[output.Target]
-			if target == nil {
-				return errors.New("music output contains an unselected target")
-			}
-			first := !target.touched
-			target.touched = true // Failed sends may still have partially changed a chain.
-			if err := target.renderer.RenderFrame(ctx, constrainMusicFrame(output.Frame, target.previous.Capability)); err != nil {
-				return err
-			}
-			if first && !devicePoweredOn(target.previous) {
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				current, found := ctrl.GetDevice(target.serial)
-				if !found || deviceEndpointChanged(target.device, current) || t.validateEndpointRequest(target.previous) != nil {
-					return lifxcontroller.ErrEndpointChanged
-				}
-				msg := messages.SetPowerOn()
-				logLifxSend(target.serial, target.previous, "music-power-on", msg)
-				if err := ctrl.Send(target.serial, msg); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
+		return dispatcher.Write(ctx, batch)
 	})
 	return t.musicService().runWithLifecycle(ctx, config, prepare, cleanup)
 }

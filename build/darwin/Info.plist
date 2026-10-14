@@ -24,7 +24,7 @@
         <key>NSHumanReadableCopyright</key>
         <string>{{.Info.Copyright}}</string>
         <key>NSMicrophoneUsageDescription</key>
-        <string>hikari uses the microphone to transcribe local voice commands.</string>
+        <string>hikari uses the microphone for local voice commands and music-reactive lighting.</string>
         <key>NSLocalNetworkUsageDescription</key>
         <string>hikari uses your local network to discover and control LIFX lights and Sensaa sensors.</string>
         <key>NSLocationWhenInUseUsageDescription</key>

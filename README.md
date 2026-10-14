@@ -131,6 +131,37 @@ Click a scene to recall it. The info icon lists its members, current availabilit
 
 Recall uses lifxlan-go's native snapshot restore and stops active effects on the targeted lights. Available compatible members can succeed while missing or failed members are reported individually. A successful send is not an acknowledgement, and recall is not an atomic transaction or automatic rollback. Scenes are manual, one-shot actions; they do not add schedules or sensor automation. Capture/recall currently requires the real LAN transport, not mock mode.
 
+## Music (Experimental)
+
+The `music` view uses Maestro Live to react to microphone audio. Select a device,
+group, room, or combination of lights, choose an input and style, then start.
+Music keeps its target selection fixed during a run. Stop restores the captured
+power, brightness and colours. A manual change to a targeted light stops the
+whole session before applying that change; unrelated lights remain controllable.
+Stop other effects on selected lights before starting Music.
+
+Presence lighting pauses for Music targets. Other room lights remain automated.
+When Music ends in a clear room, the clear action resumes with a fresh configured
+delay. Microphone capture and analysis stop on application shutdown.
+
+Music requires an externally managed Maestro analyzer. Hikari does not bundle
+or download its Python dependencies in this milestone. Configure either
+`HIKARI_MAESTRO_ANALYZER` with the absolute path of a frozen analyzer executable,
+or both `HIKARI_MAESTRO_PYTHON` and `HIKARI_MAESTRO_SCRIPT` with absolute paths.
+See [Maestro's analyzer setup](https://github.com/alessio-palumbo/lifx-maestro#setup).
+For a sibling development checkout:
+
+```sh
+HIKARI_MAESTRO_PYTHON="$PWD/../lifx-maestro/analyzer/.venv/bin/python" \
+HIKARI_MAESTRO_SCRIPT="$PWD/../lifx-maestro/analyzer/analyze.py" \
+./scripts/wails-macos.sh dev -tags corewlan
+```
+
+On Linux/Windows, use the same environment variables with `wails dev`.
+Music does not access audio on startup; input enumeration happens when opening
+the configured Music view, and recording begins only on Start. Allow microphone
+access when prompted. Audio is processed locally, not saved or sent to the cloud.
+
 ## Device Setup
 
 The macOS, Linux and Windows downloads include Wi-Fi setup for one LIFX device at a time. Use the

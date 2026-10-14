@@ -10,6 +10,9 @@ import { FloorPlanChooser } from './components/FloorPlanChooser';
 import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
 import { Scenes } from './components/Scenes';
+import { Music } from './components/Music';
+import { getMusicStatus, startMusic, stopMusic, subscribeToMusicStatus } from './backend/api';
+import { musicActive, musicAutomationDevices, musicOwnedSerials, newerMusicStatus, type MusicStatus, type MusicSelection, type StartMusicRequest } from './domain/music';
 import { OnboardingModal } from './components/OnboardingModal';
 import { getOnboardingCapabilities, setupLight } from './backend/api';
 import type { SetupLightRequest, SetupLightResult } from './domain/onboarding';
@@ -31,7 +34,7 @@ import { FLOOR_PLAN_RECOVERY_KEY, createDefaultFloorPlanLocation, createFloorPla
 import { DeviceKind, isLightDevice, sortDevicesByHierarchy, type Device, type DeviceSnapshot } from './domain/lifx';
 import { collectLocations, devicesInLocationCollection, groupsInLocationCollection, locationCollectionByKey, locationCollectionForID } from './domain/locationCollections.js';
 import { initialRoomOccupancyState, reconcileRoomOccupancy, type RoomOccupancyState } from './domain/occupancy';
-import { planRoomDim, planRoomDimRestore, type RoomDimOwnership } from './domain/presenceLighting';
+import { planRoomDim, planRoomDimRestore, partitionDimOwnership, preserveDimOwnership, type RoomDimOwnership } from './domain/presenceLighting';
 import { displayedEffectStatus } from './domain/effectState.js';
 import { sensorAssignmentHints } from './domain/sensorAssignments.js';
 import { applyTextCommandAction, executableTextCommandTargets } from './domain/textCommands';
@@ -61,6 +64,11 @@ export function App() {
   const [locationId, setLocationId] = useState(() => loadPreference(LOCATION_KEY));
   const [groupId, setGroupId] = useState(() => loadPreference(GROUP_KEY));
   const [centerView, setCenterView] = useState<CenterView>(() => loadCenterViewPreference());
+  const [musicStatus, setMusicStatus] = useState<MusicStatus>({ state: 'idle', serials: [] });
+  const [musicSelection, setMusicSelection] = useState<MusicSelection>({ serials: [], inputId: '', style: 'synthwave', dynamics: 'auto', sensitivity: 'low' });
+  const musicStatusRef = useRef<MusicStatus>(musicStatus);
+  const musicStartRef = useRef<{ id: string; serials: string[] } | undefined>(undefined);
+  const previousMusicSerialsRef = useRef(new Set<string>());
   const [floorPlanProfiles, setFloorPlanProfiles] = useState<FloorPlanProfilePreferences>(() => loadFloorPlanProfilePreferences(window.localStorage));
   const [floorPlanStorageReady, setFloorPlanStorageReady] = useState(false);
   const [floorPlanSelection, setFloorPlanSelection] = useState<string | undefined>();
@@ -105,7 +113,7 @@ export function App() {
   const roomOccupancyRef = useRef<Record<string, RoomOccupancyState>>({});
   const roomDimOwnershipRef = useRef<Record<string, RoomDimOwnership>>({});
   const floorPlanSaveRef = useRef<Promise<void>>(Promise.resolve());
-  const updateListDeviceRef = useRef<(device: Device, intent?: DeviceCommandIntent) => Promise<void>>(async () => undefined);
+  const updateListDeviceRef = useRef<(device: Device, intent?: DeviceCommandIntent, automation?: boolean) => Promise<void>>(async () => undefined);
   const locationCollections = useMemo(() => collectLocations(snapshot.locations), [snapshot.locations]);
   const selectedLocationCollection = locationCollectionForID(locationCollections, locationId);
   const currentFloorPlanObservation = useMemo(() => floorPlanObservation(snapshot), [snapshot]);
@@ -247,6 +255,21 @@ export function App() {
   useEffect(() => savePreference(LOCATION_KEY, locationId), [locationId]);
   useEffect(() => savePreference(GROUP_KEY, groupId), [groupId]);
   useEffect(() => savePreference(CENTER_VIEW_KEY, centerView), [centerView]);
+
+  const applyMusicStatus = (incoming: MusicStatus) => {
+    const next = newerMusicStatus(musicStatusRef.current, incoming);
+    musicStatusRef.current = next;
+    setMusicStatus(next);
+  };
+  useEffect(() => {
+    let disposed = false;
+    const apply = (status: MusicStatus) => { if (!disposed) applyMusicStatus(status); };
+    const unsubscribe = subscribeToMusicStatus(apply);
+    const refresh = () => void getMusicStatus().then(apply).catch(() => undefined);
+    refresh();
+    const timer = window.setInterval(refresh, unsubscribe ? 10000 : 2000);
+    return () => { disposed = true; unsubscribe?.(); window.clearInterval(timer); };
+  }, []);
   useEffect(() => {
     if (!floorPlanStorageReady) return undefined;
     const data = serializeFloorPlanProfilePreferences(floorPlanProfiles);
@@ -491,7 +514,7 @@ export function App() {
   const currentGroup = snapshot.groups.find((group) => group.id === groupId);
   const locationDevices = devicesInLocationCollection(selectedLocationCollection, snapshot.groups, snapshot.devices);
   const floorPlanDevices = floorPlanProfile ? devicesForFloorPlanProfile(floorPlanProfile, snapshot.devices) : [];
-  const captureScopes = centerView === 'scenes' ? sceneCaptureScopes(snapshot, floorPlanProfile?.layout.floors.flatMap((floor) => floor.rooms.map((room) => ({
+  const captureScopes = centerView === 'scenes' || centerView === 'music' ? sceneCaptureScopes(snapshot, floorPlanProfile?.layout.floors.flatMap((floor) => floor.rooms.map((room) => ({
     id: `room:${floorPlanProfile.id}:${floor.id}:${room.id}`, name: `${floorPlanProfile.name} / ${floor.label} / ${room.label}`, kind: 'room' as const,
     serials: devicesAssignedToRoom(floorPlanDevices, floor, room.id).map((device) => device.serial),
   }))) ?? []) : [];
@@ -686,8 +709,10 @@ export function App() {
     return true;
   };
 
-  const updateListDevice = async (next: Device, requestedIntent?: DeviceCommandIntent) => {
+  const updateListDevice = async (next: Device, requestedIntent?: DeviceCommandIntent, automation = false) => {
     if (onboardingActiveRef.current) return;
+    if (automation && musicOwnedSerials(musicStatusRef.current).has(next.serial)) return;
+    if (!automation && musicStatusRef.current.state === 'starting' && musicOwnedSerials(musicStatusRef.current).has(next.serial)) await stopSelectedMusic();
     const previous = snapshotRef.current.devices.find((device) => device.serial === next.serial);
     const prepared = prepareDeviceUpdate(next, previous, requestedIntent);
     const partControlled = next.lightParts?.some((part) => part.part === 'uplight') ?? false;
@@ -705,7 +730,8 @@ export function App() {
     const priorOperation = deviceCommandRef.current[command.serial] ?? Promise.resolve();
     const operation = priorOperation.catch(() => undefined).then(async () => {
       try {
-        const committed = await setDeviceState(command, true, intent);
+        if (automation && musicOwnedSerials(musicStatusRef.current).has(command.serial)) { setDeviceLoading(command.serial, false); return; }
+        const committed = await setDeviceState(command, true, intent, automation);
         if (!partControlled) replaceDevice(committed);
         setDeviceLoading(command.serial, false);
       } catch (error) {
@@ -728,6 +754,36 @@ export function App() {
   };
 
   updateListDeviceRef.current = updateListDevice;
+
+  const startSelectedMusic = async (request: StartMusicRequest) => {
+    if (draftRef.current && request.serials.includes(draftRef.current.draft.serial)) throw new Error('Exit layout editing before starting Music.');
+    const pending = { id: request.runId, serials: request.serials };
+    musicStartRef.current = pending;
+    const optimistic: MusicStatus = { state: 'starting', serials: request.serials, runId: request.runId, revision: musicStatusRef.current.revision };
+    musicStatusRef.current = optimistic; setMusicStatus(optimistic);
+    try {
+      await Promise.all(Object.values(deviceCommandRef.current).map((operation) => operation.catch(() => undefined)));
+      if (musicStartRef.current !== pending) return;
+      applyMusicStatus(await startMusic(request));
+    } catch (failure) {
+      if (musicStartRef.current !== pending) return;
+      const failed: MusicStatus = { ...musicStatusRef.current, state: 'error', error: errorMessage(failure) };
+      musicStatusRef.current = failed; setMusicStatus(failed);
+      throw failure;
+    } finally { if (musicStartRef.current === pending) musicStartRef.current = undefined; }
+  };
+  const stopSelectedMusic = async () => {
+    const pending = musicStartRef.current;
+    const id = pending?.id ?? musicStatusRef.current.runId ?? '';
+    musicStartRef.current = undefined;
+    await stopMusic(id);
+    const status = await getMusicStatus();
+    if (status.runId !== id && !musicActive(status)) {
+      const stopped: MusicStatus = { ...musicStatusRef.current, state: 'stopped', error: undefined };
+      musicStatusRef.current = stopped; setMusicStatus(stopped);
+    } else applyMusicStatus(status);
+    await refreshSnapshot();
+  };
 
   const captureSelectedScene = async (request: CaptureSceneRequest, editing = false) => {
     if (draftRef.current && request.serials.includes(draftRef.current.draft.serial)) throw new Error('Exit layout editing before capturing a scene.');
@@ -805,13 +861,18 @@ export function App() {
 
   useEffect(() => {
     if (onboardingActiveRef.current || onboardingRunning) return;
+    const paused = musicOwnedSerials(musicStatusRef.current);
+    const released = new Set([...previousMusicSerialsRef.current].filter((serial) => !paused.has(serial)));
+    previousMusicSerialsRef.current = paused;
+    const restoreOwnership = (key: string, ownership: RoomDimOwnership) => {
+      const { ready, pending } = partitionDimOwnership(ownership, new Set([...paused, ...Object.keys(deviceCommandRef.current)]));
+      if (Object.keys(pending).length) roomDimOwnershipRef.current[key] = pending;
+      else delete roomDimOwnershipRef.current[key];
+      const restored = planRoomDimRestore(snapshotRef.current.devices, ready);
+      void Promise.all(restored.map((device) => updateListDeviceRef.current(device, 'brightness', true)));
+    };
     if (!floorPlanProfileId || !floorPlanProfile) {
-      const ownership = Object.values(roomDimOwnershipRef.current);
-      roomDimOwnershipRef.current = {};
-      for (const ownedDevices of ownership) {
-        const restored = planRoomDimRestore(snapshotRef.current.devices, ownedDevices);
-        void Promise.all(restored.map((device) => updateListDeviceRef.current(device, 'brightness')));
-      }
+      for (const [key, ownership] of Object.entries(roomDimOwnershipRef.current)) restoreOwnership(key, ownership);
       roomOccupancyRef.current = {};
       setRoomOccupancy({});
       return;
@@ -825,6 +886,13 @@ export function App() {
         const key = roomOccupancyKey(floorPlanProfileId, floor.id, room.id);
         const transition = reconcileRoomOccupancy(previous[key] ?? initialRoomOccupancyState(), room.presence, sensorSnapshot.nodes, occupancyNow);
         next[key] = transition.state;
+        const roomDevices = devicesAssignedToRoom(devicesForFloorPlanProfile(floorPlanProfile, snapshotRef.current.devices).filter(isLightDevice), floor, room.id);
+        if (released.size && roomDevices.some((device) => released.has(device.serial)) && transition.state.phase === 'unoccupied' && transition.state.lightingEnabled) {
+          // Resume a clear-room policy with a fresh delay, never an immediate
+          // replay that could undo a manual change which just stopped Music.
+          next[key] = { phase: 'pending-clear', lightingEnabled: true, pendingUntil: occupancyNow + Math.max(1, room.presence?.offDelaySeconds ?? 30) * 1000 };
+          continue;
+        }
         if (transition.command) {
           commands.push({
             key,
@@ -840,38 +908,35 @@ export function App() {
     setRoomOccupancy(next);
 
     for (const [key, ownership] of Object.entries(roomDimOwnershipRef.current)) {
-      if (key in next) continue;
-      delete roomDimOwnershipRef.current[key];
-      const restored = planRoomDimRestore(snapshotRef.current.devices, ownership);
-      void Promise.all(restored.map((device) => updateListDeviceRef.current(device, 'brightness')));
+      if (!(key in next) || next[key].phase === 'occupied' || !next[key].lightingEnabled) restoreOwnership(key, ownership);
     }
 
     for (const command of commands) {
       const floor = floorPlanProfile.layout.floors.find((entry) => entry.id === command.floorId);
       if (!floor) continue;
-      const devices = devicesAssignedToRoom(
+      const devices = musicAutomationDevices(devicesAssignedToRoom(
         devicesForFloorPlanProfile(floorPlanProfile, snapshotRef.current.devices).filter(isLightDevice),
         floor,
         command.roomId,
-      );
+      ), musicStatusRef.current);
       if (command.action === 'dim') {
         const plan = planRoomDim(devices, command.dimBrightness);
-        roomDimOwnershipRef.current[command.key] = plan.ownership;
-        void Promise.all(plan.devices.map((device) => updateListDeviceRef.current(device, 'brightness')));
+        roomDimOwnershipRef.current[command.key] = preserveDimOwnership(roomDimOwnershipRef.current[command.key] ?? {}, plan.ownership, devices);
+        void Promise.all(plan.devices.map((device) => updateListDeviceRef.current(device, 'brightness', true)));
         continue;
       }
       if (command.action === 'restore') {
         const ownership = roomDimOwnershipRef.current[command.key] ?? {};
-        delete roomDimOwnershipRef.current[command.key];
-        const restored = planRoomDimRestore(snapshotRef.current.devices, ownership);
-        void Promise.all(restored.map((device) => updateListDeviceRef.current(device, 'brightness')));
+        restoreOwnership(command.key, ownership);
         continue;
       }
-      delete roomDimOwnershipRef.current[command.key];
+      const { pending } = partitionDimOwnership(roomDimOwnershipRef.current[command.key] ?? {}, paused);
+      if (Object.keys(pending).length) roomDimOwnershipRef.current[command.key] = pending;
+      else delete roomDimOwnershipRef.current[command.key];
       const on = command.action === 'on';
-      void Promise.all(devices.map((device) => updateListDeviceRef.current({ ...device, on }, 'power')));
+      void Promise.all(devices.map((device) => updateListDeviceRef.current({ ...device, on }, 'power', true)));
     }
-  }, [floorPlanProfile, floorPlanProfileId, occupancyNow, sensorSnapshot.nodes, onboardingRunning]);
+  }, [floorPlanProfile, floorPlanProfileId, occupancyNow, sensorSnapshot.nodes, onboardingRunning, musicStatus, deviceStatus]);
 
   useEffect(() => {
     const hasPending = Object.values(roomOccupancy).some((state) => state.phase === 'pending-clear');
@@ -1216,7 +1281,7 @@ export function App() {
   }
 
   return (
-    <AppSurface setupModal={setupModal}><div className="app-shell" data-center-view={centerView}>
+    <AppSurface setupModal={setupModal}><div className="app-shell" data-center-view={centerView} data-music-running={musicActive(musicStatus)}>
       <Sidebar
         locations={locationCollections}
         groups={snapshot.groups}
@@ -1262,7 +1327,9 @@ export function App() {
         }
       />
 
-      {centerView === 'scenes' ? (
+      {centerView === 'music' ? (
+        <Music devices={snapshot.devices} scopes={captureScopes} defaultScopeId={selectedSerial ? `device:${selectedSerial}` : `group:${groupId}`} query={query} status={musicStatus} selection={musicSelection} onSelectionChange={setMusicSelection} view={centerView} onViewChange={setCenterView} onStart={startSelectedMusic} onStop={stopSelectedMusic} />
+      ) : centerView === 'scenes' ? (
         <Scenes devices={snapshot.devices} scopes={captureScopes} defaultScopeId={selectedSerial ? `device:${selectedSerial}` : `group:${groupId}`} query={query} view={centerView} onViewChange={setCenterView} onCapture={captureSelectedScene} onEdit={(request) => captureSelectedScene(request, true)} onRecall={recallSelectedScene} />
       ) : centerView === 'health' ? (
         <DeviceHealth
@@ -1371,7 +1438,7 @@ export function App() {
         }}
       />
 
-      {centerView === 'scenes' ? null : inspectorDevice ? (
+      {centerView === 'scenes' || centerView === 'music' ? null : inspectorDevice ? (
         <Inspector
           device={inspectorDevice}
           locations={snapshot.locations}
@@ -1515,7 +1582,7 @@ function floorPlanProfileName(locationHints: string[], collections: ReturnType<t
 
 function loadCenterViewPreference(): CenterView {
   const view = loadPreference(CENTER_VIEW_KEY);
-  return view === 'floor' || view === 'health' || view === 'scenes' ? view : 'list';
+  return view === 'floor' || view === 'health' || view === 'scenes' || view === 'music' ? view : 'list';
 }
 
 function activeFloorPlanFloor(layout: FloorPlanPreferences['locations'][string] | undefined) {

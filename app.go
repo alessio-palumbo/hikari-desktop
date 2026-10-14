@@ -19,6 +19,7 @@ const (
 	deviceSnapshotEvent = "hikari:devices:snapshot"
 	sensorSnapshotEvent = "hikari:sensors:snapshot"
 	setupProgressEvent  = "hikari:setup:progress"
+	musicStatusEvent    = "hikari:music:status"
 )
 
 type App struct {
@@ -31,6 +32,7 @@ type App struct {
 	themes         backend.ThemeStore
 	scenes         *backend.SceneService
 	onboarding     onboardingProvider
+	music          *backend.MusicRuntimeService
 	controlGate    sync.RWMutex
 	settingUp      bool
 	closing        bool
@@ -83,7 +85,7 @@ func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvide
 	if transport == nil {
 		transport = backend.NewMockTransport()
 	}
-	return &App{
+	app := &App{
 		transport:      transport,
 		sensors:        sensors,
 		commandEngine:  backend.NewCommandEngineService(),
@@ -94,10 +96,13 @@ func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvide
 		onboarding:     backend.NewOnboardingService(),
 		emitEvent:      wailsruntime.EventsEmit,
 	}
+	app.music = backend.NewMusicRuntimeService(transport)
+	return app
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.music.SetStatusObserver(func(status backend.MusicStatus) { a.emitEvent(a.context(), musicStatusEvent, status) })
 	if observable, ok := a.transport.(deviceSnapshotObserver); ok {
 		observable.SetSnapshotObserver(func(snapshot backend.DeviceSnapshot) {
 			a.emitEvent(a.context(), deviceSnapshotEvent, snapshot)
@@ -122,6 +127,9 @@ func (a *App) shutdown(ctx context.Context) {
 	a.controlGate.Lock()
 	a.closing = true
 	a.controlGate.Unlock()
+	if err := a.music.Close(ctx); err != nil {
+		log.Printf("hikari: music shutdown failed: %v", err)
+	}
 	if a.onboarding != nil {
 		if err := a.onboarding.Close(ctx); err != nil {
 			log.Printf("hikari: light setup shutdown failed: %v", err)

@@ -7,6 +7,21 @@ export interface DimmedDeviceState {
 
 export type RoomDimOwnership = Record<string, DimmedDeviceState>;
 
+export function partitionDimOwnership(ownership: RoomDimOwnership, paused: Set<string>): { ready: RoomDimOwnership; pending: RoomDimOwnership } {
+  const ready: RoomDimOwnership = {}, pending: RoomDimOwnership = {};
+  for (const [serial, state] of Object.entries(ownership)) (paused.has(serial) ? pending : ready)[serial] = state;
+  return { ready, pending };
+}
+
+export function preserveDimOwnership(previous: RoomDimOwnership, next: RoomDimOwnership, devices: Device[]): RoomDimOwnership {
+  const result = { ...previous, ...next };
+  for (const device of devices) {
+    const owned = previous[device.serial];
+    if (owned && next[device.serial] && device.on && near(device.brightness, owned.appliedBrightness)) result[device.serial] = { ...next[device.serial], previousBrightness: owned.previousBrightness };
+  }
+  return result;
+}
+
 export interface RoomDimPlan {
   devices: Device[];
   ownership: RoomDimOwnership;

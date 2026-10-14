@@ -433,6 +433,20 @@ func (t *LifxTransport) SetDeviceMetadata(ctx context.Context, req SetDeviceMeta
 }
 
 func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error) {
+	if req.Automation && t.MusicOwnsSerial(req.Device.Serial) {
+		if current := t.cachedDevice(req.Device.Serial); current != nil {
+			return *current, nil
+		}
+		if ctrl := t.currentController(); ctrl != nil {
+			serial, err := parseDeviceSerial(req.Device)
+			if err == nil {
+				if d, found := ctrl.GetDevice(serial); found {
+					return mapLifxDevice(d, req.Device.GroupID), nil
+				}
+			}
+		}
+		return req.Device, ErrMusicBusy
+	}
 	wasMusic := t.MusicOwnsSerial(req.Device.Serial)
 	if err := t.stopMusicForSerial(ctx, req.Device.Serial); err != nil {
 		return req.Device, err

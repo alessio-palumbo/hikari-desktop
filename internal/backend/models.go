@@ -181,9 +181,10 @@ func emptyDeviceSnapshot() DeviceSnapshot {
 }
 
 type SetDeviceStateRequest struct {
-	Device  Device              `json:"device"`
-	Preview bool                `json:"preview"`
-	Intent  DeviceCommandIntent `json:"intent"`
+	Device     Device              `json:"device"`
+	Preview    bool                `json:"preview"`
+	Intent     DeviceCommandIntent `json:"intent"`
+	Automation bool                `json:"automation,omitempty"`
 }
 
 type SetDeviceMetadataRequest struct {

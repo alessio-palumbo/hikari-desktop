@@ -4,8 +4,14 @@ import type { ThemeRequest, ThemePreview, ThemeApplyResult, UserTheme, SaveUserT
 import type { DeviceEffect, DeviceEffectPreferences, EffectParameters, EffectPreference } from '../domain/effects';
 import type { SceneSummary, CaptureSceneRequest, SceneRecallResult } from '../domain/scenes';
 import type { SetupLightDiscovery, SetupLightRequest, SetupLightResult, SetupProgress } from '../domain/onboarding';
+import type { MusicStatus, MusicSettings, MusicInputDevice, StartMusicRequest } from '../domain/music';
 
 interface WailsApp {
+  GetMusicSettings?: () => Promise<MusicSettings>;
+  GetMusicStatus?: () => Promise<MusicStatus>;
+  MusicInputs?: () => Promise<MusicInputDevice[]>;
+  StartMusic?: (request: StartMusicRequest) => Promise<MusicStatus>;
+  StopMusic?: (runId: string) => Promise<void>;
   OnboardingCapabilities?: () => Promise<{ available: boolean }>;
   ScanSetupLights?: (refresh: boolean) => Promise<SetupLightDiscovery>;
   SetupLight?: (request: SetupLightRequest) => Promise<SetupLightResult>;
@@ -43,6 +49,19 @@ interface WailsApp {
   InterpretCommand?: (request: InterpretCommandRequest) => Promise<CommandPreview>;
   TranscribeCommand?: (request: TranscribeCommandRequest) => Promise<SpeechCommandPreview>;
   TranscribeCommandAudio?: (request: TranscribeCommandAudioRequest) => Promise<SpeechCommandPreview>;
+}
+
+export async function getMusicSettings(): Promise<MusicSettings> { return await window.go?.main?.App?.GetMusicSettings?.() ?? { available: false, styles: [], warning: 'Music requires the desktop LAN app' }; }
+export async function getMusicStatus(): Promise<MusicStatus> { return await window.go?.main?.App?.GetMusicStatus?.() ?? { state: 'idle', serials: [] }; }
+export async function getMusicInputs(): Promise<MusicInputDevice[]> { return await window.go?.main?.App?.MusicInputs?.() ?? []; }
+export async function startMusic(request: StartMusicRequest): Promise<MusicStatus> {
+  const start = window.go?.main?.App?.StartMusic;
+  if (!start) throw new Error('Music is unavailable');
+  return start(request);
+}
+export async function stopMusic(runId = ''): Promise<void> { await window.go?.main?.App?.StopMusic?.(runId); }
+export function subscribeToMusicStatus(listener: (status: MusicStatus) => void): (() => void) | undefined {
+  return window.runtime?.EventsOnMultiple?.('hikari:music:status', (value) => listener(value as MusicStatus), -1);
 }
 
 export async function getOnboardingCapabilities(): Promise<{ available: boolean }> {
@@ -254,6 +273,7 @@ interface SetDeviceStateRequest {
   device: Device;
   preview: boolean;
   intent: DeviceCommandIntent;
+  automation?: boolean;
 }
 
 export interface SetLightPartStateRequest {
@@ -457,9 +477,9 @@ export async function setNetworkInterface(interfaceName: string): Promise<Networ
   return { selectedInterfaceName: interfaceName, interfaces: [] };
 }
 
-export async function setDeviceState(device: Device, preview = false, intent: DeviceCommandIntent = 'color'): Promise<Device> {
+export async function setDeviceState(device: Device, preview = false, intent: DeviceCommandIntent = 'color', automation = false): Promise<Device> {
   const app = window.go?.main?.App;
-  if (app?.SetDeviceState) return app.SetDeviceState({ device, preview, intent });
+  if (app?.SetDeviceState) return app.SetDeviceState({ device, preview, intent, automation });
   await new Promise((resolve) => window.setTimeout(resolve, preview ? 60 : 180));
   return device;
 }

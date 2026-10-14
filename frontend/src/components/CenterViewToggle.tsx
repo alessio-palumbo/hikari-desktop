@@ -1,6 +1,6 @@
 import './CenterViewToggle.css';
 
-export type CenterView = 'list' | 'floor' | 'health' | 'scenes';
+export type CenterView = 'list' | 'floor' | 'health' | 'scenes' | 'music';
 
 export function CenterViewToggle({ view, onChange }: { view: CenterView; onChange: (view: CenterView) => void }) {
   return (
@@ -17,6 +17,7 @@ export function CenterViewToggle({ view, onChange }: { view: CenterView; onChang
       <button type="button" role="tab" aria-selected={view === 'scenes'} data-active={view === 'scenes'} onClick={() => onChange('scenes')}>
         scenes
       </button>
+      <button type="button" role="tab" data-music-tab aria-selected={view === 'music'} data-active={view === 'music'} onClick={() => onChange('music')}>music</button>
     </div>
   );
 }
