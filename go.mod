@@ -4,6 +4,7 @@ go 1.27
 
 require (
 	github.com/alessio-palumbo/lifx-command-engine v0.2.5
+	github.com/alessio-palumbo/lifx-maestro v0.7.0
 	github.com/alessio-palumbo/lifx-onboard v0.2.0
 	github.com/alessio-palumbo/lifxlan-go v0.16.0
 	github.com/alessio-palumbo/lifxprotocol-go v0.4.0
