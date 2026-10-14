@@ -69,7 +69,12 @@ jobs:
         run: npm run build
 
       - name: Test Go
+        if: runner.os != 'macOS'
         run: go test ./...
+
+      - name: Test Go with macOS onboarding adapter
+        if: runner.os == 'macOS'
+        run: go test -tags corewlan ./...
 
       - name: Prepare build metadata
         shell: bash
@@ -102,7 +107,7 @@ jobs:
         if: runner.os != 'macOS'
         run: wails build -clean -ldflags "-X main.version=${HIKARI_VERSION}"
 
-      - name: Build macOS app with light setup
+      - name: Build macOS app with device setup
         if: runner.os == 'macOS'
         run: ./scripts/wails-macos.sh build -clean -tags corewlan -ldflags "-X main.version=${HIKARI_VERSION}"
 
@@ -175,7 +180,7 @@ jobs:
         run: npm run build
 
       - name: Test Go
-        run: go test ./...
+        run: go test -tags corewlan ./...
 
       - name: Prepare build metadata
         shell: bash

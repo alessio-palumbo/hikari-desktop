@@ -1,4 +1,4 @@
-//go:build !darwin || !corewlan || !cgo
+//go:build !linux && !windows && (!darwin || !corewlan || !cgo)
 
 package backend
 

@@ -1,15 +1,46 @@
-//go:build darwin && corewlan && cgo
+//go:build linux || windows || (darwin && corewlan && cgo)
 
 package backend
 
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	onboard "github.com/alessio-palumbo/lifx-onboard"
 	"github.com/alessio-palumbo/lifx-onboard/scanner"
 )
+
+type setupWiFiFixture struct{ options scanner.ScanOptions }
+
+func (f *setupWiFiFixture) Interface() string { return "test" }
+func (f *setupWiFiFixture) Scan(_ context.Context, options scanner.ScanOptions) ([]scanner.AP, error) {
+	f.options = options
+	ap, _ := scanner.APFromSSID("LIFX Candle aabbcc", false)
+	ap.RSSI = -42
+	return []scanner.AP{ap, {SSID: "Home"}, {SSID: "Office"}, {}}, nil
+}
+func (*setupWiFiFixture) CurrentSSID(context.Context) (string, error) { return "Home", nil }
+
+func TestPlatformScanMapsPublicAPsAndCurrentNetwork(t *testing.T) {
+	wifi := &setupWiFiFixture{}
+	result, err := scanOnboardingWiFi(context.Background(), wifi, wifi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wifi.options.IncludeNonLIFX || result.CurrentSSID != "Home" || !reflect.DeepEqual(result.Networks, []string{"Home", "Office"}) {
+		t.Fatalf("discovery=%+v options=%+v", result, wifi.options)
+	}
+	if len(result.Lights) != 1 || result.Lights[0].Serial != "d073d5aabbcc" || result.Lights[0].RSSI != -42 {
+		t.Fatalf("lights=%+v", result.Lights)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := scanOnboardingWiFi(ctx, wifi, wifi); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled=%v", err)
+	}
+}
 
 func TestSetupScanRetriesTransientFailures(t *testing.T) {
 	for _, test := range []struct {
@@ -57,14 +88,14 @@ func TestSetupScanRetryCancellationAndLimit(t *testing.T) {
 	}
 }
 
-func TestOnboardingMacOSBuildAdvertisesSetupWithoutScanning(t *testing.T) {
+func TestOnboardingSupportedBuildAdvertisesSetupWithoutScanning(t *testing.T) {
 	if !NewOnboardingService().Capabilities().Available {
-		t.Fatal("macOS CoreWLAN build did not expose setup")
+		t.Fatal("supported build did not expose setup")
 	}
 }
 
-func TestMacOSSetupDelegatesToLibraryWithoutNativeWiFiInTests(t *testing.T) {
-	scanner := macOSOnboardingScanner{provision: func(_ context.Context, opts onboard.OnboardBySSIDOptions) (onboard.Result, error) {
+func TestPlatformSetupDelegatesToLibraryWithoutNativeWiFiInTests(t *testing.T) {
+	scanner := platformOnboardingScanner{provision: func(_ context.Context, opts onboard.OnboardBySSIDOptions) (onboard.Result, error) {
 		if opts.Scanner == nil || opts.Joiner == nil || opts.Sender == nil {
 			t.Fatal("library dependencies missing")
 		}
@@ -82,8 +113,8 @@ func TestMacOSSetupDelegatesToLibraryWithoutNativeWiFiInTests(t *testing.T) {
 	}
 }
 
-func TestMacOSSetupReportsCancellationAndPartialConfiguration(t *testing.T) {
-	scanner := macOSOnboardingScanner{provision: func(_ context.Context, opts onboard.OnboardBySSIDOptions) (onboard.Result, error) {
+func TestPlatformSetupReportsCancellationAndPartialConfiguration(t *testing.T) {
+	scanner := platformOnboardingScanner{provision: func(_ context.Context, opts onboard.OnboardBySSIDOptions) (onboard.Result, error) {
 		opts.Events <- onboard.EventConfigured{}
 		return onboard.Result{Phase: onboard.PhaseVerify}, context.Canceled
 	}}

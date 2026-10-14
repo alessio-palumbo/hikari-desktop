@@ -1,7 +1,7 @@
-//go:build !darwin || !corewlan || !cgo
+//go:build !linux && !windows && (!darwin || !corewlan || !cgo)
 
 package backend
 
-// Linux and Windows stay disabled until their Wi-Fi setup path is validated.
+// Unsupported platforms and macOS builds without CoreWLAN stay disabled.
 // The stub intentionally has no dependency on platform-specific Wi-Fi APIs.
 func newPlatformOnboardingScanner() onboardingScanner { return nil }

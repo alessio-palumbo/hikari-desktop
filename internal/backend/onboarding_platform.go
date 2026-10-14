@@ -1,4 +1,4 @@
-//go:build darwin && corewlan && cgo
+//go:build linux || windows || (darwin && corewlan && cgo)
 
 package backend
 
@@ -11,13 +11,13 @@ import (
 	"github.com/alessio-palumbo/lifx-onboard/scanner"
 )
 
-type macOSOnboardingScanner struct {
+type platformOnboardingScanner struct {
 	provision func(context.Context, onboard.OnboardBySSIDOptions) (onboard.Result, error)
 }
 
-func newPlatformOnboardingScanner() onboardingScanner { return macOSOnboardingScanner{} }
+func newPlatformOnboardingScanner() onboardingScanner { return platformOnboardingScanner{} }
 
-func (macOSOnboardingScanner) Scan(ctx context.Context) (SetupLightDiscovery, error) {
+func (platformOnboardingScanner) Scan(ctx context.Context) (SetupLightDiscovery, error) {
 	if err := ctx.Err(); err != nil {
 		return SetupLightDiscovery{}, err
 	}
@@ -25,18 +25,33 @@ func (macOSOnboardingScanner) Scan(ctx context.Context) (SetupLightDiscovery, er
 	// Native Location/CoreWLAN calls cannot be interrupted by a Go context;
 	// cancellation is checked before and after each call rather than abandoning
 	// native work in a background goroutine.
-	if !onboard.RequestMacOSLocationAccess().Granted() {
-		return SetupLightDiscovery{}, errors.New("allow hikari Location access in System Settings to find devices in setup mode; use the packaged macOS app")
+	if err := prepareOnboardingScan(); err != nil {
+		return SetupLightDiscovery{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return SetupLightDiscovery{}, err
 	}
 	wifi := scanner.NewDefaultScanner("")
+	reporter, _ := wifi.(scanner.CurrentNetworkReporter)
+	if reporter == nil {
+		// Linux reports the active SSID through its joiner, not its scanner.
+		reporter, _ = scanner.NewDefaultJoiner("").(scanner.CurrentNetworkReporter)
+	}
+	return scanOnboardingWiFi(ctx, wifi, reporter)
+}
+
+func scanOnboardingWiFi(ctx context.Context, wifi scanner.Scanner, reporter scanner.CurrentNetworkReporter) (SetupLightDiscovery, error) {
+	if err := ctx.Err(); err != nil {
+		return SetupLightDiscovery{}, err
+	}
 	current := ""
-	if reporter, ok := wifi.(scanner.CurrentNetworkReporter); ok {
+	if reporter != nil {
 		var err error
 		current, err = reporter.CurrentSSID(ctx)
 		if err != nil {
+			if errors.Is(err, scanner.ErrRedacted) {
+				return SetupLightDiscovery{}, onboardingScanError(true)
+			}
 			return SetupLightDiscovery{}, errors.New("could not read the current Wi-Fi network")
 		}
 	}
@@ -50,10 +65,10 @@ func (macOSOnboardingScanner) Scan(ctx context.Context) (SetupLightDiscovery, er
 		return SetupLightDiscovery{}, err
 	}
 	if errors.Is(err, scanner.ErrRedacted) {
-		return SetupLightDiscovery{}, errors.New("Wi-Fi names are hidden; allow hikari Location access and open the packaged macOS app")
+		return SetupLightDiscovery{}, onboardingScanError(true)
 	}
 	if err != nil {
-		return SetupLightDiscovery{}, errors.New("could not scan Wi-Fi networks; check that Wi-Fi is enabled and try again")
+		return SetupLightDiscovery{}, onboardingScanError(false)
 	}
 	result := SetupLightDiscovery{Lights: []SetupLight{}, CurrentSSID: current}
 	for _, ap := range aps {
@@ -94,7 +109,7 @@ func waitForSetupScanRetry(ctx context.Context) error {
 	}
 }
 
-func (s macOSOnboardingScanner) Provision(ctx context.Context, req SetupLightRequest, verifier SetupVerifier, progress func(string)) SetupLightResult {
+func (s platformOnboardingScanner) Provision(ctx context.Context, req SetupLightRequest, verifier SetupVerifier, progress func(string)) SetupLightResult {
 	events := make(chan onboard.Event, 128)
 	done := make(chan struct{})
 	configured := false

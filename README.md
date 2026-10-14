@@ -131,9 +131,9 @@ Click a scene to recall it. The info icon lists its members, current availabilit
 
 Recall uses lifxlan-go's native snapshot restore and stops active effects on the targeted lights. Available compatible members can succeed while missing or failed members are reported individually. A successful send is not an acknowledgement, and recall is not an atomic transaction or automatic rollback. Scenes are manual, one-shot actions; they do not add schedules or sensor automation. Capture/recall currently requires the real LAN transport, not mock mode.
 
-## Device Setup (macOS)
+## Device Setup
 
-Both macOS downloads include Wi-Fi setup for one LIFX device at a time. Use the
+The macOS, Linux and Windows downloads include Wi-Fi setup for one LIFX device at a time. Use the
 plus icon beside the network control in the left footer, or **add device** when
 no devices are found. Select a discovered device and Wi-Fi network (or enter a
 hidden network manually), enter its WPA2-personal password, then confirm. Leave
@@ -141,8 +141,8 @@ the password empty for an open network; the confirmation explicitly identifies
 this choice. This computer briefly leaves its Wi-Fi
 network; setup reconnects it and waits for the device to appear on the LAN.
 
-Location access is requested only when scanning setup networks. Open the signed
-app through Finder/Dock so macOS can attribute this permission to hikari.
+On macOS, Location access is requested only when scanning setup networks. Open
+the signed app through Finder/Dock so macOS can attribute this permission to hikari.
 Wi-Fi passwords are neither saved nor logged. Cancellation waits for the
 library's network-recovery attempt, rather than abandoning the computer on the
 device's network. Firmware effects may continue; stop running hikari effects
@@ -152,7 +152,12 @@ After discovery, an optional details step edits its label and selects existing
 locations/groups using the same editor as the inspector. Save or skip this step;
 creating new locations/groups is not part of setup yet. Setup does not
 automatically assign floor-plan rooms or scenes.
-Linux and Windows do not expose setup controls yet.
+On Linux, setup requires NetworkManager (`nmcli`) and permission to manage Wi-Fi
+connections; no root-only scan tool is needed. On Windows, setup uses the native
+Wi-Fi API with no extra tools. Recent Windows versions may require Location access,
+including **Let desktop apps access your location**. Allow LAN access through
+Windows Firewall for device verification. Linux and Windows setup still need
+physical validation in Hikari; the shared lifecycle is tested without changing Wi-Fi.
 
 ## Device Health
 
