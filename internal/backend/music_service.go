@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	maestrolive "github.com/alessio-palumbo/lifx-maestro/live"
 )
@@ -12,6 +13,8 @@ var (
 	ErrMusicBusy   = errors.New("music is already running")
 	ErrMusicClosed = errors.New("music service has been closed")
 )
+
+const musicCleanupTimeout = 20 * time.Second
 
 type MusicStatus struct {
 	State   string   `json:"state"`
@@ -53,6 +56,12 @@ func (s *MusicService) Status() MusicStatus {
 // work has stopped. Rejected configurations leave resources with the caller.
 // Source and sink must honor cancellation; sink writes must finish synchronously.
 func (s *MusicService) Run(ctx context.Context, config maestrolive.Config) error {
+	return s.runWithLifecycle(ctx, config, nil, nil)
+}
+
+// Preparation reserves targets before capture. Cleanup runs only after engine
+// output has quiesced, using a fresh bounded context so cancellation can restore.
+func (s *MusicService) runWithLifecycle(ctx context.Context, config maestrolive.Config, prepare func(context.Context) error, cleanup func(context.Context) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -79,9 +88,22 @@ func (s *MusicService) Run(ctx context.Context, config maestrolive.Config) error
 	s.status = MusicStatus{State: "running", Serials: serials}
 	s.mu.Unlock()
 
-	err = engine.Run(runCtx)
+	if prepare != nil {
+		err = prepare(runCtx)
+	}
+	if err == nil {
+		err = engine.Run(runCtx)
+	}
+	if runCtx.Err() != nil && errors.Is(err, runCtx.Err()) {
+		err = nil
+	}
 	cancel()
 	err = errors.Join(err, config.Analyzer.Close())
+	if cleanup != nil {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), musicCleanupTimeout)
+		err = errors.Join(err, cleanup(cleanupCtx))
+		cleanupCancel()
+	}
 	s.mu.Lock()
 	run.err = err
 	s.run = nil

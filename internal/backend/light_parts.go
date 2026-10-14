@@ -97,6 +97,9 @@ func (t *LifxTransport) observeLightParts(ctrl lifxController, snapshot *DeviceS
 }
 
 func (t *LifxTransport) SetLightPartState(ctx context.Context, req SetLightPartStateRequest) error {
+	if err := t.stopMusicForSerial(ctx, req.Serial); err != nil {
+		return err
+	}
 	ctrl, err := t.requireController()
 	if err != nil {
 		return err

@@ -258,6 +258,9 @@ func (t *LifxTransport) CaptureSceneState(ctx context.Context, values []string) 
 	}()
 	labels := make(map[string]string)
 	for _, serial := range serials {
+		if t.MusicOwnsSerial(serial.String()) {
+			return lifxdevice.StateSnapshot{}, nil, fmt.Errorf("stop music before capturing %s", serial)
+		}
 		unlock, err := t.lockDeviceCommand(ctx, serial)
 		if err != nil {
 			return lifxdevice.StateSnapshot{}, nil, err
@@ -325,6 +328,9 @@ func (t *LifxTransport) RecallSceneState(ctx context.Context, state lifxdevice.S
 }
 
 func (t *LifxTransport) recallSceneDevice(ctx context.Context, ctrl lifxController, saved lifxdevice.DeviceStateSnapshot) (Device, bool, error) {
+	if err := t.stopMusicForSerial(ctx, saved.Serial.String()); err != nil {
+		return Device{}, false, err
+	}
 	unlock, err := t.lockDeviceCommand(ctx, saved.Serial)
 	if err != nil {
 		return Device{}, false, err

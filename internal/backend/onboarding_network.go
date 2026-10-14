@@ -15,6 +15,10 @@ type OnboardingNetwork interface {
 }
 
 func (t *LifxTransport) CheckSetupReady() error {
+	status := t.MusicStatus()
+	if status.State == "running" || status.State == "stopping" {
+		return errors.New("stop music before setting up a device")
+	}
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	if len(t.effects) > 0 {

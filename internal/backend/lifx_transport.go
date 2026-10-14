@@ -72,6 +72,7 @@ type broadcastInterfaceLister func() ([]lifxclient.BroadcastInterface, error)
 // a fake controller directly with NewLifxTransportWithController.
 type LifxTransport struct {
 	commandLocks           sync.Map
+	music                  *MusicService
 	diagnosticsMu          sync.Mutex
 	controller             lifxController
 	controllerFactory      lifxControllerFactory
@@ -218,6 +219,9 @@ func (t *LifxTransport) Start(ctx context.Context) error {
 }
 
 func (t *LifxTransport) Close(ctx context.Context) error {
+	if err := t.StopMusic(ctx); err != nil {
+		return fmt.Errorf("stop music before closing controller: %w", err)
+	}
 	ctrl := t.currentController()
 	if ctrl == nil {
 		return nil
@@ -282,6 +286,9 @@ func (t *LifxTransport) SetNetworkInterface(ctx context.Context, req SetNetworkI
 }
 
 func (t *LifxTransport) RestartDeviceDiscovery(ctx context.Context) (NetworkSettings, error) {
+	if err := t.StopMusic(ctx); err != nil {
+		return NetworkSettings{}, err
+	}
 	selectedName, warning, err := t.loadValidatedInterfaceName()
 	if err != nil {
 		return NetworkSettings{SelectedInterfaceName: "", Interfaces: []NetworkInterface{}, Warning: userFriendlyNetworkError(err)}, err
@@ -332,6 +339,9 @@ func (t *LifxTransport) Snapshot(ctx context.Context) (DeviceSnapshot, error) {
 }
 
 func (t *LifxTransport) SetDeviceMetadata(ctx context.Context, req SetDeviceMetadataRequest) (Device, error) {
+	if err := t.stopMusicForSerial(ctx, req.Serial); err != nil {
+		return Device{}, err
+	}
 	ctrl, err := t.requireController()
 	if err != nil {
 		return Device{}, err
@@ -423,6 +433,15 @@ func (t *LifxTransport) SetDeviceMetadata(ctx context.Context, req SetDeviceMeta
 }
 
 func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRequest) (Device, error) {
+	wasMusic := t.MusicOwnsSerial(req.Device.Serial)
+	if err := t.stopMusicForSerial(ctx, req.Device.Serial); err != nil {
+		return req.Device, err
+	}
+	if wasMusic {
+		if restored := t.cachedDevice(req.Device.Serial); restored != nil {
+			req.Device = rebaseMusicDeviceChange(req.Device, *restored, normalizeDeviceCommandIntent(req.Intent, req.Device))
+		}
+	}
 	ctrl, err := t.requireController()
 	if err != nil {
 		return req.Device, err
@@ -511,6 +530,9 @@ func (t *LifxTransport) SetDeviceState(ctx context.Context, req SetDeviceStateRe
 }
 
 func (t *LifxTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEffectRequest) (DeviceEffectStatus, error) {
+	if err := t.stopMusicForSerial(ctx, req.Device.Serial); err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Error: err.Error()}, err
+	}
 	ctrl, err := t.requireController()
 	if err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: false, Effect: string(req.Effect), Error: err.Error()}, err
@@ -593,6 +615,9 @@ func (t *LifxTransport) StartDeviceEffect(ctx context.Context, req StartDeviceEf
 }
 
 func (t *LifxTransport) StopDeviceEffect(ctx context.Context, req StopDeviceEffectRequest) (DeviceEffectStatus, error) {
+	if err := t.stopMusicForSerial(ctx, req.Device.Serial); err != nil {
+		return DeviceEffectStatus{Serial: req.Device.Serial, Error: err.Error()}, err
+	}
 	ctrl, err := t.requireController()
 	if err != nil {
 		return DeviceEffectStatus{Serial: req.Device.Serial, Running: true, Error: err.Error()}, err
@@ -1631,6 +1656,9 @@ func (t *LifxTransport) createController(interfaceName string) (lifxController, 
 }
 
 func (t *LifxTransport) restartController(ctx context.Context, interfaceName string, warning string) error {
+	if err := t.StopMusic(ctx); err != nil {
+		return fmt.Errorf("stop music before changing network: %w", err)
+	}
 	old := t.currentController()
 	if old != nil {
 		if err := t.restoreAllAppEffects(ctx, old); err != nil {

@@ -119,6 +119,9 @@ func (t *LifxTransport) prepareTheme(ctx context.Context, req ThemeRequest) (pre
 		}
 	}()
 	for _, serial := range serials {
+		if err := t.stopMusicForSerial(ctx, serial.String()); err != nil {
+			return preparedTheme{}, err
+		}
 		unlock, err := t.lockDeviceCommand(ctx, serial)
 		if err != nil {
 			return preparedTheme{}, err
