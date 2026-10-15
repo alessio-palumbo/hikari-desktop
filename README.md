@@ -72,6 +72,14 @@ See signal quality, last-response age, uptime, and on-demand ping results in the
 <details>
 <summary>More Views</summary>
 
+### Scenes
+
+![hikari saved scenes and captured device states](docs/scenes.png)
+
+### Music
+
+![hikari Music controls with live signal monitoring and selected lights](docs/music.png)
+
 ### Matrix Editor
 
 ![hikari matrix editor with a pending gradient](docs/matrix-editor.png)
