@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/alessio-palumbo/lifx-command-engine v0.2.5
-	github.com/alessio-palumbo/lifx-maestro v0.7.0
+	github.com/alessio-palumbo/lifx-maestro v0.8.0
 	github.com/alessio-palumbo/lifx-onboard v0.2.0
 	github.com/alessio-palumbo/lifxlan-go v0.16.0
 	github.com/alessio-palumbo/lifxprotocol-go v0.4.0
@@ -46,4 +46,5 @@ require (
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
+	gonum.org/v1/gonum v0.17.0 // indirect
 )

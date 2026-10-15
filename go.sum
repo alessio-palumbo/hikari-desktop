@@ -2,8 +2,8 @@ git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 h1:N3IGoHHp9pb6mj1cbXbuaSXV/UMKwmbKLf
 git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3/go.mod h1:QtOLZGz8olr4qH2vWK0QH0w0O4T9fEIjMuWpKUsH7nc=
 github.com/alessio-palumbo/lifx-command-engine v0.2.5 h1:kdbidmpmyzXw+F7ZAXHhaSzu9+C+5rFSTWXaay0jJ4I=
 github.com/alessio-palumbo/lifx-command-engine v0.2.5/go.mod h1:cR577vCtCj3rgYaSAuidcV55vLXCD47/Di+3PX7vNCo=
-github.com/alessio-palumbo/lifx-maestro v0.7.0 h1:bXkdaBohjl22IqYdIbXq6zbkHnY6X25E1ptjilwEtF8=
-github.com/alessio-palumbo/lifx-maestro v0.7.0/go.mod h1:I5TblRuncCTdYDWHuG5HKEC37fsGPl7UxLyyLjSPKTU=
+github.com/alessio-palumbo/lifx-maestro v0.8.0 h1:b1wI9kTQDccdSgKnhAZIrNeDSNdQxwGl3xk48/lbJiQ=
+github.com/alessio-palumbo/lifx-maestro v0.8.0/go.mod h1:pkfiPr8EmjDKDwld4kjejQQ0Ex6bhTAgSaJagLZArsg=
 github.com/alessio-palumbo/lifx-onboard v0.2.0 h1:pc0Ucp5kWR8JZ733GNY3Udc1E7Cx/hFJQtlhxqJVVP8=
 github.com/alessio-palumbo/lifx-onboard v0.2.0/go.mod h1:7vv8fkmt63meT1PAJmjuAOAmtOkG7eK7VqHSK0eJiyw=
 github.com/alessio-palumbo/lifxlan-go v0.16.0 h1:UrT4IultSxTPHRjOAX+BI9PqaFJUzP6V5v7krsGyEwI=
@@ -117,3 +117,5 @@ golang.org/x/text v0.41.0/go.mod h1:jvf1O8ajNzZqhSrQBPbutR/EB83Cc0CFrezNQIwbb5M=
 golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
 golang.org/x/tools v0.0.0-20191216052735-49a3e744a425/go.mod h1:TB2adYChydJhpapKDTa4BR/hXlZSLoq2Wpct/0txZ28=
 golang.org/x/xerrors v0.0.0-20191011141410-1b5146add898/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+gonum.org/v1/gonum v0.17.0 h1:VbpOemQlsSMrYmn7T2OUvQ4dqxQXU+ouZFQsZOx50z4=
+gonum.org/v1/gonum v0.17.0/go.mod h1:El3tOrEuMpv2UdMrbNlKEh9vd86bmQ6vqIcDwxEOc1E=

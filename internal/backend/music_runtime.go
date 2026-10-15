@@ -3,15 +3,12 @@ package backend
 import (
 	"context"
 	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"math"
 	"slices"
 	"sync"
-	"sync/atomic"
 
 	maestrolive "github.com/alessio-palumbo/lifx-maestro/live"
-	maestropython "github.com/alessio-palumbo/lifx-maestro/live/python"
+	maestronative "github.com/alessio-palumbo/lifx-maestro/live/native"
 )
 
 type MusicTransport interface {
@@ -19,15 +16,37 @@ type MusicTransport interface {
 	StopMusic(context.Context) error
 	MusicStatus() MusicStatus
 	SetMusicStatusObserver(func(MusicStatus))
+	UpdateMusicControls(MusicControls) error
 }
 
 type StartMusicRequest struct {
-	RunID       string   `json:"runId"`
-	Serials     []string `json:"serials"`
-	InputID     string   `json:"inputId"`
-	Style       string   `json:"style"`
-	Dynamics    string   `json:"dynamics"`
-	Sensitivity string   `json:"sensitivity"`
+	RunID            string   `json:"runId"`
+	Serials          []string `json:"serials"`
+	InputID          string   `json:"inputId"`
+	Style            string   `json:"style"`
+	Dynamics         string   `json:"dynamics"`
+	Sensitivity      string   `json:"sensitivity"`
+	MasterBrightness *float64 `json:"masterBrightness"`
+}
+
+type MusicControls struct {
+	RunID            string  `json:"runId"`
+	Style            string  `json:"style"`
+	Dynamics         string  `json:"dynamics"`
+	MasterBrightness float64 `json:"masterBrightness"`
+}
+
+func validateMusicControls(c MusicControls) error {
+	if !slices.Contains(musicStyles, c.Style) {
+		return errors.New("unsupported Music style")
+	}
+	if !slices.Contains([]string{"auto", "calm", "balanced", "energetic"}, c.Dynamics) {
+		return errors.New("unsupported Music dynamics")
+	}
+	if math.IsNaN(c.MasterBrightness) || math.IsInf(c.MasterBrightness, 0) || c.MasterBrightness < 0 || c.MasterBrightness > 1 {
+		return errors.New("Music master brightness must be between 0 and 100%")
+	}
+	return nil
 }
 
 type MusicInputDevice struct {
@@ -49,14 +68,13 @@ type musicRuntimeRun struct {
 	done   chan struct{}
 }
 
-// MusicRuntimeService owns the optional runtime and asynchronous Wails-facing
-// lifecycle. It never opens a microphone or spawns a process on construction.
+// MusicRuntimeService owns native analysis and the asynchronous Wails-facing
+// lifecycle. Construction never initializes audio capture or analysis.
 type MusicRuntimeService struct {
 	transport        MusicTransport
 	newSource        func(string) (maestrolive.AudioSource, error)
 	listInputs       func() ([]MusicInputDevice, error)
-	newAnalyzer      func(context.Context, maestropython.Config) (maestrolive.Analyzer, error)
-	loadConfig       func() (maestropython.Config, error)
+	newAnalyzer      func(context.Context) (maestrolive.Analyzer, error)
 	captureAvailable func() bool
 	mu               sync.Mutex
 	closed           bool
@@ -68,35 +86,11 @@ type MusicRuntimeService struct {
 
 func NewMusicRuntimeService(transport DeviceTransport) *MusicRuntimeService {
 	t, _ := transport.(MusicTransport)
-	s := &MusicRuntimeService{transport: t, newSource: newMusicMicrophone, listInputs: listMusicMicrophones, newAnalyzer: maestropython.New, loadConfig: loadMusicRuntimeConfig, captureAvailable: musicCaptureSupported, status: MusicStatus{State: "idle", Serials: []string{}}}
+	s := &MusicRuntimeService{transport: t, newSource: newMusicMicrophone, listInputs: listMusicMicrophones, newAnalyzer: func(context.Context) (maestrolive.Analyzer, error) { return maestronative.New(), nil }, captureAvailable: musicCaptureSupported, status: MusicStatus{State: "idle", Serials: []string{}}}
 	if t != nil {
 		t.SetMusicStatusObserver(s.observeTransport)
 	}
 	return s
-}
-
-func loadMusicRuntimeConfig() (maestropython.Config, error) {
-	c := maestropython.Config{BinaryPath: os.Getenv("HIKARI_MAESTRO_ANALYZER"), PythonPath: os.Getenv("HIKARI_MAESTRO_PYTHON"), ScriptPath: os.Getenv("HIKARI_MAESTRO_SCRIPT")}
-	paths := []string{c.BinaryPath}
-	if c.BinaryPath != "" {
-		c.PythonPath, c.ScriptPath = "", ""
-	}
-	if c.BinaryPath == "" {
-		if c.PythonPath == "" || c.ScriptPath == "" {
-			return c, errors.New("Music analyzer is not configured")
-		}
-		paths = []string{c.PythonPath, c.ScriptPath}
-	}
-	for _, path := range paths {
-		if !filepath.IsAbs(path) {
-			return c, errors.New("Music runtime paths must be absolute")
-		}
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
-			return c, errors.New("Music runtime file is unavailable")
-		}
-	}
-	return c, nil
 }
 
 func (s *MusicRuntimeService) Settings() MusicSettings {
@@ -107,10 +101,6 @@ func (s *MusicRuntimeService) Settings() MusicSettings {
 	}
 	if !s.captureAvailable() {
 		settings.Warning = "Music capture is unavailable in this build"
-		return settings
-	}
-	if _, err := s.loadConfig(); err != nil {
-		settings.Warning = err.Error()
 		return settings
 	}
 	settings.Available = true
@@ -181,9 +171,12 @@ func (s *MusicRuntimeService) Start(ctx context.Context, req StartMusicRequest) 
 	if settings := s.Settings(); !settings.Available {
 		return s.Status(), errors.New(settings.Warning)
 	}
-	config, err := s.loadConfig()
-	if err != nil {
-		return s.Status(), err
+	if req.MasterBrightness != nil {
+		brightness := *req.MasterBrightness
+		req.MasterBrightness = &brightness
+		if err := validateMusicControls(MusicControls{Style: req.Style, Dynamics: req.Dynamics, MasterBrightness: brightness}); err != nil {
+			return s.Status(), err
+		}
 	}
 	s.mu.Lock()
 	if s.closed {
@@ -213,10 +206,10 @@ func (s *MusicRuntimeService) Start(ctx context.Context, req StartMusicRequest) 
 		source, err := s.newSource(req.InputID)
 		if err == nil {
 			var analyzer maestrolive.Analyzer
-			analyzer, err = s.newAnalyzer(runCtx, config)
+			analyzer, err = s.newAnalyzer(runCtx)
 			if err == nil {
-				owned := &musicRuntimeAnalyzer{Analyzer: analyzer, ctx: runCtx}
-				err = s.transport.RunMusic(runCtx, MusicInput{Serials: req.Serials, Source: source, Analyzer: owned, Style: req.Style, Dynamics: req.Dynamics, Tracker: tracker})
+				owned := &musicRuntimeAnalyzer{Analyzer: analyzer}
+				err = s.transport.RunMusic(runCtx, MusicInput{Serials: req.Serials, Source: source, Analyzer: owned, Style: req.Style, Dynamics: req.Dynamics, Tracker: tracker, MasterBrightness: req.MasterBrightness})
 				err = errors.Join(err, owned.Close())
 			}
 		}
@@ -241,6 +234,18 @@ func (s *MusicRuntimeService) Start(ctx context.Context, req StartMusicRequest) 
 		}
 	}()
 	return s.Status(), nil
+}
+
+func (s *MusicRuntimeService) UpdateControls(controls MusicControls) error {
+	if err := validateMusicControls(controls); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.run == nil || s.run.id != controls.RunID || s.status.State != "running" {
+		return errors.New("Music session is no longer running")
+	}
+	return s.transport.UpdateMusicControls(controls)
 }
 
 func (s *MusicRuntimeService) Stop(ctx context.Context, id string) error {
@@ -285,26 +290,13 @@ func (s *MusicRuntimeService) Close(ctx context.Context) error {
 
 type musicRuntimeAnalyzer struct {
 	maestrolive.Analyzer
-	ctx       context.Context
-	cancelled atomic.Bool
-	once      sync.Once
-	err       error
+	once sync.Once
+	err  error
 }
 
-func (a *musicRuntimeAnalyzer) Analyze(ctx context.Context, window maestrolive.PCMWindow) (maestrolive.Features, error) {
-	features, err := a.Analyzer.Analyze(ctx, window)
-	if ctx.Err() != nil {
-		a.cancelled.Store(true)
-	}
-	return features, err
-}
 func (a *musicRuntimeAnalyzer) Close() error {
 	a.once.Do(func() {
 		a.err = a.Analyzer.Close()
-		var exit *exec.ExitError
-		if (a.ctx.Err() != nil || a.cancelled.Load()) && errors.As(a.err, &exit) && exit.ExitCode() < 0 {
-			a.err = nil
-		}
 	})
 	return a.err
 }

@@ -29,3 +29,7 @@ func (a *App) StopMusic(runID string) error {
 	defer cancel()
 	return a.music.Stop(ctx, runID)
 }
+
+func (a *App) UpdateMusicControls(controls backend.MusicControls) error {
+	return a.music.UpdateControls(controls)
+}

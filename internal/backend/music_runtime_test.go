@@ -4,18 +4,23 @@ import (
 	"context"
 	"errors"
 	"math"
-	"os"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	maestrolive "github.com/alessio-palumbo/lifx-maestro/live"
-	maestropython "github.com/alessio-palumbo/lifx-maestro/live/python"
+	maestronative "github.com/alessio-palumbo/lifx-maestro/live/native"
 	device "github.com/alessio-palumbo/lifxlan-go/pkg/device"
 )
 
-type runtimeTestTransport struct{ service *MusicService }
+type runtimeTestTransport struct {
+	service *MusicService
+	frames  chan maestrolive.FrameBatch
+}
+
+func (t *runtimeTestTransport) UpdateMusicControls(c MusicControls) error {
+	return t.service.UpdateControls(c)
+}
 
 func (t *runtimeTestTransport) MusicStatus() MusicStatus            { return t.service.Status() }
 func (t *runtimeTestTransport) StopMusic(ctx context.Context) error { return t.service.Stop(ctx) }
@@ -23,7 +28,16 @@ func (t *runtimeTestTransport) SetMusicStatusObserver(fn func(MusicStatus)) {
 	t.service.SetStatusObserver(fn)
 }
 func (t *runtimeTestTransport) RunMusic(ctx context.Context, input MusicInput) error {
-	config := maestrolive.Config{Source: input.Source, Analyzer: input.Analyzer, Style: input.Style, Dynamics: input.Dynamics, Tracker: input.Tracker, Sink: maestrolive.SinkFunc(func(context.Context, maestrolive.FrameBatch) error { return nil })}
+	config := maestrolive.Config{Source: input.Source, Analyzer: input.Analyzer, Style: input.Style, Dynamics: input.Dynamics, Tracker: input.Tracker, MasterBrightness: input.MasterBrightness, Sink: maestrolive.SinkFunc(func(ctx context.Context, frames maestrolive.FrameBatch) error {
+		if t.frames != nil {
+			select {
+			case t.frames <- frames:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		return nil
+	})}
 	for _, serial := range input.Serials {
 		config.Targets = append(config.Targets, maestrolive.Target{ID: serial, Surface: device.Surface{LightType: device.LightTypeSingleZone, Width: 1, Height: 1, Zones: 1}})
 	}
@@ -36,10 +50,9 @@ func testMusicRuntime(t *testing.T) (*MusicRuntimeService, *musicTestAnalyzer) {
 	s.transport = &runtimeTestTransport{service: NewMusicService()}
 	s.transport.SetMusicStatusObserver(s.observeTransport)
 	s.captureAvailable = func() bool { return true }
-	s.loadConfig = func() (maestropython.Config, error) { return maestropython.Config{BinaryPath: "/test/analyzer"}, nil }
 	s.newSource = func(string) (maestrolive.AudioSource, error) { return musicTestSource{}, nil }
 	a := &musicTestAnalyzer{}
-	s.newAnalyzer = func(context.Context, maestropython.Config) (maestrolive.Analyzer, error) { return a, nil }
+	s.newAnalyzer = func(context.Context) (maestrolive.Analyzer, error) { return a, nil }
 	s.listInputs = func() ([]MusicInputDevice, error) { return []MusicInputDevice{{ID: "test", Name: "Test input"}}, nil }
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -73,7 +86,7 @@ func TestMusicRuntimeStartsLazilyStopsAndClosesAnalyzerOnce(t *testing.T) {
 	s, a := testMusicRuntime(t)
 	var sources, analyzers, listings atomic.Int32
 	s.newSource = func(string) (maestrolive.AudioSource, error) { sources.Add(1); return musicTestSource{}, nil }
-	s.newAnalyzer = func(context.Context, maestropython.Config) (maestrolive.Analyzer, error) {
+	s.newAnalyzer = func(context.Context) (maestrolive.Analyzer, error) {
 		analyzers.Add(1)
 		return a, nil
 	}
@@ -116,7 +129,7 @@ func TestMusicRuntimeCancellationBeforeAndDuringStartup(t *testing.T) {
 		t.Fatalf("early cancellation=%v", err)
 	}
 	entered := make(chan struct{})
-	s.newAnalyzer = func(ctx context.Context, _ maestropython.Config) (maestrolive.Analyzer, error) {
+	s.newAnalyzer = func(ctx context.Context) (maestrolive.Analyzer, error) {
 		close(entered)
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -136,7 +149,7 @@ func TestMusicRuntimeCancellationBeforeAndDuringStartup(t *testing.T) {
 func TestMusicRuntimeStartupFailureIsObservableAndRecoverable(t *testing.T) {
 	s, a := testMusicRuntime(t)
 	failure := errors.New("analyzer unavailable")
-	s.newAnalyzer = func(context.Context, maestropython.Config) (maestrolive.Analyzer, error) { return nil, failure }
+	s.newAnalyzer = func(context.Context) (maestrolive.Analyzer, error) { return nil, failure }
 	events := make(chan MusicStatus, 32)
 	s.SetStatusObserver(func(status MusicStatus) { events <- status })
 	if _, err := s.Start(context.Background(), musicRuntimeRequest("failed")); err != nil {
@@ -146,7 +159,7 @@ func TestMusicRuntimeStartupFailureIsObservableAndRecoverable(t *testing.T) {
 	if status.Error != failure.Error() {
 		t.Fatalf("status=%+v", status)
 	}
-	s.newAnalyzer = func(context.Context, maestropython.Config) (maestrolive.Analyzer, error) { return a, nil }
+	s.newAnalyzer = func(context.Context) (maestrolive.Analyzer, error) { return a, nil }
 	if _, err := s.Start(context.Background(), musicRuntimeRequest("retry")); err != nil {
 		t.Fatal(err)
 	}
@@ -159,60 +172,137 @@ func TestMusicRuntimeStartupFailureIsObservableAndRecoverable(t *testing.T) {
 	}
 }
 
-func TestMusicRuntimeConfigNeverDownloadsOrGuessesPaths(t *testing.T) {
-	for _, name := range []string{"HIKARI_MAESTRO_ANALYZER", "HIKARI_MAESTRO_PYTHON", "HIKARI_MAESTRO_SCRIPT"} {
-		t.Setenv(name, "")
-	}
-	if _, err := loadMusicRuntimeConfig(); err == nil {
-		t.Fatal("missing configuration accepted")
-	}
-	t.Setenv("HIKARI_MAESTRO_ANALYZER", "relative/analyzer")
-	if _, err := loadMusicRuntimeConfig(); err == nil {
-		t.Fatal("relative runtime accepted")
-	}
-	path := filepath.Join(t.TempDir(), "analyzer")
-	if err := os.WriteFile(path, []byte("test"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HIKARI_MAESTRO_ANALYZER", path)
-	t.Setenv("HIKARI_MAESTRO_PYTHON", "ignored-relative-path")
-	config, err := loadMusicRuntimeConfig()
-	if err != nil || config.BinaryPath != path || config.PythonPath != "" {
-		t.Fatalf("config=%+v err=%v", config, err)
+type musicControlledSource struct{ chunks <-chan maestrolive.PCMChunk }
+
+func (musicControlledSource) Name() string { return "controlled audio" }
+func (s musicControlledSource) Run(ctx context.Context, output chan<- maestrolive.PCMChunk) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case chunk := <-s.chunks:
+			select {
+			case output <- chunk:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
 	}
 }
 
-func TestMusicRuntimeRealAnalyzer(t *testing.T) {
-	if os.Getenv("HIKARI_TEST_MUSIC_RUNTIME") != "1" {
-		t.Skip("set HIKARI_TEST_MUSIC_RUNTIME=1 with an explicitly configured analyzer")
-	}
-	config, err := loadMusicRuntimeConfig()
-	if err != nil {
+func TestMusicLiveControlsPreserveSessionAndUseMaestroBrightnessScaling(t *testing.T) {
+	s, analyzer := testMusicRuntime(t)
+	frames := make(chan maestrolive.FrameBatch, 32)
+	s.transport.(*runtimeTestTransport).frames = frames
+	chunks := make(chan maestrolive.PCMChunk, 1)
+	s.newSource = func(string) (maestrolive.AudioSource, error) { return musicControlledSource{chunks}, nil }
+	events := make(chan MusicStatus, 32)
+	s.SetStatusObserver(func(status MusicStatus) { events <- status })
+	req := musicRuntimeRequest("controls")
+	req.Dynamics = "balanced"
+	half := .5
+	req.MasterBrightness = &half
+	if _, err := s.Start(context.Background(), req); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	analyzer, err := maestropython.New(ctx, config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	owned := &musicRuntimeAnalyzer{Analyzer: analyzer, ctx: ctx}
-	t.Cleanup(func() {
-		cancel()
-		if err := owned.Close(); err != nil {
-			t.Errorf("close analyzer: %v", err)
+	awaitRuntimeStatus(t, events, "running")
+	transport := s.transport.(*runtimeTestTransport)
+	transport.service.mu.Lock()
+	engine := transport.service.run.engine
+	transport.service.mu.Unlock()
+	readBrightness := func() float64 {
+		t.Helper()
+		select {
+		case batch := <-frames:
+			return batch[0].Frame.Colors[0].Brightness
+		case <-time.After(3 * time.Second):
+			t.Fatal("missing Music frame")
+			return 0
 		}
-	})
-	const sampleRate = 22050
-	samples := make([]float32, sampleRate/2)
-	for i := range samples {
-		samples[i] = float32(0.3 * math.Sin(2*math.Pi*440*float64(i)/sampleRate))
 	}
-	features, err := owned.Analyze(ctx, maestrolive.PCMWindow{Samples: samples, SampleRate: sampleRate, End: 500 * time.Millisecond})
-	if err != nil {
+	chunks <- maestrolive.PCMChunk{SampleRate: 100, Samples: make([]float32, 50)}
+	initial := readBrightness()
+	controls := MusicControls{RunID: req.RunID, Style: req.Style, Dynamics: req.Dynamics, MasterBrightness: .25}
+	if err := s.UpdateControls(controls); err != nil {
 		t.Fatal(err)
 	}
-	if math.IsNaN(features.RMSDB) || math.IsInf(features.RMSDB, 0) || features.RMSDB >= 0 || features.RMSDB < -30 {
-		t.Fatalf("unexpected synthetic-audio RMS: %v", features.RMSDB)
+	chunks <- maestrolive.PCMChunk{SampleRate: 100, Samples: make([]float32, 50)}
+	dimmed := readBrightness()
+	// Tracker energy evolves between windows, so compare the output ceiling
+	// rather than assuming the generator produced identical brightness twice.
+	if dimmed <= 0 || dimmed > 25 || dimmed >= initial {
+		t.Fatalf("brightness: initial=%v dimmed=%v", initial, dimmed)
+	}
+	controls.Style, controls.Dynamics = "neon", "energetic"
+	if err := s.UpdateControls(controls); err != nil {
+		t.Fatal(err)
+	}
+	transport.service.mu.Lock()
+	sameEngine := transport.service.run.engine == engine
+	transport.service.mu.Unlock()
+	if !sameEngine || analyzer.closes.Load() != 0 {
+		t.Fatal("live controls restarted the session")
+	}
+	controls.RunID = "stale-session"
+	if err := s.UpdateControls(controls); err == nil {
+		t.Fatal("stale session controls accepted")
+	}
+	controls.RunID = req.RunID
+	for _, bad := range []MusicControls{
+		{Style: "missing", Dynamics: "auto", MasterBrightness: 1},
+		{Style: "warm", Dynamics: "missing", MasterBrightness: 1},
+		{Style: "warm", Dynamics: "auto", MasterBrightness: math.NaN()},
+		{Style: "warm", Dynamics: "auto", MasterBrightness: 1.1},
+		{Style: "warm", Dynamics: "auto", MasterBrightness: -.1},
+	} {
+		bad.RunID = req.RunID
+		if err := s.UpdateControls(bad); err == nil {
+			t.Fatalf("invalid controls accepted: %+v", bad)
+		}
+	}
+	if err := s.Stop(context.Background(), req.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateControls(controls); err == nil {
+		t.Fatal("controls accepted after stop")
+	}
+}
+
+func TestMusicRuntimeNativeNeedsNoConfiguration(t *testing.T) {
+	s, analyzer := testMusicRuntime(t)
+	var natives atomic.Int32
+	s.newAnalyzer = func(context.Context) (maestrolive.Analyzer, error) { natives.Add(1); return analyzer, nil }
+	if settings := s.Settings(); !settings.Available || settings.Warning != "" {
+		t.Fatalf("settings=%+v", settings)
+	}
+	if natives.Load() != 0 {
+		t.Fatal("settings initialized analyzer")
+	}
+	events := make(chan MusicStatus, 32)
+	s.SetStatusObserver(func(status MusicStatus) { events <- status })
+	req := musicRuntimeRequest("native")
+	if _, err := s.Start(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	awaitRuntimeStatus(t, events, "running")
+	if err := s.Stop(context.Background(), req.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if natives.Load() != 1 || analyzer.closes.Load() != 1 {
+		t.Fatal("native analyzer lifecycle mismatch")
+	}
+}
+
+func TestMusicNativeAnalyzerProcessesPCM(t *testing.T) {
+	analyzer := maestronative.New()
+	t.Cleanup(func() { _ = analyzer.Close() })
+	const rate = 22050
+	samples := make([]float32, rate/2)
+	for i := range samples {
+		samples[i] = float32(.3 * math.Sin(2*math.Pi*440*float64(i)/rate))
+	}
+	features, err := analyzer.Analyze(context.Background(), maestrolive.PCMWindow{SampleRate: rate, Samples: samples, End: 500 * time.Millisecond})
+	if err != nil || math.IsNaN(features.RMSDB) || math.IsInf(features.RMSDB, 0) || features.RMSDB < -30 || features.RMSDB >= 0 {
+		t.Fatalf("features=%+v err=%v", features, err)
 	}
 }

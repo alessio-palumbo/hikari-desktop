@@ -4,7 +4,7 @@ import type { ThemeRequest, ThemePreview, ThemeApplyResult, UserTheme, SaveUserT
 import type { DeviceEffect, DeviceEffectPreferences, EffectParameters, EffectPreference } from '../domain/effects';
 import type { SceneSummary, CaptureSceneRequest, SceneRecallResult } from '../domain/scenes';
 import type { SetupLightDiscovery, SetupLightRequest, SetupLightResult, SetupProgress } from '../domain/onboarding';
-import type { MusicStatus, MusicSettings, MusicInputDevice, StartMusicRequest } from '../domain/music';
+import type { MusicStatus, MusicSettings, MusicInputDevice, MusicControls, StartMusicRequest } from '../domain/music';
 
 interface WailsApp {
   GetMusicSettings?: () => Promise<MusicSettings>;
@@ -12,6 +12,7 @@ interface WailsApp {
   MusicInputs?: () => Promise<MusicInputDevice[]>;
   StartMusic?: (request: StartMusicRequest) => Promise<MusicStatus>;
   StopMusic?: (runId: string) => Promise<void>;
+  UpdateMusicControls?: (controls: MusicControls) => Promise<void>;
   OnboardingCapabilities?: () => Promise<{ available: boolean }>;
   ScanSetupLights?: (refresh: boolean) => Promise<SetupLightDiscovery>;
   SetupLight?: (request: SetupLightRequest) => Promise<SetupLightResult>;
@@ -60,6 +61,11 @@ export async function startMusic(request: StartMusicRequest): Promise<MusicStatu
   return start(request);
 }
 export async function stopMusic(runId = ''): Promise<void> { await window.go?.main?.App?.StopMusic?.(runId); }
+export async function updateMusicControls(controls: MusicControls): Promise<void> {
+  const update = window.go?.main?.App?.UpdateMusicControls;
+  if (!update) throw new Error('Live Music controls are unavailable');
+  await update(controls);
+}
 export function subscribeToMusicStatus(listener: (status: MusicStatus) => void): (() => void) | undefined {
   return window.runtime?.EventsOnMultiple?.('hikari:music:status', (value) => listener(value as MusicStatus), -1);
 }

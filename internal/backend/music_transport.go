@@ -22,13 +22,14 @@ const maxMusicDevices = 64
 // Audio is supplied by the caller. This layer never starts a runtime, discovers
 // another controller or expands selectors during a run: serials are explicit.
 type MusicInput struct {
-	Serials  []string
-	Source   maestrolive.AudioSource
-	Analyzer maestrolive.Analyzer
-	Style    string
-	Dynamics string
-	Tracker  maestrolive.TrackerConfig
-	Observer maestrolive.Observer
+	Serials          []string
+	Source           maestrolive.AudioSource
+	Analyzer         maestrolive.Analyzer
+	Style            string
+	Dynamics         string
+	Tracker          maestrolive.TrackerConfig
+	Observer         maestrolive.Observer
+	MasterBrightness *float64
 }
 
 func (t *LifxTransport) musicService() *MusicService {
@@ -52,6 +53,10 @@ func (t *LifxTransport) MusicStatus() MusicStatus {
 
 func (t *LifxTransport) SetMusicStatusObserver(observer func(MusicStatus)) {
 	t.musicService().SetStatusObserver(observer)
+}
+
+func (t *LifxTransport) UpdateMusicControls(controls MusicControls) error {
+	return t.musicService().UpdateControls(controls)
 }
 
 func (t *LifxTransport) MusicOwnsSerial(serial string) bool {
@@ -236,7 +241,7 @@ func (t *LifxTransport) RunMusic(ctx context.Context, input MusicInput) error {
 		}
 		return result
 	}
-	config := maestrolive.Config{Source: input.Source, Analyzer: input.Analyzer, Style: input.Style, Dynamics: input.Dynamics, Tracker: input.Tracker, Observer: input.Observer}
+	config := maestrolive.Config{Source: input.Source, Analyzer: input.Analyzer, Style: input.Style, Dynamics: input.Dynamics, Tracker: input.Tracker, Observer: input.Observer, MasterBrightness: input.MasterBrightness}
 	for _, target := range targets {
 		id := target.serial.String()
 		config.Targets = append(config.Targets, maestrolive.Target{ID: id, Surface: target.surface})

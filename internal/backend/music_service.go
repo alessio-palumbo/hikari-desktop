@@ -25,6 +25,7 @@ type MusicStatus struct {
 }
 
 type musicRun struct {
+	engine *maestrolive.Engine
 	cancel context.CancelFunc
 	done   chan struct{}
 	err    error
@@ -99,7 +100,7 @@ func (s *MusicService) runWithLifecycle(ctx context.Context, config maestrolive.
 		return ErrMusicBusy
 	}
 	runCtx, cancel := context.WithCancel(ctx)
-	run := &musicRun{cancel: cancel, done: make(chan struct{})}
+	run := &musicRun{engine: engine, cancel: cancel, done: make(chan struct{})}
 	s.run = run
 	serials := make([]string, 0, len(config.Targets))
 	for _, target := range config.Targets {
@@ -137,6 +138,25 @@ func (s *MusicService) runWithLifecycle(ctx context.Context, config maestrolive.
 	s.mu.Unlock()
 	s.notify()
 	return err
+}
+
+func (s *MusicService) UpdateControls(controls MusicControls) error {
+	if err := validateMusicControls(controls); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.run == nil || s.status.State != "running" {
+		return errors.New("Music is not running")
+	}
+	if err := s.run.engine.SetStyle(controls.Style); err != nil {
+		return err
+	}
+	if err := s.run.engine.SetDynamics(controls.Dynamics); err != nil {
+		return err
+	}
+	s.run.engine.SetMasterBrightness(controls.MasterBrightness)
+	return nil
 }
 
 func (s *MusicService) Stop(ctx context.Context) error {

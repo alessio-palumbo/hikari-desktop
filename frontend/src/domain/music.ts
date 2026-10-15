@@ -3,8 +3,9 @@ import type { Device } from './lifx.js';
 export interface MusicStatus { state: 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error'; serials: string[]; error?: string; runId?: string; revision?: number }
 export interface MusicSettings { available: boolean; warning?: string; styles: string[] }
 export interface MusicInputDevice { id: string; name: string; default: boolean }
-export interface StartMusicRequest { runId: string; serials: string[]; inputId: string; style: string; dynamics: string; sensitivity: string }
-export interface MusicSelection { serials: string[]; inputId: string; style: string; dynamics: string; sensitivity: string }
+export interface MusicControls { runId: string; style: string; dynamics: string; masterBrightness: number }
+export interface MusicSelection { serials: string[]; inputId: string; style: string; dynamics: string; sensitivity: string; masterBrightness: number }
+export interface StartMusicRequest extends MusicSelection { runId: string }
 
 export function musicActive(status: MusicStatus): boolean { return ['starting', 'running', 'stopping'].includes(status.state); }
 export function musicOwnedSerials(status: MusicStatus): Set<string> { return new Set(musicActive(status) ? status.serials : []); }

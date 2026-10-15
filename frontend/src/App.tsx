@@ -11,7 +11,7 @@ import { GroupInspector } from './components/GroupInspector';
 import { Inspector } from './components/Inspector';
 import { Scenes } from './components/Scenes';
 import { Music } from './components/Music';
-import { getMusicStatus, startMusic, stopMusic, subscribeToMusicStatus } from './backend/api';
+import { getMusicStatus, startMusic, stopMusic, updateMusicControls, subscribeToMusicStatus } from './backend/api';
 import { musicActive, musicAutomationDevices, musicOwnedSerials, newerMusicStatus, type MusicStatus, type MusicSelection, type StartMusicRequest } from './domain/music';
 import { OnboardingModal } from './components/OnboardingModal';
 import { getOnboardingCapabilities, setupLight } from './backend/api';
@@ -65,7 +65,8 @@ export function App() {
   const [groupId, setGroupId] = useState(() => loadPreference(GROUP_KEY));
   const [centerView, setCenterView] = useState<CenterView>(() => loadCenterViewPreference());
   const [musicStatus, setMusicStatus] = useState<MusicStatus>({ state: 'idle', serials: [] });
-  const [musicSelection, setMusicSelection] = useState<MusicSelection>({ serials: [], inputId: '', style: 'synthwave', dynamics: 'auto', sensitivity: 'low' });
+  const [musicSelection, setMusicSelection] = useState<MusicSelection>({ serials: [], inputId: '', style: 'synthwave', dynamics: 'auto', sensitivity: 'low', masterBrightness: 1 });
+  const musicControlsQueueRef = useRef<Promise<void>>(Promise.resolve());
   const musicStatusRef = useRef<MusicStatus>(musicStatus);
   const musicStartRef = useRef<{ id: string; serials: string[] } | undefined>(undefined);
   const previousMusicSerialsRef = useRef(new Set<string>());
@@ -772,6 +773,20 @@ export function App() {
       throw failure;
     } finally { if (musicStartRef.current === pending) musicStartRef.current = undefined; }
   };
+  const updateSelectedMusicControls = async (selection: MusicSelection) => {
+    const previous = musicSelection;
+    setMusicSelection(selection);
+    const status = musicStatusRef.current;
+    if (status.state !== 'running' || !status.runId) return;
+    const controls = { runId: status.runId, style: selection.style, dynamics: selection.dynamics, masterBrightness: selection.masterBrightness };
+    const operation = musicControlsQueueRef.current.catch(() => undefined).then(async () => {
+      if (musicStatusRef.current.runId !== controls.runId || musicStatusRef.current.state !== 'running') throw new Error('Music session is no longer running');
+      await updateMusicControls(controls);
+    });
+    musicControlsQueueRef.current = operation;
+    try { await operation; }
+    catch (failure) { setMusicSelection((current) => current === selection ? previous : current); throw failure; }
+  };
   const stopSelectedMusic = async () => {
     const pending = musicStartRef.current;
     const id = pending?.id ?? musicStatusRef.current.runId ?? '';
@@ -1328,7 +1343,7 @@ export function App() {
       />
 
       {centerView === 'music' ? (
-        <Music devices={snapshot.devices} scopes={captureScopes} defaultScopeId={selectedSerial ? `device:${selectedSerial}` : `group:${groupId}`} query={query} status={musicStatus} selection={musicSelection} onSelectionChange={setMusicSelection} view={centerView} onViewChange={setCenterView} onStart={startSelectedMusic} onStop={stopSelectedMusic} />
+        <Music devices={snapshot.devices} scopes={captureScopes} defaultScopeId={selectedSerial ? `device:${selectedSerial}` : `group:${groupId}`} query={query} status={musicStatus} selection={musicSelection} onSelectionChange={setMusicSelection} onControlsChange={updateSelectedMusicControls} view={centerView} onViewChange={setCenterView} onStart={startSelectedMusic} onStop={stopSelectedMusic} />
       ) : centerView === 'scenes' ? (
         <Scenes devices={snapshot.devices} scopes={captureScopes} defaultScopeId={selectedSerial ? `device:${selectedSerial}` : `group:${groupId}`} query={query} view={centerView} onViewChange={setCenterView} onCapture={captureSelectedScene} onEdit={(request) => captureSelectedScene(request, true)} onRecall={recallSelectedScene} />
       ) : centerView === 'health' ? (
