@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AudioLines, ChevronDown, LoaderCircle, Play, RefreshCw, Settings2, Square, X } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import { AudioLines, ChevronDown, ListX, LoaderCircle, Play, RefreshCw, Settings2, Square, X } from 'lucide-react';
 import { getMusicSettings, getMusicInputs } from '../backend/api';
 import type { Device } from '../domain/lifx';
 import type { SceneCaptureScope } from '../domain/scenes';
 import { musicActive, type MusicStatus, type MusicSettings, type MusicInputDevice, type MusicSelection, type StartMusicRequest } from '../domain/music';
 import { CenterViewToggle, type CenterView } from './CenterViewToggle';
+import { MusicSignalView } from './MusicSignal';
 import './Music.css';
 
 interface MusicProps {
   devices: Device[];
   scopes: SceneCaptureScope[];
-  defaultScopeId?: string;
   query: string;
   status: MusicStatus;
   selection: MusicSelection;
@@ -30,8 +30,15 @@ export function Music(props: MusicProps) {
   const [configurationOpen, setConfigurationOpen] = useState(false);
   const configurationRef = useRef<HTMLDivElement>(null);
   const configurationButtonRef = useRef<HTMLButtonElement>(null);
+  const addLightsRef = useRef<HTMLSelectElement>(null);
+  const selectionHintTimerRef = useRef<number | undefined>(undefined);
+  const [selectionHintActive, setSelectionHintActive] = useState(false);
   const { serials, inputId, style, dynamics, sensitivity, masterBrightness } = props.selection;
-  const setSerials = (next: string[] | ((current: string[]) => string[])) => props.onSelectionChange({ ...props.selection, serials: typeof next === 'function' ? next(serials) : next });
+  const setSerials = (next: string[] | ((current: string[]) => string[])) => {
+    window.clearTimeout(selectionHintTimerRef.current);
+    setSelectionHintActive(false);
+    props.onSelectionChange({ ...props.selection, serials: typeof next === 'function' ? next(serials) : next });
+  };
   const setInputId = (inputId: string) => props.onSelectionChange({ ...props.selection, inputId });
   const changeControls = (patch: Partial<MusicSelection>) => {
     setError('');
@@ -40,15 +47,10 @@ export function Music(props: MusicProps) {
   const setStyle = (style: string) => changeControls({ style });
   const setDynamics = (dynamics: string) => changeControls({ dynamics });
   const setSensitivity = (sensitivity: string) => props.onSelectionChange({ ...props.selection, sensitivity });
-  const initialized = useRef(false);
   const active = musicActive(props.status);
   const displayedSerials = active ? props.status.serials : serials;
 
-  useEffect(() => {
-    if (initialized.current || serials.length) return;
-    const scope = props.scopes.find((entry) => entry.id === props.defaultScopeId);
-    if (active || scope) { setSerials(active ? props.status.serials : scope!.serials); initialized.current = true; }
-  }, [props.scopes, props.defaultScopeId, props.status.serials, active, serials.length]);
+  useEffect(() => () => window.clearTimeout(selectionHintTimerRef.current), []);
 
   useEffect(() => {
     let disposed = false;
@@ -87,6 +89,7 @@ export function Music(props: MusicProps) {
   };
   const toggle = async () => {
     setError('');
+    if (!active && !serials.length) return;
     try {
       if (active) await props.onStop();
       else await props.onStart({ ...props.selection, runId: crypto.randomUUID() });
@@ -94,6 +97,15 @@ export function Music(props: MusicProps) {
   };
   const disabled = active || loading;
   const controlsDisabled = loading || props.status.state === 'starting' || props.status.state === 'stopping';
+  const noTargets = !active && !serials.length;
+  const playHint = active ? 'Stop Music and restore lights' : noTargets ? 'Add lights to start Music' : 'Start Music';
+  const guideSelection = () => {
+    if (disabled) return;
+    addLightsRef.current?.focus();
+    window.clearTimeout(selectionHintTimerRef.current);
+    setSelectionHintActive(true);
+    selectionHintTimerRef.current = window.setTimeout(() => setSelectionHintActive(false), 1400);
+  };
   const q = props.query.trim().toLowerCase();
   const scopes = props.scopes.filter((scope) => !q || scope.name.toLowerCase().includes(q));
   const stateLabel = { idle: 'ready', starting: 'starting', running: 'listening', stopping: 'restoring', stopped: 'stopped', error: 'stopped' }[props.status.state];
@@ -108,19 +120,23 @@ export function Music(props: MusicProps) {
             <label><span>sensitivity</span><MusicSelect label="Music sensitivity" value={sensitivity} disabled={disabled} onChange={setSensitivity}>{['low', 'normal', 'high'].map((name) => <option key={name} value={name}>{name}</option>)}</MusicSelect></label>
           </div>}
         </div>
-        <button className="icon-button music-play" title={active ? 'Stop Music and restore lights' : 'Start Music'} aria-label={active ? 'Stop Music' : 'Start Music'} disabled={props.status.state === 'stopping' || !active && (loading || !settings.available || !serials.length)} onClick={() => void toggle()}>
+        <span className="music-play-trigger" title={playHint}>
+        <button className="icon-button music-play" data-needs-targets={noTargets} aria-label={noTargets ? playHint : active ? 'Stop Music' : 'Start Music'} disabled={props.status.state === 'stopping' || !active && (loading || !settings.available)} onClick={() => noTargets ? guideSelection() : void toggle()} onKeyDown={(event) => {
+          if (noTargets && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); guideSelection(); }
+        }}>
           {props.status.state === 'starting' || props.status.state === 'stopping' ? <LoaderCircle size={16} className="music-spinner" /> : active ? <Square size={14} /> : <Play size={16} />}
         </button>
+        </span>
       </div>
     </header>
-    <div className="music-settings">
+    <div className="music-control-area"><div className="music-settings">
       <label><span>style</span><MusicSelect label="Music style" value={style} disabled={controlsDisabled} onChange={setStyle}>{(settings.styles.length ? settings.styles : ['synthwave']).map((name) => <option key={name} value={name}>{name}</option>)}</MusicSelect></label>
       <label><span>dynamics</span><MusicSelect label="Music dynamics" value={dynamics} disabled={controlsDisabled} onChange={setDynamics}>{['auto', 'calm', 'balanced', 'energetic'].map((name) => <option key={name} value={name}>{name}</option>)}</MusicSelect></label>
       <label><span>brightness</span><div className="music-brightness"><input type="range" aria-label="Music master brightness" min="1" max="100" step="1" value={Math.round(masterBrightness * 100)} disabled={controlsDisabled} onChange={(event) => changeControls({ masterBrightness: Number(event.target.value) / 100 })} /><output>{Math.round(masterBrightness * 100)}%</output></div></label>
-    </div>
-    <section className="music-targets"><div className="music-targets-heading"><h2>lights</h2><MusicSelect label="Add Music lights" value="" disabled={disabled} onChange={(id) => { const scope = props.scopes.find((entry) => entry.id === id); if (scope) setSerials((current) => [...new Set([...current, ...scope.serials])]); }}>
+    </div><MusicSignalView key={props.status.runId ?? 'idle'} status={props.status} /></div>
+    <section className="music-targets"><div className="music-targets-heading"><h2>lights</h2><div className="music-target-actions" data-selection-hint={selectionHintActive}><MusicSelect selectRef={addLightsRef} label="Add Music lights" value="" disabled={disabled} onChange={(id) => { const scope = props.scopes.find((entry) => entry.id === id); if (scope) setSerials((current) => [...new Set([...current, ...scope.serials])]); }}>
       <option value="">add lights</option>{(['group', 'room', 'device', 'all'] as const).map((kind) => <optgroup key={kind} label={{ group: 'Groups', room: 'Rooms', device: 'Devices', all: 'LAN' }[kind]}>{scopes.filter((scope) => scope.kind === kind).map((scope) => <option key={scope.id} value={scope.id} disabled={scope.serials.every((serial) => displayedSerials.includes(serial))}>{scope.name}</option>)}</optgroup>)}
-    </MusicSelect></div>
+    </MusicSelect><button className="icon-button" aria-label="Clear selected lights" title="Clear selected lights" disabled={disabled || !serials.length} onClick={() => setSerials([])}><ListX size={15} /></button></div></div>
       <ul>{displayedSerials.map((serial) => { const device = props.devices.find((entry) => entry.serial === serial); return <li key={serial}><span className="music-light-dot" data-on={!!device?.on} /><span>{device?.name ?? serial}<small>{device?.model ?? 'unavailable'}</small></span><button className="icon-button" disabled={active} title="Remove light" aria-label={`Remove ${device?.name ?? serial} from Music`} onClick={() => setSerials((current) => current.filter((entry) => entry !== serial))}><X size={13} /></button></li>; })}</ul>
     </section>
     {error || props.status.error || settings.warning ? <p className="music-error" role="alert">{error || props.status.error || settings.warning}</p> : null}
@@ -128,7 +144,7 @@ export function Music(props: MusicProps) {
   </div></main>;
 }
 
-function MusicSelect({ label, value, disabled, onChange, children }: { label: string; value: string; disabled: boolean; onChange: (value: string) => void; children: ReactNode }) {
-  return <span className="music-select-wrap"><select aria-label={label} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{children}</select><ChevronDown size={12} aria-hidden="true" /></span>;
+function MusicSelect({ label, value, disabled, onChange, children, selectRef }: { label: string; value: string; disabled: boolean; onChange: (value: string) => void; children: ReactNode; selectRef?: Ref<HTMLSelectElement> }) {
+  return <span className="music-select-wrap"><select ref={selectRef} aria-label={label} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{children}</select><ChevronDown size={12} aria-hidden="true" /></span>;
 }
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }

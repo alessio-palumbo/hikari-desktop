@@ -8,6 +8,7 @@ import (
 
 func (a *App) GetMusicSettings() backend.MusicSettings { return a.music.Settings() }
 func (a *App) GetMusicStatus() backend.MusicStatus     { return a.music.Status() }
+func (a *App) GetMusicSignal() *backend.MusicSignal    { return a.music.Signal() }
 func (a *App) MusicInputs() ([]backend.MusicInputDevice, error) {
 	finish, err := a.beginControl()
 	if err != nil {

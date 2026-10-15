@@ -1343,7 +1343,7 @@ export function App() {
       />
 
       {centerView === 'music' ? (
-        <Music devices={snapshot.devices} scopes={captureScopes} defaultScopeId={selectedSerial ? `device:${selectedSerial}` : `group:${groupId}`} query={query} status={musicStatus} selection={musicSelection} onSelectionChange={setMusicSelection} onControlsChange={updateSelectedMusicControls} view={centerView} onViewChange={setCenterView} onStart={startSelectedMusic} onStop={stopSelectedMusic} />
+        <Music devices={snapshot.devices} scopes={captureScopes} query={query} status={musicStatus} selection={musicSelection} onSelectionChange={setMusicSelection} onControlsChange={updateSelectedMusicControls} view={centerView} onViewChange={setCenterView} onStart={startSelectedMusic} onStop={stopSelectedMusic} />
       ) : centerView === 'scenes' ? (
         <Scenes devices={snapshot.devices} scopes={captureScopes} defaultScopeId={selectedSerial ? `device:${selectedSerial}` : `group:${groupId}`} query={query} view={centerView} onViewChange={setCenterView} onCapture={captureSelectedScene} onEdit={(request) => captureSelectedScene(request, true)} onRecall={recallSelectedScene} />
       ) : centerView === 'health' ? (

@@ -4,11 +4,12 @@ import type { ThemeRequest, ThemePreview, ThemeApplyResult, UserTheme, SaveUserT
 import type { DeviceEffect, DeviceEffectPreferences, EffectParameters, EffectPreference } from '../domain/effects';
 import type { SceneSummary, CaptureSceneRequest, SceneRecallResult } from '../domain/scenes';
 import type { SetupLightDiscovery, SetupLightRequest, SetupLightResult, SetupProgress } from '../domain/onboarding';
-import type { MusicStatus, MusicSettings, MusicInputDevice, MusicControls, StartMusicRequest } from '../domain/music';
+import type { MusicStatus, MusicSettings, MusicInputDevice, MusicControls, MusicSignal, StartMusicRequest } from '../domain/music';
 
 interface WailsApp {
   GetMusicSettings?: () => Promise<MusicSettings>;
   GetMusicStatus?: () => Promise<MusicStatus>;
+  GetMusicSignal?: () => Promise<MusicSignal | null>;
   MusicInputs?: () => Promise<MusicInputDevice[]>;
   StartMusic?: (request: StartMusicRequest) => Promise<MusicStatus>;
   StopMusic?: (runId: string) => Promise<void>;
@@ -68,6 +69,10 @@ export async function updateMusicControls(controls: MusicControls): Promise<void
 }
 export function subscribeToMusicStatus(listener: (status: MusicStatus) => void): (() => void) | undefined {
   return window.runtime?.EventsOnMultiple?.('hikari:music:status', (value) => listener(value as MusicStatus), -1);
+}
+export async function getMusicSignal(): Promise<MusicSignal | null> { return await window.go?.main?.App?.GetMusicSignal?.() ?? null; }
+export function subscribeToMusicSignal(listener: (signal: MusicSignal) => void): (() => void) | undefined {
+  return window.runtime?.EventsOnMultiple?.('hikari:music:signal', (value) => listener(value as MusicSignal), -1);
 }
 
 export async function getOnboardingCapabilities(): Promise<{ available: boolean }> {

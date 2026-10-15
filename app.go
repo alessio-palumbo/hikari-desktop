@@ -103,6 +103,7 @@ func newAppWithServices(transport backend.DeviceTransport, sensors sensorProvide
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.music.SetStatusObserver(func(status backend.MusicStatus) { a.emitEvent(a.context(), musicStatusEvent, status) })
+	a.music.SetSignalObserver(func(signal backend.MusicSignal) { a.emitEvent(a.context(), "hikari:music:signal", signal) })
 	if observable, ok := a.transport.(deviceSnapshotObserver); ok {
 		observable.SetSnapshotObserver(func(snapshot backend.DeviceSnapshot) {
 			a.emitEvent(a.context(), deviceSnapshotEvent, snapshot)

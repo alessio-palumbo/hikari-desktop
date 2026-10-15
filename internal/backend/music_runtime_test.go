@@ -28,7 +28,7 @@ func (t *runtimeTestTransport) SetMusicStatusObserver(fn func(MusicStatus)) {
 	t.service.SetStatusObserver(fn)
 }
 func (t *runtimeTestTransport) RunMusic(ctx context.Context, input MusicInput) error {
-	config := maestrolive.Config{Source: input.Source, Analyzer: input.Analyzer, Style: input.Style, Dynamics: input.Dynamics, Tracker: input.Tracker, MasterBrightness: input.MasterBrightness, Sink: maestrolive.SinkFunc(func(ctx context.Context, frames maestrolive.FrameBatch) error {
+	config := maestrolive.Config{Source: input.Source, Analyzer: input.Analyzer, Style: input.Style, Dynamics: input.Dynamics, Tracker: input.Tracker, MasterBrightness: input.MasterBrightness, Observer: input.Observer, Sink: maestrolive.SinkFunc(func(ctx context.Context, frames maestrolive.FrameBatch) error {
 		if t.frames != nil {
 			select {
 			case t.frames <- frames:

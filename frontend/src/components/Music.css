@@ -8,7 +8,27 @@
 .music-shell .icon-button { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 4px; color: var(--fg-2); }
 .music-shell .icon-button:hover:not(:disabled) { background: #ffffff0a; color: var(--fg-0); }
 .music-shell .music-play:not(:disabled) { color: var(--accent); }
+.music-play-trigger { display: inline-flex; flex: 0 0 28px; width: 28px; height: 28px; }
+.music-shell .music-play:disabled { color: var(--fg-3); opacity: .45; pointer-events: none; }
+.music-shell .music-play[data-needs-targets="true"] { color: var(--fg-3); opacity: .45; }
+.music-shell .music-play[data-needs-targets="true"]:hover { color: var(--fg-3); opacity: .65; }
 .music-settings { max-width: 380px; display: grid; gap: 12px; margin-top: 24px; }
+.music-control-area { display: grid; gap: 36px; margin-top: 24px; }
+.music-control-area > .music-settings { max-width: none; margin-top: 0; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 24px; }
+.music-control-area > .music-settings > label { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.music-control-area .music-brightness { height: 28px; }
+.music-signal { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); grid-template-rows: repeat(5, minmax(0, 1fr)); column-gap: 24px; row-gap: 12px; width: 100%; min-width: 0; color: var(--fg-3); font-size: 11px; }
+.music-signal[data-running="false"] { opacity: .5; }
+.music-signal-heading { grid-column: 1; grid-row: 1; align-self: start; display: flex; justify-content: space-between; align-items: center; line-height: 14px; gap: 8px; }
+.music-signal canvas { grid-column: 2; grid-row: 1 / span 5; display: block; width: 100%; height: 176px; }
+.music-signal-legend { display: contents; }
+.music-signal-meter { grid-column: 1; align-self: start; }
+.music-signal-meter > span { display: block; line-height: 14px; margin-bottom: 6px; }
+.music-signal-meter [role="meter"] { height: 3px; background: #ffffff0a; }
+.music-signal-meter [role="meter"] > span { display: block; height: 100%; background: var(--trace-color); transition: width 100ms linear; }
+@media (max-width: 850px) { .music-signal { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; row-gap: 0; } .music-signal-heading { height: 20px; } .music-signal canvas { grid-column: 1; grid-row: 2; height: 144px; margin: 4px 0 8px; } .music-signal-legend { display: grid; grid-column: 1; grid-row: 3; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; } .music-signal-meter { grid-column: auto; } }
+@media (prefers-reduced-motion: reduce) { .music-signal-meter [role="meter"] > span { transition: none; } }
+@media (max-width: 750px) { .music-control-area > .music-settings { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; } .music-control-area > .music-settings > label:last-child { grid-column: 1 / -1; } }
 .music-configuration-anchor { position: relative; }
 .music-settings.music-configuration { position: absolute; z-index: 20; right: 0; top: 34px; width: 320px; max-width: calc(100vw - 240px); margin: 0; padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-1, #17191a); box-shadow: 0 8px 24px #0006; }
 .music-configuration:focus { outline: none; }
@@ -29,10 +49,12 @@
 .music-select-wrap select:focus { outline: 1px solid var(--fg-3); outline-offset: 1px; }
 .music-select-wrap select:disabled { opacity: 0.55; cursor: default; }
 .music-select-wrap svg { position: absolute; right: 8px; top: 8px; pointer-events: none; color: var(--fg-3); }
-.music-targets { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 16px; }
+.music-targets { margin-top: 32px; padding-top: 16px; }
 .music-targets-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .music-targets-heading h2 { margin: 0; color: var(--fg-2); font-size: 12px; font-weight: 400; }
-.music-targets-heading .music-select-wrap { flex: 0 1 260px; }
+.music-target-actions { display: flex; align-items: center; gap: 6px; flex: 0 1 294px; min-width: 0; }
+.music-targets-heading .music-select-wrap { flex: 1; }
+.music-target-actions[data-selection-hint="true"] select { border-color: var(--accent); outline: 1px solid var(--accent); outline-offset: 2px; }
 .music-targets ul { list-style: none; margin: 12px 0 0; padding: 0; }
 .music-targets li { display: flex; align-items: center; gap: 10px; min-height: 46px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--fg-1); }
 .music-targets li > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }

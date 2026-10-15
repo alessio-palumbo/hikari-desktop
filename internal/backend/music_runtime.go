@@ -6,6 +6,7 @@ import (
 	"math"
 	"slices"
 	"sync"
+	"time"
 
 	maestrolive "github.com/alessio-palumbo/lifx-maestro/live"
 	maestronative "github.com/alessio-palumbo/lifx-maestro/live/native"
@@ -82,6 +83,8 @@ type MusicRuntimeService struct {
 	cancelledID      string
 	status           MusicStatus
 	observer         func(MusicStatus)
+	signalFeed       *musicSignalFeed
+	signalObserver   func(MusicSignal)
 }
 
 func NewMusicRuntimeService(transport DeviceTransport) *MusicRuntimeService {
@@ -194,6 +197,8 @@ func (s *MusicRuntimeService) Start(ctx context.Context, req StartMusicRequest) 
 	runCtx, cancel := context.WithCancel(ctx)
 	run := &musicRuntimeRun{id: req.RunID, cancel: cancel, done: make(chan struct{})}
 	s.run = run
+	feed := &musicSignalFeed{runID: run.id}
+	s.signalFeed = feed
 	status := MusicStatus{State: "starting", RunID: run.id, Serials: slices.Clone(req.Serials), Revision: s.status.Revision + 1}
 	s.status = status
 	observer := s.observer
@@ -203,19 +208,25 @@ func (s *MusicRuntimeService) Start(ctx context.Context, req StartMusicRequest) 
 	}
 	go func() {
 		defer cancel()
+		ticker := time.NewTicker(musicSignalInterval)
+		defer ticker.Stop()
+		signalDone := make(chan struct{})
+		go func() { defer close(signalDone); feed.publish(runCtx, ticker.C, s.emitSignal) }()
 		source, err := s.newSource(req.InputID)
 		if err == nil {
 			var analyzer maestrolive.Analyzer
 			analyzer, err = s.newAnalyzer(runCtx)
 			if err == nil {
 				owned := &musicRuntimeAnalyzer{Analyzer: analyzer}
-				err = s.transport.RunMusic(runCtx, MusicInput{Serials: req.Serials, Source: source, Analyzer: owned, Style: req.Style, Dynamics: req.Dynamics, Tracker: tracker, MasterBrightness: req.MasterBrightness})
+				err = s.transport.RunMusic(runCtx, MusicInput{Serials: req.Serials, Source: source, Analyzer: owned, Style: req.Style, Dynamics: req.Dynamics, Tracker: tracker, MasterBrightness: req.MasterBrightness, Observer: feed})
 				err = errors.Join(err, owned.Close())
 			}
 		}
 		if runCtx.Err() != nil && errors.Is(err, runCtx.Err()) {
 			err = nil
 		}
+		cancel()
+		<-signalDone
 		status := MusicStatus{State: "stopped", RunID: run.id, Serials: slices.Clone(req.Serials)}
 		if err != nil {
 			status.State = "error"
