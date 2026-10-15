@@ -4,7 +4,7 @@
 
 # hikari · 光 (ひかり)
 
-A local desktop controller for LIFX lights. Adjust individual lights, paint strips and matrices, arrange your home or workspace on a floor plan, and explore effects and color themes without a cloud account.
+A local desktop controller for LIFX lights and switches, with floor plans, effects, color themes, saved scenes, and music-reactive lighting. Control and customize your devices on the LAN without a cloud account.
 
 hikari is ready for everyday use with real LAN devices and remains in active development. It runs on macOS, Windows, and Linux, with an optional macOS voice edition.
 
@@ -44,6 +44,12 @@ Apply built-in color themes or create your own palettes for a light, group, or r
 ### Save Scenes
 
 Capture named light-state snapshots for a device, group, or room, and recall their power, brightness, colors, and zone/pixel patterns later. Scenes retain their captured device membership and report unavailable lights instead of silently retargeting a different group.
+
+### React to Music
+
+Use the `music` view to run a live show from microphone audio, powered by [Maestro](https://github.com/alessio-palumbo/lifx-maestro). Combine lights from groups, rooms, or individual devices, change style and dynamics while playing, and adjust master brightness without restarting the show.
+
+Analysis runs locally in Go, with no Python, analyzer sidecar, or model setup. The signal graph and intensity bars show the input's band activity and energy. Stopping restores the lights' captured state. Music is included in the standard app; the voice edition is only needed for spoken commands.
 
 ### Check Health and Use Commands
 
@@ -135,12 +141,17 @@ Recall uses lifxlan-go's native snapshot restore and stops active effects on the
 
 The `music` view uses Maestro Live to react to microphone audio. Select a device,
 group, room, or combination of lights, choose an input and style, then start.
+Music starts with no targets. Add lights explicitly; the selection is retained
+when navigating between groups and views during the app session. With no lights
+selected, clicking the muted Play control focuses and briefly highlights
+`add lights` instead of starting capture. The clear-list icon removes all targets
+while stopped.
 Style, dynamics and master brightness can change during playback without restarting
 the show. Master brightness scales Maestro's output without changing the saved
 device state. The cog opens microphone settings in a compact popover; input and
 sensitivity can be changed while stopped. Music keeps its target selection fixed
-during a run. Stop restores the captured
-power, brightness and colours. A manual change to a targeted light stops the
+during a run. Stop clears the graph and restores the captured power, brightness
+and colours. A manual change to a targeted light stops the
 whole session before applying that change; unrelated lights remain controllable.
 Stop other effects on selected lights before starting Music.
 
@@ -155,6 +166,11 @@ native-audio-enabled build and microphone permission. For development, run
 Music does not access audio on startup; input enumeration happens when opening
 the Music view, and recording begins only on Start. Allow microphone
 access when prompted. Audio is processed locally, not saved or sent to the cloud.
+The signal panel shows 12 seconds of normalized low/mid/high band activity and
+interpreted energy, with matching current-intensity bars beside the graph
+(underneath in narrow windows). Microphone input level remains a separate dB
+readout; this is not a full frequency spectrum.
+Display updates are coalesced at 10Hz independently of analysis and light output.
 
 ## Device Setup
 
@@ -208,7 +224,7 @@ Offline sensors are unknown, not evidence of an empty room. Assignments use stab
 
 ## Saved Data
 
-Floor plans, sensor assignments, effect preferences, and user themes are stored in the operating system's user configuration directory:
+Floor plans, sensor assignments, effect preferences, user themes, and scenes are stored in the operating system's user configuration directory:
 
 | File | Contents |
 | --- | --- |
@@ -217,7 +233,7 @@ Floor plans, sensor assignments, effect preferences, and user themes are stored 
 | `themes.json` | User palette definitions and stable identities. |
 | `scenes.json` | Versioned scene names, fixed serial membership, and restorable light snapshots. |
 
-These files are written atomically, shared by development and installed builds, and survive replacing the application with a new release. Existing WebView-local floor plans migrate automatically. Temporary previews, effect playback/restore state, and theme application variations are not durable settings.
+These files are written atomically, shared by development and installed builds, and survive replacing the application with a new release. Existing WebView-local floor plans migrate automatically. Temporary previews, effect/Music playback and restore state, Music target selection, and theme application variations are not durable settings.
 
 ## Development
 
@@ -318,6 +334,10 @@ flowchart TB
     Transport --> LIFX[lifxlan-go]
     LIFX <-->|LAN discovery and control| Lights[LIFX devices]
     Transport --> Mock[Mock devices]
+    App --> Music[Music service]
+    Microphone -->|Local audio| Music
+    Music <-->|Audio and logical frames| Maestro[Maestro Live / Go analyzer]
+    Music --> Transport
     App --> Store[Local JSON stores]
     App <-->|Plans over JSONL| Commands[lifx-command-engine sidecar]
     Commands --> Voice[Optional whisper.cpp runtime]
@@ -325,7 +345,9 @@ flowchart TB
     Sensaa <-->|mDNS and subscriptions| Sensors[Sensaa nodes]
 ```
 
-The UI owns interaction, drafts, previews, and room-level occupancy policy. Go services manage device transport, sensor subscriptions, command interpretation, and persistence. Device updates arrive through subscriptions and Wails events; recovery snapshots reconcile state without overwriting active edits.
+The UI owns interaction, drafts, previews, and room-level occupancy policy. Go services manage device transport, sensor subscriptions, command interpretation, Music sessions, and persistence. Device updates arrive through subscriptions and Wails events; recovery snapshots reconcile state without overwriting active edits.
+
+Maestro analyzes audio and generates logical lighting frames. hikari owns target selection, capture/restoration, and output through its existing LIFX controller; Music does not create a second device controller. Signal-display updates are coalesced separately from analysis and device dispatch.
 
 Device endpoint changes preserve serial identity but invalidate dependent observations and pending state. Same-interface network returns refresh discovery on the existing controller; intentional interface changes or closed sockets recreate it. Provisioning remains outside hikari, in the separate onboarding library.
 
@@ -336,7 +358,7 @@ Sensaa reports observations, and lifxlan-go handles light state and control. Roo
 | `main.go`, `app.go` | Wails entry point, lifecycle, and application bindings. |
 | `internal/backend` | Transports, services, persistence, backend models, and tests. |
 | `frontend/src/domain` | Typed models, editing/occupancy state, and reconciliation. |
-| `frontend/src/components` | List, floor plan, health view, previews, and inspector. |
+| `frontend/src/components` | List, floor plan, health, scenes, Music, previews, and inspector. |
 | `frontend/src/styles` | Shared styles and design tokens. |
 
 ### Release Builds
